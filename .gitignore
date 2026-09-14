@@ -1,0 +1,17 @@
+# Data directory (MySQL persistent volumes)
+data/
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.iml
+
+# Crash logs
+hs_err_pid*.log
+replay_pid*.log
+
+# Build & compiled output
+**/build/
+**/bin/
+*.class
+.gradle/
