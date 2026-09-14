@@ -5,9 +5,9 @@ spring:
   application:
     name: employee-service
   datasource:
-    url: jdbc:mysql://mysql-db:3306/doctor_pet?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-    username: root
-    password: 123456
+    url: ${DB_URL:jdbc:mysql://mysql-db:3306/doctor_pet?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
@@ -25,7 +25,7 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: http://discovery-server:8761/eureka/
+      defaultZone: ${EUREKA_URI:http://discovery-server:8761/eureka/}
   instance:
     prefer-ip-address: true
 
