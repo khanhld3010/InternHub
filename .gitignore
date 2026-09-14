@@ -15,3 +15,5 @@ replay_pid*.log
 **/bin/
 *.class
 .gradle/
+**/.gradle/
+*.log

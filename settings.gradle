@@ -1,0 +1,6 @@
+rootProject.name = 'internhub'
+
+include 'config-server'
+include 'discovery-server'
+include 'api-gateway'
+include 'employee-service'

@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: "123456"
-      MYSQL_DATABASE: doctor_pet
+      MYSQL_DATABASE: internhub_db
     ports:
       - "3307:3306"
     volumes:
@@ -97,6 +97,12 @@ services:
         condition: service_healthy
     networks:
       - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 networks:
   micro-network:
