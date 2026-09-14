@@ -5,7 +5,7 @@ spring:
   application:
     name: employee-service
   datasource:
-    url: ${DB_URL:jdbc:mysql://mysql-db:3306/doctor_pet?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    url: ${DB_URL:jdbc:mysql://mysql-db:3306/internhub_db?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -16,11 +16,11 @@ spring:
     properties:
       hibernate:
         format_sql: true
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://api-gateway:8080/realms/your-realm
+#  security:
+#    oauth2:
+#      resourceserver:
+#        jwt:
+#          issuer-uri: http://api-gateway:8080/realms/your-realm
 
 eureka:
   client:
