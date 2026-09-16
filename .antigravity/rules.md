@@ -94,11 +94,22 @@ cd employee-service; .\gradlew bootJar; cd ..
 
 ---
 
-## 7. Git Branch & Commit Conventions (Chuẩn hóa với Jira Project `TM`)
+## 7. Git Workflow, Branch & Commit Conventions (Chuẩn hóa Jira `TM` & Nhánh `develop`)
 
-Mọi nhánh và commit đều phải liên kết chặt chẽ với Jira Issue key trong project **`TM`** (ví dụ `TM-1`, `TM-2`).
+Để tránh xung đột code và đảm bảo mã nguồn luôn ổn định theo chuẩn dự án:
 
-### 7.1. Quy tắc đặt tên nhánh (Branch Naming)
+### 7.1. Quy trình lấy code mới và tạo nhánh (Work Flow)
+Mọi nhánh chức năng **BẮT BUỘC** phải được rẽ nhánh từ nhánh **`develop`** mới nhất:
+```bash
+# 1. Chuyển về nhánh develop và kéo code mới nhất
+git checkout develop
+git pull origin develop
+
+# 2. Tạo nhánh chức năng mới gắn với Jira Ticket
+git checkout -b <type>/<mã-task-jira>/<tên-tính-năng-kebab-case>
+```
+
+### 7.2. Quy tắc đặt tên nhánh (Branch Naming)
 Cấu trúc bắt buộc: `<type>/<mã-task-jira>/<tên-tính-năng-kebab-case>`
 - `feature/TM-1/create-intern-profile` : Phát triển tính năng thêm mới hồ sơ thực tập sinh.
 - `feature/TM-2/edit-intern-profile` : Phát triển tính năng chỉnh sửa hồ sơ thực tập sinh.
@@ -107,13 +118,28 @@ Cấu trúc bắt buộc: `<type>/<mã-task-jira>/<tên-tính-năng-kebab-case>`
 - `test/TM-X/<tên-mô-tả>` : Viết Unit Test / Integration Test.
 - `chore/TM-X/<tên-mô-tả>` : Cấu hình Gradle, Docker, dependencies.
 
-### 7.2. Quy tắc viết Commit Message (Conventional Commits)
+### 7.3. Quy tắc viết Commit Message (Conventional Commits)
 Cấu trúc: `<type>(<mã-task-jira>): <nội dung mô tả ngắn gọn>`
 - `feat(TM-1): thêm API tạo mới hồ sơ thực tập sinh`
 - `feat(TM-2): thêm API cập nhật thông tin hồ sơ thực tập sinh`
 - `fix(TM-3): sửa lỗi validate số điện thoại khi đăng ký hồ sơ`
 - `refactor(TM-1): chuẩn hóa DTO response cho module intern profile`
 - `test(TM-1): bổ sung Unit Test cho InternProfileService`
+- `docs(TM-5): cập nhật quy chuẩn Git Branch và Commit vào tài liệu`
+- `chore(TM-6): cập nhật cấu hình build Gradle và Dockerfile`
+
+### 7.4. Quy trình nộp code (Pull Request)
+1. Trước khi tạo PR, chạy kiểm tra build tại local:
+   ```powershell
+   cd <service-folder>; .\gradlew compileJava; .\gradlew test; cd ..
+   ```
+2. Đẩy nhánh chức năng lên GitHub:
+   ```bash
+   git push -u origin <tên-nhánh-của-bạn>
+   ```
+3. Tạo **Pull Request (PR)** trên GitHub từ nhánh của bạn vào nhánh **`develop`** (TUYỆT ĐỐI KHÔNG mở PR thẳng vào `main` hoặc push trực tiếp vào `main`/`develop`).
+4. Điền đầy đủ thông tin theo PR Template, gắn link Jira Ticket tương ứng (`TM-X`).
+5. Đợi ít nhất 1 thành viên review và duyệt (Approve) trước khi merge vào `develop`.
 
 ---
 

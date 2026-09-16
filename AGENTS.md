@@ -9,7 +9,8 @@ Tập tin này định nghĩa quy tắc hoạt động, thứ tự nạp ngữ c
 Trước khi thực hiện bất kỳ nhiệm vụ nào (phát triển tính năng, sửa bug, refactor), AI **BẮT BUỘC** phải nạp và tuân thủ ngữ cảnh theo thứ tự sau:
 
 - 📖 **Tổng quan dự án & Nghiệp vụ:** Đọc [`README.md`](file:///c:/Users/Luong%20Anh%20Huy/InternHub/README.md) để nắm bức tranh tổng thể dự án.
-- 🔴 **Quy chuẩn kỹ thuật BẮT BUỘC:** Đọc [`.antigravity/rules.md`](file:///c:/Users/Luong%20Anh%20Huy/InternHub/.antigravity/rules.md) chứa toàn bộ Coding Conventions, Naming Standards và Architecture Patterns.
+- 🔴 **Quy chuẩn kỹ thuật BẮT BUỘC:** Đọc [`.antigravity/rules.md`](file:///c:/Users/Luong%20Anh%20Huy/InternHub/.antigravity/rules.md) chứa Coding Conventions, Naming Standards và Architecture Patterns.
+- 📋 **Quy chuẩn viết Đặc tả (Spec-Driven):** Đọc [`.antigravity/spec-rules.md`](file:///c:/Users/Luong%20Anh%20Huy/InternHub/.antigravity/spec-rules.md) khi muốn thiết kế, làm rõ yêu cầu hoặc thêm mới tính năng.
 - 🐳 **Môi trường & Vận hành:** Tham khảo [`tutorial.md`](file:///c:/Users/Luong%20Anh%20Huy/InternHub/tutorial.md) và [`docker-compose.yml`](file:///c:/Users/Luong%20Anh%20Huy/InternHub/docker-compose.yml) khi cần làm việc với Docker/MySQL và các port Microservices.
 
 ---
@@ -76,13 +77,24 @@ cd <service-folder>; .\gradlew bootJar; cd ..
 
 ---
 
-## 6. Git Branch & Commit Conventions (Quy chuẩn Git & Commit theo Jira Ticket)
+## 6. Git Workflow, Branch & Commit Conventions (Quy chuẩn Git & Jira `TM`)
 
 Khi người dùng yêu cầu AI tạo nhánh, tạo commit hoặc push code lên GitHub, AI **BẮT BUỘC** phải tuân thủ các quy tắc sau:
 
+### 🔄 Quy trình lấy code và tạo nhánh hàng ngày (Workflow)
+Mọi nhánh tính năng, sửa lỗi đều **BẮT BUỘC** phải rẽ nhánh từ **`develop`** mới nhất:
+```bash
+# 1. Chuyển về nhánh develop và lấy code mới nhất
+git checkout develop
+git pull origin develop
+
+# 2. Tạo nhánh chức năng mới theo Ticket Jira
+git checkout -b <type>/<mã-task-jira>/<tên-tính-năng>
+```
+
 > 💡 **Ghi chú về `<mã-task-jira>`:**
-> - **Tên nhánh:** Ưu tiên sử dụng mã Main Task / Story / Bug ID (ví dụ: `TM-1`, `TM-2`) để quản lý theo tính năng hoặc lỗi tổng thể.
-> - **Commit Message:** Ưu tiên sử dụng mã Sub-task / Sub-bug ID (nếu task/bug được chia nhỏ thành Sub-task trên Jira), hoặc mã Main Task / Bug ID (nếu làm việc trực tiếp trên Ticket chính).
+> - **Tên nhánh:** Sử dụng mã Main Task / Story / Bug ID (ví dụ: `TM-1`, `TM-2`) để quản lý theo tính năng hoặc lỗi tổng thể.
+> - **Commit Message:** Sử dụng mã Sub-task / Sub-bug ID (nếu được chia nhỏ), hoặc mã Main Task / Bug ID (nếu làm việc trực tiếp trên Ticket chính).
 
 ### 🌿 Quy tắc đặt tên nhánh (Branch Naming)
 Cấu trúc bắt buộc: `<type>/<mã-task-jira>/<tên-tính-năng>` (tên tính năng dùng kebab-case).
@@ -100,3 +112,9 @@ Cấu trúc: `<type>(<mã-task-jira>): <nội dung mô tả ngắn gọn>`
 - `test(TM-1): bổ sung Unit Test và Integration Test cho module Intern`
 - `docs(TM-5): cập nhật quy chuẩn Git Branch và Commit vào AGENTS.md`
 - `chore(TM-6): cập nhật cấu hình build Gradle và Dockerfile`
+
+### 🚀 Quy trình nộp code (Tạo Pull Request)
+1. Chạy `compileJava` và `test` tại local để chắc chắn toàn bộ code không có lỗi.
+2. Đẩy nhánh lên GitHub: `git push -u origin <tên-nhánh>`
+3. Mở **Pull Request (PR)** từ nhánh chức năng vào nhánh **`develop`** (TUYỆT ĐỐI KHÔNG mở PR trực tiếp vào `main`).
+4. Gắn link Jira Ticket tương ứng (`TM-X`) và chờ ít nhất 1 thành viên review trước khi merge.
