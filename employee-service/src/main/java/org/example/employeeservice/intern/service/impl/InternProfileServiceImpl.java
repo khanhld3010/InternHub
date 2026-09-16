@@ -3,7 +3,9 @@ package org.example.employeeservice.intern.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.employeeservice.exception.DuplicateResourceException;
+import org.example.employeeservice.exception.ResourceNotFoundException;
 import org.example.employeeservice.intern.dto.request.CreateInternRequest;
+import org.example.employeeservice.intern.dto.request.UpdateInternRequest;
 import org.example.employeeservice.intern.dto.response.InternResponse;
 import org.example.employeeservice.intern.entity.InternProfile;
 import org.example.employeeservice.intern.entity.enums.InternStatus;
@@ -61,6 +63,57 @@ public class InternProfileServiceImpl implements InternProfileService {
         log.info("Tao thanh cong ho so thuc tap sinh voi ID: {}, Code: {}", savedProfile.getId(), savedProfile.getInternCode());
 
         return mapToResponse(savedProfile);
+    }
+
+    @Override
+    @Transactional
+    public InternResponse updateIntern(Long id, UpdateInternRequest request) {
+        log.info("Bat dau cap nhat ho so thuc tap sinh voi ID: {}", id);
+
+        InternProfile profile = internProfileRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với ID: " + id));
+
+        if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) {
+            throw new IllegalArgumentException("Ngày kết thúc thực tập không thể trước ngày bắt đầu");
+        }
+
+        validateStatusTransition(profile.getStatus(), request.getStatus());
+
+        if (internProfileRepository.existsByEmailAndIdNot(request.getEmail().trim().toLowerCase(), id)) {
+            throw new DuplicateResourceException("Email '" + request.getEmail() + "' đã tồn tại trong hệ thống");
+        }
+
+        if (internProfileRepository.existsByPhoneAndIdNot(request.getPhone().trim(), id)) {
+            throw new DuplicateResourceException("Số điện thoại '" + request.getPhone() + "' đã tồn tại trong hệ thống");
+        }
+
+        profile.updateInformation(
+                request.getFullName().trim(),
+                request.getEmail().trim().toLowerCase(),
+                request.getPhone().trim(),
+                request.getDateOfBirth(),
+                request.getGender(),
+                request.getAddress(),
+                request.getUniversity().trim(),
+                request.getMajor().trim(),
+                request.getAcademicYear(),
+                request.getAppliedPosition().trim(),
+                request.getStartDate(),
+                request.getEndDate(),
+                request.getStatus(),
+                request.getNotes()
+        );
+
+        InternProfile updatedProfile = internProfileRepository.save(profile);
+        log.info("Cap nhat thanh cong ho so thuc tap sinh voi ID: {}, Code: {}", updatedProfile.getId(), updatedProfile.getInternCode());
+
+        return mapToResponse(updatedProfile);
+    }
+
+    private void validateStatusTransition(InternStatus currentStatus, InternStatus newStatus) {
+        if (!currentStatus.canTransitionTo(newStatus)) {
+            throw new IllegalStateException("Không thể chuyển đổi trạng thái từ " + currentStatus + " sang " + newStatus);
+        }
     }
 
     private synchronized String generateInternCode() {

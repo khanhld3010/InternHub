@@ -5,5 +5,18 @@ public enum InternStatus {
     APPROVED,
     INTERNING,
     COMPLETED,
-    REJECTED
+    REJECTED;
+
+    public boolean canTransitionTo(InternStatus target) {
+        if (this == target) {
+            return true;
+        }
+        return switch (this) {
+            case PENDING -> target == APPROVED || target == REJECTED;
+            case APPROVED -> target == INTERNING || target == REJECTED;
+            case INTERNING -> target == COMPLETED || target == REJECTED;
+            case COMPLETED -> false;
+            case REJECTED -> target == PENDING;
+        };
+    }
 }

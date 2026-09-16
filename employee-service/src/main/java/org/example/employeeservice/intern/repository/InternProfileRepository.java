@@ -13,7 +13,11 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
 
     boolean existsByEmail(String email);
 
+    boolean existsByEmailAndIdNot(String email, Long id);
+
     boolean existsByPhone(String phone);
+
+    boolean existsByPhoneAndIdNot(String phone, Long id);
 
     Optional<InternProfile> findByInternCode(String internCode);
 
