@@ -40,18 +40,21 @@ AI cần tự động áp dụng các skill sau theo đúng loại tác vụ:
 
 ## 4. Nguyên Tắc Kiến Trúc & Coding Standards
 
-### 4.1. Kiến trúc phân tầng & Package Structure
-Gốc package: `org.example.employeeservice` (hoặc tương ứng theo từng microservice).
-Tổ chức code theo hướng Feature / Clean Architecture:
-- `entity/`: Chứa các JPA Entities.
-- `repository/`: Spring Data JPA interfaces (`JpaRepository`, `JpaSpecificationExecutor`).
-- `service/` & `service/impl/`: Chứa Interface và Implementation business logic.
-- `controller/`: REST API endpoints. Chỉ nhận HTTP Request, validate DTO bằng `@Valid`, gọi Service, trả về DTO/ResponseEntity. **Tuyệt đối không viết business logic tại Controller**.
-- `dto/`: Phân tách rõ ràng thành:
-  - `dto/request/`: Các class Request DTO (ví dụ `CreateInternRequest`, `UpdateInternRequest`).
-  - `dto/response/`: Các class Response DTO (ví dụ `InternResponse`, `InternDetailResponse`).
-- `common/`: Chứa `BaseEntity`, enum chung, utility class.
-- `exception/`: Chứa `GlobalExceptionHandler` và các custom exceptions (`ResourceNotFoundException`, `BadRequestException`, `DuplicateResourceException`).
+### 4.1. Cấu trúc Package-by-Feature (BẮT BUỘC)
+- Cấu trúc dự án được tổ chức theo module/feature thay vì gom chung theo layer ở cấp cao nhất.
+- Mỗi feature (ví dụ: `intern`, `employee`, `attendance`, `evaluation`) tự chứa các package con của riêng nó:
+  - `<feature>/entity/`: JPA Entities và Enums nghiệp vụ của riêng feature.
+  - `<feature>/repository/`: Spring Data JPA repositories (`JpaRepository`, `JpaSpecificationExecutor`).
+  - `<feature>/service/` & `<feature>/service/impl/`: Interface và Implementation business logic.
+  - `<feature>/controller/`: REST API endpoints. Chỉ nhận HTTP Request, validate qua `@Valid`, gọi Service, trả về `ApiResponse<DTO>`.
+  - `<feature>/dto/`: Phân tách rõ thành 2 package con:
+    - `<feature>/dto/request/`: Các class Request DTO (ví dụ `CreateInternRequest`, `UpdateInternRequest`).
+    - `<feature>/dto/response/`: Các class Response DTO (ví dụ `InternResponse`).
+- **Thư mục dùng chung (Shared/Common):**
+  - `common/entity/`: Chứa `BaseEntity` (`id`, `createdAt`, `updatedAt`, `@PrePersist`, `@PreUpdate`).
+  - `common/dto/response/`: Chứa `ApiResponse<T>` chuẩn hóa response.
+  - `exception/`: Chứa `GlobalExceptionHandler` và các custom exceptions (`ResourceNotFoundException`, `DuplicateResourceException`, `BadRequestException`).
+  - `config/`: Cấu hình Security, Swagger/OpenAPI, Beans hệ thống.
 
 ### 4.2. Nguyên tắc Coding bắt buộc
 - **Không trả JPA Entity trực tiếp ra Controller:** Luôn luôn map Entity qua DTO (Response DTO) trước khi trả về Client.

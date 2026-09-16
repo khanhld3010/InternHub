@@ -1,12 +1,12 @@
-package org.example.employeeservice.dto.response;
+package org.example.employeeservice.intern.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.example.employeeservice.entity.enums.Gender;
-import org.example.employeeservice.entity.enums.InternStatus;
+import org.example.employeeservice.intern.entity.enums.Gender;
+import org.example.employeeservice.intern.entity.enums.InternStatus;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,15 +25,14 @@ public class InternResponse {
     private String phone;
     private LocalDate dateOfBirth;
     private Gender gender;
+    private String address;
     private String university;
     private String major;
     private String academicYear;
-    private Double gpa;
     private String appliedPosition;
-    private InternStatus status;
     private LocalDate startDate;
     private LocalDate endDate;
-    private String address;
+    private InternStatus status;
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

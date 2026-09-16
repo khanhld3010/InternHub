@@ -1,23 +1,24 @@
-package org.example.employeeservice.service.impl;
+package org.example.employeeservice.intern.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.employeeservice.dto.request.CreateInternRequest;
-import org.example.employeeservice.dto.response.InternResponse;
-import org.example.employeeservice.entity.InternProfile;
-import org.example.employeeservice.entity.enums.InternStatus;
 import org.example.employeeservice.exception.DuplicateResourceException;
-import org.example.employeeservice.repository.InternProfileRepository;
-import org.example.employeeservice.service.InternProfileService;
+import org.example.employeeservice.intern.dto.request.CreateInternRequest;
+import org.example.employeeservice.intern.dto.response.InternResponse;
+import org.example.employeeservice.intern.entity.InternProfile;
+import org.example.employeeservice.intern.entity.enums.InternStatus;
+import org.example.employeeservice.intern.repository.InternProfileRepository;
+import org.example.employeeservice.intern.service.InternProfileService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class InternProfileServiceImpl implements InternProfileService {
 
@@ -26,63 +27,49 @@ public class InternProfileServiceImpl implements InternProfileService {
     @Override
     @Transactional
     public InternResponse createIntern(CreateInternRequest request) {
-        log.info("Bắt đầu tiếp nhận tạo mới hồ sơ thực tập sinh: email={}, phone={}", request.getEmail(), request.getPhone());
+        log.info("Bat dau tao ho so thuc tap sinh voi email: {}", request.getEmail());
 
-        // 1. Kiểm tra trùng lặp email
         if (internProfileRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("Email '" + request.getEmail() + "' đã tồn tại trong hệ thống");
         }
 
-        // 2. Kiểm tra trùng lặp số điện thoại
         if (internProfileRepository.existsByPhone(request.getPhone())) {
             throw new DuplicateResourceException("Số điện thoại '" + request.getPhone() + "' đã tồn tại trong hệ thống");
         }
 
-        // 3. Tự động sinh mã thực tập sinh: INT-YYYYMM-XXXX
-        String internCode = generateUniqueInternCode();
+        String internCode = generateInternCode();
 
-        // 4. Map DTO sang Entity
-        InternProfile profile = InternProfile.builder()
+        InternProfile internProfile = InternProfile.builder()
                 .internCode(internCode)
                 .fullName(request.getFullName().trim())
                 .email(request.getEmail().trim().toLowerCase())
                 .phone(request.getPhone().trim())
                 .dateOfBirth(request.getDateOfBirth())
                 .gender(request.getGender())
+                .address(request.getAddress())
                 .university(request.getUniversity().trim())
                 .major(request.getMajor().trim())
-                .academicYear(request.getAcademicYear() != null ? request.getAcademicYear().trim() : null)
-                .gpa(request.getGpa())
+                .academicYear(request.getAcademicYear())
                 .appliedPosition(request.getAppliedPosition().trim())
-                .status(InternStatus.PENDING)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
-                .address(request.getAddress() != null ? request.getAddress().trim() : null)
-                .notes(request.getNotes() != null ? request.getNotes().trim() : null)
+                .status(InternStatus.PENDING)
+                .notes(request.getNotes())
                 .build();
 
-        // 5. Lưu vào CSDL
-        InternProfile savedProfile = internProfileRepository.save(profile);
-        log.info("Đã tạo thành công hồ sơ thực tập sinh với mã: {}", savedProfile.getInternCode());
+        InternProfile savedProfile = internProfileRepository.save(internProfile);
+        log.info("Tao thanh cong ho so thuc tap sinh voi ID: {}, Code: {}", savedProfile.getId(), savedProfile.getInternCode());
 
-        // 6. Map Entity sang Response DTO
         return mapToResponse(savedProfile);
     }
 
-    private String generateUniqueInternCode() {
+    private synchronized String generateInternCode() {
         String yearMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
-        String prefix = "INT-" + yearMonth + "-";
+        LocalDateTime startOfMonth = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        LocalDateTime endOfMonth = startOfMonth.plusMonths(1).minusNanos(1);
 
-        long currentCount = internProfileRepository.countByInternCodeStartingWith(prefix);
-        long nextIndex = currentCount + 1;
-        String candidateCode = String.format("%s%04d", prefix, nextIndex);
-
-        while (internProfileRepository.existsByInternCode(candidateCode)) {
-            nextIndex++;
-            candidateCode = String.format("%s%04d", prefix, nextIndex);
-        }
-
-        return candidateCode;
+        long count = internProfileRepository.countByCreatedAtBetween(startOfMonth, endOfMonth) + 1;
+        return String.format("INT-%s-%04d", yearMonth, count);
     }
 
     private InternResponse mapToResponse(InternProfile profile) {
@@ -94,15 +81,14 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .phone(profile.getPhone())
                 .dateOfBirth(profile.getDateOfBirth())
                 .gender(profile.getGender())
+                .address(profile.getAddress())
                 .university(profile.getUniversity())
                 .major(profile.getMajor())
                 .academicYear(profile.getAcademicYear())
-                .gpa(profile.getGpa())
                 .appliedPosition(profile.getAppliedPosition())
-                .status(profile.getStatus())
                 .startDate(profile.getStartDate())
                 .endDate(profile.getEndDate())
-                .address(profile.getAddress())
+                .status(profile.getStatus())
                 .notes(profile.getNotes())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())

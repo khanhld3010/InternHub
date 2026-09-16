@@ -1,4 +1,4 @@
-package org.example.employeeservice.entity;
+package org.example.employeeservice.intern.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,8 +11,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.example.employeeservice.common.entity.BaseEntity;
-import org.example.employeeservice.entity.enums.Gender;
-import org.example.employeeservice.entity.enums.InternStatus;
+import org.example.employeeservice.intern.entity.enums.Gender;
+import org.example.employeeservice.intern.entity.enums.InternStatus;
 
 import java.time.LocalDate;
 
@@ -25,16 +25,16 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class InternProfile extends BaseEntity {
 
-    @Column(name = "intern_code", nullable = false, unique = true, length = 30)
+    @Column(name = "intern_code", unique = true, nullable = false, length = 50)
     private String internCode;
 
     @Column(name = "full_name", nullable = false, length = 100)
     private String fullName;
 
-    @Column(name = "email", nullable = false, unique = true, length = 100)
+    @Column(name = "email", unique = true, nullable = false, length = 100)
     private String email;
 
-    @Column(name = "phone", nullable = false, unique = true, length = 15)
+    @Column(name = "phone", unique = true, nullable = false, length = 20)
     private String phone;
 
     @Column(name = "date_of_birth")
@@ -44,34 +44,31 @@ public class InternProfile extends BaseEntity {
     @Column(name = "gender", length = 10)
     private Gender gender;
 
+    @Column(name = "address", length = 255)
+    private String address;
+
     @Column(name = "university", nullable = false, length = 150)
     private String university;
 
     @Column(name = "major", nullable = false, length = 100)
     private String major;
 
-    @Column(name = "academic_year", length = 20)
+    @Column(name = "academic_year", length = 50)
     private String academicYear;
-
-    @Column(name = "gpa")
-    private Double gpa;
 
     @Column(name = "applied_position", nullable = false, length = 100)
     private String appliedPosition;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
-    @Builder.Default
-    private InternStatus status = InternStatus.PENDING;
-
-    @Column(name = "start_date")
+    @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
     @Column(name = "end_date")
     private LocalDate endDate;
 
-    @Column(name = "address", length = 255)
-    private String address;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
+    private InternStatus status = InternStatus.PENDING;
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
