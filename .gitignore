@@ -17,3 +17,12 @@ replay_pid*.log
 .gradle/
 **/.gradle/
 *.log
+
+# AI Agent local rules and skills
+.agents/
+AGENTS.md
+GEMINI.md
+
+# Uploads directory
+uploads/
+**/uploads/
