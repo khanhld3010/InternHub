@@ -88,6 +88,8 @@ services:
     restart: unless-stopped
     environment:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+    ports:
+      - "8081:8081"
     depends_on:
       mysql-db:
         condition: service_healthy
