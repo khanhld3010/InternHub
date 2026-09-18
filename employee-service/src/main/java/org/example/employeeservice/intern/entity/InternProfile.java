@@ -72,4 +72,36 @@ public class InternProfile extends BaseEntity {
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
+
+    public void updateInformation(
+            String fullName,
+            String email,
+            String phone,
+            LocalDate dateOfBirth,
+            Gender gender,
+            String address,
+            String university,
+            String major,
+            String academicYear,
+            String appliedPosition,
+            LocalDate startDate,
+            LocalDate endDate,
+            InternStatus status,
+            String notes
+    ) {
+        this.fullName = fullName;
+        this.email = email;
+        this.phone = phone;
+        this.dateOfBirth = dateOfBirth;
+        this.gender = gender;
+        this.address = address;
+        this.university = university;
+        this.major = major;
+        this.academicYear = academicYear;
+        this.appliedPosition = appliedPosition;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.status = status;
+        this.notes = notes;
+    }
 }
