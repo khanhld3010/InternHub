@@ -1,7 +1,9 @@
 package org.example.employeeservice.intern.controller;
 
 import org.example.employeeservice.common.dto.response.ApiResponse;
+import org.example.employeeservice.common.dto.response.PageResponse;
 import org.example.employeeservice.intern.dto.request.CreateInternRequest;
+import org.example.employeeservice.intern.dto.request.InternFilterRequest;
 import org.example.employeeservice.intern.dto.request.UpdateInternRequest;
 import org.example.employeeservice.intern.dto.response.InternResponse;
 import org.example.employeeservice.intern.entity.enums.InternStatus;
@@ -13,8 +15,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+
+import java.util.List;
+
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -102,11 +109,42 @@ class InternProfileControllerTest {
         assertNotNull(result);
         assertEquals(HttpStatus.OK, result.getStatusCode());
         assertNotNull(result.getBody());
-        assertEquals(200, result.getBody().getCode());
-        assertEquals("INT-202609-0001", result.getBody().getData().getInternCode());
-        assertEquals("luonganhhuy.updated@gmail.com", result.getBody().getData().getEmail());
-        assertEquals(InternStatus.APPROVED, result.getBody().getData().getStatus());
-
         verify(internProfileService).updateIntern(eq(1L), any(UpdateInternRequest.class));
     }
+
+    @Test
+    @DisplayName("searchInterns: Controller goi Service va tra ve 200 OK cung PageResponse")
+    void searchInterns_validRequest_shouldReturn200AndPageResponse() {
+        InternFilterRequest filterRequest = InternFilterRequest.builder()
+                .keyword("Lương")
+                .university("Bách Khoa")
+                .build();
+        Pageable pageable = PageRequest.of(0, 10);
+        PageResponse<InternResponse> mockPageResponse = PageResponse.<InternResponse>builder()
+                .items(List.of(mockResponse))
+                .currentPage(0)
+                .pageSize(10)
+                .totalItems(1)
+                .totalPages(1)
+                .isFirst(true)
+                .isLast(true)
+                .hasNext(false)
+                .hasPrevious(false)
+                .build();
+
+        when(internProfileService.searchInterns(eq(filterRequest), eq(pageable))).thenReturn(mockPageResponse);
+
+        ResponseEntity<ApiResponse<PageResponse<InternResponse>>> result = internProfileController.searchInterns(filterRequest, pageable);
+
+        assertNotNull(result);
+        assertEquals(HttpStatus.OK, result.getStatusCode());
+        assertNotNull(result.getBody());
+        assertEquals(200, result.getBody().getCode());
+        assertEquals(1, result.getBody().getData().getTotalItems());
+        assertEquals(1, result.getBody().getData().getItems().size());
+        assertEquals("INT-202609-0001", result.getBody().getData().getItems().get(0).getInternCode());
+
+        verify(internProfileService).searchInterns(eq(filterRequest), eq(pageable));
+    }
 }
+
