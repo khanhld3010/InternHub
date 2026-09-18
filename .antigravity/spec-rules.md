@@ -26,29 +26,25 @@ Không biến mọi việc thành thủ tục rườm rà. Áp dụng theo ma tr
 
 ---
 
-## 📝 3. Cấu Trúc Chi Tiết Của Một `spec.md` Chuẩn
+## 📝 3. Cấu Trúc Chi Tiết Của Một `spec.md` Chuẩn (Full 13-Section Specification)
 
-Mỗi tính năng mới (từ mức L2 trở lên) bắt buộc phải có tài liệu đặc tả gồm 5 phần:
+Mỗi tính năng mới (từ mức L2 trở lên) bắt buộc phải có tài liệu đặc tả đầy đủ, chuyên nghiệp gồm 13 phần chuẩn hóa:
 
-### 3.1. Mục tiêu (Objective)
-- Trả lời ngắn gọn: Tính năng này giải quyết vấn đề gì cho ai?
-
-### 3.2. Trong phạm vi (In Scope)
-- Liệt kê chính xác các hành vi, màn hình, endpoint mà tính năng **sẽ thực hiện**.
-
-### 3.3. Ngoài phạm vi (Out of Scope) - *Cực kỳ quan trọng*
-- Nêu rõ những gì **KHÔNG LÀM** trong task này để ngăn AI suy diễn thêm hệ thống đăng nhập, cache, cron job, bảng mới...
-
-### 3.4. Các quy tắc hành vi & Điều kiện biên (Behavior Rules & Edge Cases)
-- Hành vi khi input rỗng / sai định dạng?
-- Xử lý khi trùng lặp dữ liệu?
-- Quyền hạn (Role nào được gọi, Role nào bị 403)?
-- Empty state hiển thị ra sao?
-
-### 3.5. Tiêu chí chấp nhận (Acceptance Criteria - AC)
-- Các tiêu chí phải **đo lường và quan sát được** (testable):
-  - Ví dụ: *"API trả về 201 Created cùng ID mới khi dữ liệu hợp lệ trong dưới 300ms."*
-  - Ví dụ: *"Khi email đã tồn tại, trả về HTTP 409 Conflict kèm message tiếng Việt rõ ràng."*
+1. **Feature Overview (Tổng Quan Tính Năng):** Feature name, Jira ticket (`TM-X`), Target subsystems, Target users, Change level (L1-L4).
+2. **Business Goal & Core Objectives (Mục Tiêu Nghiệp Vụ):** Bối cảnh, mục tiêu nghiệp vụ, vấn đề cốt lõi cần giải quyết.
+3. **Scope of Work (Phạm Vi Tính Năng):**
+   - *Trong phạm vi (In Scope):* Danh sách chi tiết các hành vi, màn hình, endpoint thực hiện.
+   - *Ngoài phạm vi (Out of Scope):* Những gì tuyệt đối KHÔNG LÀM để tránh over-engineering.
+4. **Potential Logic Loopholes & Mitigations (Các Lỗ Hổng Logic & Edge Cases):** Tối thiểu 5 edge cases cốt lõi (concurrency, validation, failure handling, data mismatch, security/access control...).
+5. **Functional Requirements (Yêu Cầu Chức Năng):** FR-1, FR-2,... liệt kê các chức năng hệ thống cung cấp.
+6. **Business Rules (Quy Tắc Nghiệp Vụ):** BR-1, BR-2,... quy tắc tính toán, ràng buộc trạng thái, kiểm tra tính toàn vẹn.
+7. **Data Model (Mô Hình Dữ Liệu):** DDL SQL bảng, các quan hệ, indexes, constraints, Java entity mapping kế thừa `BaseEntity`.
+8. **API Contract (Đặc Tả Giao Tiếp REST API):** Method, endpoint URL, headers, request body JSON, response 200/201 JSON mẫu, mã lỗi và format lỗi (`ApiResponse<T>`).
+9. **Core Flow / Enforcement Flow (Luồng Xử Lý Cốt Lõi):** Luồng xử lý chi tiết từng bước, service layer sequence, xử lý transaction và rollback.
+10. **Non-Functional Requirements & Constraints (Yêu Cầu Phi Chức Năng):** Tech stack, Database constraints, Performance, Caching (Redis), Security & Role-based Access Control, Audit logging.
+11. **Acceptance Criteria Checklist (Tiêu Chí Chấp Nhận):** AC-1, AC-2,... đo lường và quan sát được (testable).
+12. **Unit & Integration Test Cases Checklist:** Danh sách test method cụ thể cho Service (`UT-BE-XX`) và Integration/Controller (`IT-BE-XX`).
+13. **Implementation Checklist (Danh Sách File & Hạng Mục Triển Khai):** Checklist chi tiết từng Entity, DTO, Repository, Service, Controller, Exception handler, Seeder, Tests.
 
 ---
 

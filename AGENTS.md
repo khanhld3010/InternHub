@@ -49,14 +49,18 @@ AI cần tự động áp dụng các skill sau theo đúng loại tác vụ:
 
 ## 4. Nguyên Tắc Kiến Trúc & Coding Standards
 
-### Kiến trúc phân tầng (Package by Feature):
-- `controller`: Chỉ nhận HTTP Request, validate DTO bằng `@Valid`, gọi Service, trả về `ResponseEntity<ApiResponse<T>>` hoặc `ResponseEntity<T>`. **Tuyệt đối không viết logic tại Controller**.
-- `service` / `service/impl`: Chứa toàn bộ Business Logic. Sử dụng `@Transactional` cho các hàm tác động dữ liệu.
-- `repository`: Interfaces kế thừa `JpaRepository` / `JpaSpecificationExecutor`.
-- `dto`: Phân tách `dto/request/` và `dto/response/`. **Không trả về JPA Entity trực tiếp ra API Response**.
-- `exception`: Bắt ngoại lệ tập trung qua `GlobalExceptionHandler`.
+### Cấu trúc dự án Package-by-Feature (BẮT BUỘC):
+- Tổ chức theo module/feature thay vì gom layer ở cấp cao nhất. Mỗi feature (ví dụ `intern`, `employee`, ...) tự chứa:
+  - `<feature>/entity/`: JPA Entities & Enums của feature. Tất cả JPA Entities phải kế thừa từ `BaseEntity`.
+  - `<feature>/repository/`: Interfaces kế thừa `JpaRepository` / `JpaSpecificationExecutor`.
+  - `<feature>/service/` + `service/impl/`: Chứa toàn bộ Business Logic. Sử dụng `@Transactional` cho các hàm tác động dữ liệu.
+  - `<feature>/controller/`: Chỉ nhận HTTP Request, validate DTO bằng `@Valid`, gọi Service, trả về `ResponseEntity<ApiResponse<T>>`. **Tuyệt đối không viết logic tại Controller**.
+  - `<feature>/dto/`: Phân tách `dto/request/` và `dto/response/`. **Không trả về JPA Entity trực tiếp ra API Response**.
+- **Thư mục dùng chung (Shared/Common):**
+  - `common/entity/`: Chứa `BaseEntity` (chứa `id`, `createdAt`, `updatedAt`).
+  - `common/dto/response/`: Chứa `ApiResponse<T>`.
+  - `exception/`: Bắt ngoại lệ tập trung qua `GlobalExceptionHandler`.
 - **Dependency Injection:** Sử dụng Constructor Injection thông qua `@RequiredArgsConstructor` từ Lombok (**KHÔNG dùng `@Autowired` ở trường**).
-- **Entities:** Tất cả JPA Entities phải kế thừa từ `BaseEntity` (chứa `id`, `createdAt`, `updatedAt`).
 
 ---
 

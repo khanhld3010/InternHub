@@ -1,11 +1,11 @@
-package org.example.employeeservice.controller;
+package org.example.employeeservice.intern.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.example.employeeservice.dto.request.CreateInternRequest;
-import org.example.employeeservice.dto.response.ApiResponse;
-import org.example.employeeservice.dto.response.InternResponse;
-import org.example.employeeservice.entity.enums.InternStatus;
-import org.example.employeeservice.service.InternProfileService;
+import org.example.employeeservice.common.dto.response.ApiResponse;
+import org.example.employeeservice.intern.dto.request.CreateInternRequest;
+import org.example.employeeservice.intern.dto.request.UpdateInternRequest;
+import org.example.employeeservice.intern.dto.response.InternResponse;
+import org.example.employeeservice.intern.entity.enums.InternStatus;
+import org.example.employeeservice.intern.service.InternProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,7 +57,7 @@ class InternProfileControllerTest {
     }
 
     @Test
-    @DisplayName("Controller gọi Service thành công và trả về 201 Created cùng ApiResponse")
+    @DisplayName("Controller goi Service thanh cong va tra ve 201 Created cung ApiResponse")
     void createIntern_validPayload_shouldReturn201() {
         when(internProfileService.createIntern(any(CreateInternRequest.class))).thenReturn(mockResponse);
 
@@ -70,5 +71,42 @@ class InternProfileControllerTest {
         assertEquals("Lương Anh Huy", result.getBody().getData().getFullName());
 
         verify(internProfileService).createIntern(validRequest);
+    }
+
+    @Test
+    @DisplayName("Controller cap nhat thanh cong va tra ve 200 OK cung ApiResponse")
+    void updateIntern_validPayload_shouldReturn200() {
+        UpdateInternRequest updateRequest = UpdateInternRequest.builder()
+                .fullName("Lương Anh Huy")
+                .email("luonganhhuy.updated@gmail.com")
+                .phone("0987654321")
+                .university("Đại học Bách Khoa")
+                .major("Kỹ thuật Phần mềm")
+                .appliedPosition("Backend Java Intern")
+                .status(InternStatus.APPROVED)
+                .build();
+
+        InternResponse updatedResponse = InternResponse.builder()
+                .id(1L)
+                .internCode("INT-202609-0001")
+                .fullName("Lương Anh Huy")
+                .email("luonganhhuy.updated@gmail.com")
+                .phone("0987654321")
+                .status(InternStatus.APPROVED)
+                .build();
+
+        when(internProfileService.updateIntern(eq(1L), any(UpdateInternRequest.class))).thenReturn(updatedResponse);
+
+        ResponseEntity<ApiResponse<InternResponse>> result = internProfileController.updateIntern(1L, updateRequest);
+
+        assertNotNull(result);
+        assertEquals(HttpStatus.OK, result.getStatusCode());
+        assertNotNull(result.getBody());
+        assertEquals(200, result.getBody().getCode());
+        assertEquals("INT-202609-0001", result.getBody().getData().getInternCode());
+        assertEquals("luonganhhuy.updated@gmail.com", result.getBody().getData().getEmail());
+        assertEquals(InternStatus.APPROVED, result.getBody().getData().getStatus());
+
+        verify(internProfileService).updateIntern(eq(1L), any(UpdateInternRequest.class));
     }
 }
