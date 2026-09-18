@@ -16,9 +16,16 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
 jwt:
   secret-key: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
   expiration: ${JWT_EXPIRATION:86400000} # 24 giờ tính bằng milliseconds
+
+file:
+  upload-dir: ${FILE_UPLOAD_DIR:./uploads}
 
 
 eureka:
