@@ -1,11 +1,10 @@
-package org.example.employeeservice.controller;
+package org.example.employeeservice.intern.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.example.employeeservice.dto.request.CreateInternRequest;
-import org.example.employeeservice.dto.response.ApiResponse;
-import org.example.employeeservice.dto.response.InternResponse;
-import org.example.employeeservice.entity.enums.InternStatus;
-import org.example.employeeservice.service.InternProfileService;
+import org.example.employeeservice.common.dto.response.ApiResponse;
+import org.example.employeeservice.intern.dto.request.CreateInternRequest;
+import org.example.employeeservice.intern.dto.response.InternResponse;
+import org.example.employeeservice.intern.entity.enums.InternStatus;
+import org.example.employeeservice.intern.service.InternProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -56,7 +55,7 @@ class InternProfileControllerTest {
     }
 
     @Test
-    @DisplayName("Controller gọi Service thành công và trả về 201 Created cùng ApiResponse")
+    @DisplayName("Controller goi Service thanh cong va tra ve 201 Created cung ApiResponse")
     void createIntern_validPayload_shouldReturn201() {
         when(internProfileService.createIntern(any(CreateInternRequest.class))).thenReturn(mockResponse);
 

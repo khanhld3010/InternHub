@@ -1,4 +1,4 @@
-package org.example.employeeservice.entity.enums;
+package org.example.employeeservice.intern.entity.enums;
 
 public enum InternStatus {
     PENDING,
