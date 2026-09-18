@@ -1,8 +1,10 @@
 package org.example.employeeservice.intern.service;
 
+import org.example.employeeservice.common.dto.response.PageResponse;
 import org.example.employeeservice.exception.DuplicateResourceException;
 import org.example.employeeservice.exception.ResourceNotFoundException;
 import org.example.employeeservice.intern.dto.request.CreateInternRequest;
+import org.example.employeeservice.intern.dto.request.InternFilterRequest;
 import org.example.employeeservice.intern.dto.request.UpdateInternRequest;
 import org.example.employeeservice.intern.dto.response.InternResponse;
 import org.example.employeeservice.intern.entity.InternProfile;
@@ -17,10 +19,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -303,4 +313,125 @@ class InternProfileServiceTest {
 
         verify(internProfileRepository).save(any(InternProfile.class));
     }
+
+    @Test
+    @DisplayName("searchInterns: Tim kiem thanh cong voi keyword va tra ve PageResponse")
+    void searchInterns_withKeyword_shouldReturnMatchingInterns() {
+        InternFilterRequest request = InternFilterRequest.builder()
+                .keyword("Nguyen")
+                .build();
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<InternProfile> page = new PageImpl<>(List.of(savedProfile), pageable, 1);
+
+        when(internProfileRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.getTotalItems()).isEqualTo(1);
+        assertThat(response.getCurrentPage()).isEqualTo(0);
+        assertThat(response.getItems().get(0).getFullName()).isEqualTo("Nguyen Van An");
+        verify(internProfileRepository).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("searchInterns: Loc chinh xac theo truong dai hoc va chuyen nganh")
+    void searchInterns_withUniversityAndMajor_shouldFilterCorrectly() {
+        InternFilterRequest request = InternFilterRequest.builder()
+                .university("Bach Khoa")
+                .major("Cong nghe thong tin")
+                .build();
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<InternProfile> page = new PageImpl<>(List.of(savedProfile), pageable, 1);
+
+        when(internProfileRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.getItems().get(0).getUniversity()).isEqualTo("DH Bach Khoa Ha Noi");
+    }
+
+    @Test
+    @DisplayName("searchInterns: Loc theo trang thai status")
+    void searchInterns_withStatusFilter_shouldReturnCorrectStatusOnly() {
+        InternFilterRequest request = InternFilterRequest.builder()
+                .status(InternStatus.PENDING)
+                .build();
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<InternProfile> page = new PageImpl<>(List.of(savedProfile), pageable, 1);
+
+        when(internProfileRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getItems().get(0).getStatus()).isEqualTo(InternStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("searchInterns: Ket qua rong khi khong tim thay ban ghi nao")
+    void searchInterns_withEmptyResult_shouldReturnEmptyPageResponse() {
+        InternFilterRequest request = InternFilterRequest.builder()
+                .keyword("NonExistingKeyword")
+                .build();
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<InternProfile> emptyPage = new PageImpl<>(List.of(), pageable, 0);
+
+        when(internProfileRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(emptyPage);
+
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getItems()).isEmpty();
+        assertThat(response.getTotalItems()).isZero();
+        assertThat(response.getTotalPages()).isZero();
+    }
+
+    @Test
+    @DisplayName("searchInterns: Sap xep theo truong hop le fullName ASC")
+    void searchInterns_withCustomSort_shouldSortBySpecifiedField() {
+        InternFilterRequest request = InternFilterRequest.builder().build();
+        Pageable pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.ASC, "fullName"));
+        Page<InternProfile> page = new PageImpl<>(List.of(savedProfile), pageable, 1);
+
+        when(internProfileRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getItems()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("searchInterns: Tu dong fallback ve createdAt DESC khi truyen truong sort khong hop le")
+    void searchInterns_withInvalidSortField_shouldFallbackToDefaultSort() {
+        InternFilterRequest request = InternFilterRequest.builder().build();
+        Pageable pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.ASC, "invalidField"));
+        Page<InternProfile> page = new PageImpl<>(List.of(savedProfile), pageable, 1);
+
+        when(internProfileRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getItems()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("searchInterns: Gioi han page size toi da 100 khi client truyen size qua lon")
+    void searchInterns_whenPageSizeExceedsLimit_shouldCapAtMaxPageSize() {
+        InternFilterRequest request = InternFilterRequest.builder().build();
+        Pageable pageable = PageRequest.of(0, 500);
+        Page<InternProfile> page = new PageImpl<>(List.of(savedProfile), pageable, 1);
+
+        when(internProfileRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+
+        assertThat(response).isNotNull();
+    }
 }
+

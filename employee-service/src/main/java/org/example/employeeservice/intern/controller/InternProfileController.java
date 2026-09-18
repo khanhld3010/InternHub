@@ -4,13 +4,20 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.employeeservice.common.dto.response.ApiResponse;
+import org.example.employeeservice.common.dto.response.PageResponse;
 import org.example.employeeservice.intern.dto.request.CreateInternRequest;
+import org.example.employeeservice.intern.dto.request.InternFilterRequest;
 import org.example.employeeservice.intern.dto.request.UpdateInternRequest;
 import org.example.employeeservice.intern.dto.response.InternResponse;
 import org.example.employeeservice.intern.service.InternProfileService;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -44,4 +51,16 @@ public class InternProfileController {
         InternResponse response = internProfileService.updateIntern(id, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Cập nhật hồ sơ thực tập sinh thành công", response));
     }
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<PageResponse<InternResponse>>> searchInterns(
+            @ModelAttribute InternFilterRequest request,
+            @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC, size = 10) Pageable pageable
+    ) {
+        log.info("Nhan request tim kiem ho so thuc tap sinh");
+        PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách hồ sơ thực tập sinh thành công", response));
+    }
 }
+
