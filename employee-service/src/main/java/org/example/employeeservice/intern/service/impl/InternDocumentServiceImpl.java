@@ -5,14 +5,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.employeeservice.common.storage.FileStorageService;
 import org.example.employeeservice.exception.BadRequestException;
 import org.example.employeeservice.exception.ResourceNotFoundException;
+import org.example.employeeservice.intern.dto.request.ReviewDocumentRequest;
+import org.example.employeeservice.intern.dto.response.DocumentDownloadDto;
 import org.example.employeeservice.intern.dto.response.DocumentResponse;
 import org.example.employeeservice.intern.entity.InternDocument;
 import org.example.employeeservice.intern.entity.InternProfile;
 import org.example.employeeservice.intern.entity.enums.DocumentStatus;
 import org.example.employeeservice.intern.entity.enums.DocumentType;
+import org.example.employeeservice.intern.entity.enums.InternStatus;
 import org.example.employeeservice.intern.repository.InternDocumentRepository;
 import org.example.employeeservice.intern.repository.InternProfileRepository;
 import org.example.employeeservice.intern.service.InternDocumentService;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -77,6 +81,83 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         return mapToDocumentResponse(savedDocument, internProfile.getInternCode());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> getDocumentsByInternCode(String internCode) {
+        log.info("Lấy danh sách tài liệu cho thực tập sinh: {}", internCode);
+        if (!StringUtils.hasText(internCode)) {
+            throw new BadRequestException("Mã thực tập sinh không được để trống");
+        }
+
+        // Kiểm tra thực tập sinh có tồn tại trong hệ thống không
+        InternProfile profile = internProfileRepository.findByInternCode(internCode.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
+
+        List<InternDocument> documents = internDocumentRepository.findByInternProfileInternCodeOrderByCreatedAtDesc(profile.getInternCode());
+
+        return documents.stream()
+                .map(doc -> mapToDocumentResponse(doc, profile.getInternCode()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DocumentDownloadDto loadDocumentForDownload(Long documentId) {
+        log.info("Tải tài liệu với documentId: {}", documentId);
+        if (documentId == null || documentId <= 0) {
+            throw new BadRequestException("ID tài liệu không hợp lệ");
+        }
+
+        InternDocument document = internDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
+
+        Resource resource = fileStorageService.loadFileAsResource(document.getFilePath());
+
+        return DocumentDownloadDto.builder()
+                .resource(resource)
+                .originalFileName(document.getOriginalFileName())
+                .contentType(document.getContentType())
+                .fileSize(document.getFileSize())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse reviewDocument(Long documentId, ReviewDocumentRequest request) {
+        log.info("Xét duyệt tài liệu ID: {}, request: {}", documentId, request);
+        if (documentId == null || documentId <= 0) {
+            throw new BadRequestException("ID tài liệu không hợp lệ");
+        }
+
+        if (request == null || request.getStatus() == null) {
+            throw new BadRequestException("Trạng thái xét duyệt không được để trống");
+        }
+
+        InternDocument document = internDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
+
+        // Ràng buộc nghiệp vụ: Nếu REJECTED -> bắt buộc có rejectionReason tối thiểu 5 ký tự
+        if (request.getStatus() == DocumentStatus.REJECTED) {
+            String reason = request.getRejectionReason();
+            if (!StringUtils.hasText(reason) || reason.trim().length() < 5) {
+                log.warn("Từ chối tài liệu thất bại: Lý do từ chối không hợp lệ ({})", reason);
+                throw new BadRequestException("Lý do từ chối không được để trống và phải có ít nhất 5 ký tự");
+            }
+            document.setStatus(DocumentStatus.REJECTED);
+            document.setRejectionReason(reason.trim());
+        } else if (request.getStatus() == DocumentStatus.APPROVED) {
+            document.setStatus(DocumentStatus.APPROVED);
+            document.setRejectionReason(null); // Reset lý do từ chối cũ nếu duyệt
+        } else {
+            throw new BadRequestException("Trạng thái xét duyệt không hợp lệ. Chỉ chấp nhận: APPROVED, REJECTED");
+        }
+
+        InternDocument updated = internDocumentRepository.save(document);
+        log.info("Cập nhật thành công trạng thái tài liệu ID: {} thành {}", updated.getId(), updated.getStatus());
+
+        return mapToDocumentResponse(updated, updated.getInternProfile().getInternCode());
+    }
+
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Tệp tin tải lên không được để trống");
@@ -117,8 +198,8 @@ public class InternDocumentServiceImpl implements InternDocumentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
 
         // Ràng buộc nghiệp vụ: Không cho phép nộp tài liệu vào hồ sơ đã đóng (COMPLETED hoặc REJECTED)
-        if (internProfile.getStatus() == org.example.employeeservice.intern.entity.enums.InternStatus.COMPLETED
-                || internProfile.getStatus() == org.example.employeeservice.intern.entity.enums.InternStatus.REJECTED) {
+        if (internProfile.getStatus() == InternStatus.COMPLETED
+                || internProfile.getStatus() == InternStatus.REJECTED) {
             log.warn("Từ chối upload tài liệu vì hồ sơ {} đang ở trạng thái đóng: {}", internCode, internProfile.getStatus());
             throw new BadRequestException("Hồ sơ thực tập sinh đã đóng (" + internProfile.getStatus() + "), không thể nộp thêm tài liệu");
         }
@@ -147,7 +228,9 @@ public class InternDocumentServiceImpl implements InternDocumentService {
                 .fileSize(savedDocument.getFileSize())
                 .contentType(savedDocument.getContentType())
                 .status(savedDocument.getStatus())
+                .rejectionReason(savedDocument.getRejectionReason())
                 .createdAt(savedDocument.getCreatedAt())
+                .updatedAt(savedDocument.getUpdatedAt())
                 .build();
     }
 }
