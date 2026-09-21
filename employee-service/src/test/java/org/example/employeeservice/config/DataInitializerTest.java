@@ -97,6 +97,38 @@ class DataInitializerTest {
         assertTrue(savedAccounts.stream().anyMatch(a -> "intern".equals(a.getUsername())));
     }
 
+    @Test
+    @DisplayName("Khởi tạo bảng users và dữ liệu người dùng mẫu khi jdbcTemplate khả dụng")
+    void testRun_WithJdbcTemplate_ShouldExecuteUserSchemaAndInserts() {
+        RoleRepository roleRepository = createMockRoleRepository(new HashMap<>());
+        AccountRepository accountRepository = createMockAccountRepository(new ArrayList<>());
+        PasswordEncoder passwordEncoder = createMockPasswordEncoder();
+        org.springframework.jdbc.core.JdbcTemplate jdbcTemplate = org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class);
+
+        org.mockito.Mockito.when(jdbcTemplate.queryForObject(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(Integer.class),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(0);
+
+        DataInitializer initializer = new DataInitializer(roleRepository, accountRepository, passwordEncoder, jdbcTemplate);
+        initializer.run();
+
+        org.mockito.Mockito.verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS users"));
+        org.mockito.Mockito.verify(jdbcTemplate, org.mockito.Mockito.atLeast(6)).update(
+                org.mockito.ArgumentMatchers.contains("INSERT INTO users"),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
     private RoleRepository createMockRoleRepository(Map<String, Role> roleStore) {
         return (RoleRepository) Proxy.newProxyInstance(
                 getClass().getClassLoader(),
