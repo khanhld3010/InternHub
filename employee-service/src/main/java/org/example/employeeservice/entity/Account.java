@@ -21,6 +21,10 @@ public class Account {
     @Column(name = "user_id", nullable = false, unique = true)
     private Integer userId;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", insertable = false, updatable = false)
+    private User user;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "role_id", nullable = false)
     private Role role;
