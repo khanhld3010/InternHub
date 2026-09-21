@@ -27,6 +27,12 @@ jwt:
 file:
   upload-dir: ${FILE_UPLOAD_DIR:./uploads}
 
+backup:
+  storage-dir: ${BACKUP_DIR:/backups}
+  cron: ${BACKUP_CRON:0 0 2 * * ?}
+  retention-days: ${BACKUP_RETENTION_DAYS:30}
+  mysqldump-path: ${MYSQLDUMP_PATH:mysqldump}
+
 
 eureka:
   client:

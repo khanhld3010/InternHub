@@ -94,6 +94,20 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Dung lượng tệp tin tải lên vượt quá giới hạn tối đa cho phép (10MB)"));
     }
 
+    @ExceptionHandler(org.example.employeeservice.system.exception.BackupConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBackupConflictException(org.example.employeeservice.system.exception.BackupConflictException ex) {
+        log.warn("Backup conflict error: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(HttpStatus.CONFLICT.value(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(org.example.employeeservice.system.exception.InsufficientDiskSpaceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInsufficientDiskSpaceException(org.example.employeeservice.system.exception.InsufficientDiskSpaceException ex) {
+        log.error("Insufficient disk space for backup: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGlobalException(Exception ex) {
         log.error("Internal server error: ", ex);
