@@ -10,6 +10,9 @@ import org.example.employeeservice.intern.dto.request.InternFilterRequest;
 import org.example.employeeservice.intern.dto.request.UpdateInternRequest;
 import org.example.employeeservice.intern.dto.response.InternResponse;
 import org.example.employeeservice.intern.service.InternProfileService;
+import org.example.employeeservice.system.audit.annotation.Auditable;
+import org.example.employeeservice.system.audit.entity.AuditAction;
+import org.example.employeeservice.system.audit.entity.AuditModule;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -33,6 +36,7 @@ public class InternProfileController {
 
     private final InternProfileService internProfileService;
 
+    @Auditable(action = AuditAction.CREATE_INTERN, module = AuditModule.INTERN, description = "Tạo mới hồ sơ thực tập sinh")
     @PostMapping
     public ResponseEntity<ApiResponse<InternResponse>> createIntern(@Valid @RequestBody CreateInternRequest request) {
         log.info("Nhan request tao ho so thuc tap sinh: {}", request.getEmail());
@@ -41,6 +45,7 @@ public class InternProfileController {
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Tạo hồ sơ thực tập sinh thành công", response));
     }
 
+    @Auditable(action = AuditAction.UPDATE_INTERN, module = AuditModule.INTERN, description = "Cập nhật thông tin hồ sơ thực tập sinh")
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
     public ResponseEntity<ApiResponse<InternResponse>> updateIntern(
