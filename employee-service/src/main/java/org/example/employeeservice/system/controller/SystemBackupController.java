@@ -10,6 +10,9 @@ import org.example.employeeservice.system.dto.request.BackupFilterRequest;
 import org.example.employeeservice.system.dto.response.BackupResponse;
 import org.example.employeeservice.system.entity.BackupType;
 import org.example.employeeservice.system.service.SystemBackupService;
+import org.example.employeeservice.system.audit.annotation.Auditable;
+import org.example.employeeservice.system.audit.entity.AuditAction;
+import org.example.employeeservice.system.audit.entity.AuditModule;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -33,6 +36,7 @@ public class SystemBackupController {
     private final SystemBackupService systemBackupService;
 
     @Operation(summary = "Kích hoạt sao lưu dữ liệu thủ công tức thời (On-demand Backup)")
+    @Auditable(action = AuditAction.TRIGGER_BACKUP, module = AuditModule.SYSTEM, description = "Kích hoạt sao lưu dữ liệu thủ công tức thời")
     @PostMapping
     public ResponseEntity<ApiResponse<BackupResponse>> triggerManualBackup(Authentication authentication) {
         String username = (authentication != null) ? authentication.getName() : "ADMIN";
@@ -55,6 +59,7 @@ public class SystemBackupController {
     }
 
     @Operation(summary = "Tải xuống file bản sao lưu an toàn (.sql.gz)")
+    @Auditable(action = AuditAction.DOWNLOAD_BACKUP, module = AuditModule.SYSTEM, description = "Tải file bản sao lưu hệ thống")
     @GetMapping("/{id}/download")
     public ResponseEntity<Resource> downloadBackup(@PathVariable("id") Long id) {
         log.info("API: Yêu cầu tải bản sao lưu ID={}", id);
@@ -68,6 +73,7 @@ public class SystemBackupController {
     }
 
     @Operation(summary = "Xóa một bản sao lưu và loại bỏ file vật lý tương ứng")
+    @Auditable(action = AuditAction.DELETE_BACKUP, module = AuditModule.SYSTEM, description = "Xóa bản sao lưu dữ liệu")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteBackup(@PathVariable("id") Long id) {
         log.info("API: Yêu cầu xóa bản sao lưu ID={}", id);
