@@ -22,3 +22,7 @@ replay_pid*.log
 .agents/
 AGENTS.md
 GEMINI.md
+
+# Uploads directory
+uploads/
+**/uploads/
