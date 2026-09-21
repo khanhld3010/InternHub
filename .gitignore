@@ -17,6 +17,11 @@ replay_pid*.log
 .gradle/
 **/.gradle/
 *.log
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+internhub-frontend/
 
 # AI Agent local rules and skills
 .agents/

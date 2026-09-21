@@ -97,6 +97,8 @@ services:
         condition: service_healthy
       discovery-server:
         condition: service_healthy
+    volumes:
+      - ./data/backups:/backups
     networks:
       - micro-network
     healthcheck:
