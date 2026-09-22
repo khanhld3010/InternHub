@@ -22,5 +22,7 @@ public class DocumentResponse {
     private Long fileSize;
     private String contentType;
     private DocumentStatus status;
+    private String rejectionReason;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

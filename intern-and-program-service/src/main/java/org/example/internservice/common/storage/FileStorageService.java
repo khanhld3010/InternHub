@@ -1,5 +1,6 @@
 package org.example.internservice.common.storage;
 
+import org.springframework.core.io.Resource;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface FileStorageService {
@@ -19,4 +20,12 @@ public interface FileStorageService {
      * @param relativeFilePath Đường dẫn tương đối của tệp tin
      */
     void deleteFile(String relativeFilePath);
+
+    /**
+     * Tải tệp tin vật lý từ đĩa dưới dạng Spring Resource để phục vụ download hoặc preview.
+     *
+     * @param relativeFilePath Đường dẫn tương đối của tệp tin trên đĩa
+     * @return Đối tượng Resource nhị phân
+     */
+    Resource loadFileAsResource(String relativeFilePath);
 }
