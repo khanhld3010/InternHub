@@ -23,10 +23,6 @@ dist/
 **/dist/
 internhub-frontend/
 
-# AI Agent local rules and skills
-.agents/
-AGENTS.md
-GEMINI.md
 
 # Uploads directory
 uploads/
