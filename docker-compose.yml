@@ -82,14 +82,64 @@ services:
       retries: 10
       start_period: 30s
 
-  employee-service:
-    build: ./employee-service
-    container_name: employee-service
+  identity-and-access-service:
+    build: ./identity-and-access-service
+    container_name: identity-and-access-service
+    restart: unless-stopped
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  intern-and-program-service:
+    build: ./intern-and-program-service
+    container_name: intern-and-program-service
     restart: unless-stopped
     environment:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
     ports:
-      - "8081:8081"
+      - "8082:8082"
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    volumes:
+      - ./data/uploads:/uploads
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  reporting-and-integration-service:
+    build: ./reporting-and-integration-service
+    container_name: reporting-and-integration-service
+    restart: unless-stopped
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+    ports:
+      - "8083:8083"
     depends_on:
       mysql-db:
         condition: service_healthy
@@ -102,7 +152,7 @@ services:
     networks:
       - micro-network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q UP || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10

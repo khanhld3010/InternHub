@@ -13,18 +13,47 @@ spring:
               enabled: true
               lower-case-service-id: true
           routes:
-            - id: employee-service
-              uri: lb://employee-service
-              predicates:
-                - Path=/api/employees/**
-            - id: employee-service-auth
-              uri: lb://employee-service
+            # 1. Identity and Access Service (Auth, Users, IAM)
+            - id: identity-auth
+              uri: lb://identity-and-access-service
               predicates:
                 - Path=/api/auth/**
-            - id: employee-service-system
-              uri: lb://employee-service
+
+            - id: identity-users
+              uri: lb://identity-and-access-service
               predicates:
-                - Path=/api/system/**
+                - Path=/api/users/**
+
+            # 2. Intern and Program Service (Interns, Documents)
+            # Route cũ tương thích ngược: /api/employees/interns/** -> /api/interns/**
+            - id: intern-legacy-compat
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/employees/interns/**
+              filters:
+                - RewritePath=/api/employees/interns(?<segment>/?.*), /api/interns$\{segment}
+
+            - id: intern-and-program-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/interns/**
+
+            # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
+            - id: reporting-backups
+              uri: lb://reporting-and-integration-service
+              predicates:
+                - Path=/api/system/backups/**
+
+            - id: reporting-audit-logs
+              uri: lb://reporting-and-integration-service
+              predicates:
+                - Path=/api/system/audit-logs/**
+
+            # 4. Identity fallback cho /api/employees/**
+            - id: identity-employees
+              uri: lb://identity-and-access-service
+              predicates:
+                - Path=/api/employees/**
 
 eureka:
   client:
@@ -41,5 +70,5 @@ management:
 
 logging:
   level:
-    org.springframework.cloud.gateway: TRACE
-    org.springframework.cloud.loadbalancer: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.cloud.loadbalancer: INFO

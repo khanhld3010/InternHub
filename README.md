@@ -36,7 +36,9 @@ Dự án **InternHub** được xây dựng theo mô hình kiến trúc Microser
 | **api-gateway** | Spring Cloud Gateway | `8080` | `8080` | Gateway định tuyến duy nhất cho toàn bộ hệ thống |
 | **discovery-server** | Netflix Eureka | `8761` | `8761` | Quản lý và phát hiện dịch vụ (Service Registry) |
 | **config-server** | Spring Cloud Config | `8888` | `8888` | Quản lý cấu hình tập trung |
-| **employee-service** | Spring Boot 4 / Data JPA | *Ẩn (nội bộ)*| `8081` | Dịch vụ quản lý nhân viên / thực tập sinh |
+| **identity-and-access-service** | Spring Boot / JPA / Security | *Ẩn (nội bộ)*| `8081` | Quản trị hệ thống, Quản lý tài khoản, Phân quyền vai trò & JWT |
+| **intern-and-program-service** | Spring Boot / JPA / Security | *Ẩn (nội bộ)*| `8082` | Quản lý hồ sơ thực tập sinh (TM-1..4) & Chương trình |
+| **reporting-and-integration-service** | Spring Boot / JPA / Security | *Ẩn (nội bộ)*| `8083` | Sao lưu định kỳ (TM-8) & Nhật ký kiểm toán (TM-9) |
 | **mysql-db** | MySQL 8.0 | `3307` | `3306` | Cơ sở dữ liệu chính (`internhub_db`) |
 
 ---
