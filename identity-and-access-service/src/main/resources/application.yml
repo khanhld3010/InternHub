@@ -1,0 +1,8 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: identity-and-access-service
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://config-server:8888}
