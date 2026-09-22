@@ -36,7 +36,9 @@ Dự án **InternHub** được xây dựng theo mô hình kiến trúc Microser
 | **api-gateway** | Spring Cloud Gateway | `8080` | `8080` | Gateway định tuyến duy nhất cho toàn bộ hệ thống |
 | **discovery-server** | Netflix Eureka | `8761` | `8761` | Quản lý và phát hiện dịch vụ (Service Registry) |
 | **config-server** | Spring Cloud Config | `8888` | `8888` | Quản lý cấu hình tập trung |
-| **employee-service** | Spring Boot 4 / Data JPA | *Ẩn (nội bộ)*| `8081` | Dịch vụ quản lý nhân viên / thực tập sinh |
+| **identity-and-access-service** | Spring Boot / JPA / Security | *Ẩn (nội bộ)*| `8081` | Quản trị hệ thống, Quản lý tài khoản, Phân quyền vai trò & JWT |
+| **intern-and-program-service** | Spring Boot / JPA / Security | *Ẩn (nội bộ)*| `8082` | Quản lý hồ sơ thực tập sinh (TM-1..4) & Chương trình |
+| **reporting-and-integration-service** | Spring Boot / JPA / Security | *Ẩn (nội bộ)*| `8083` | Sao lưu định kỳ (TM-8) & Nhật ký kiểm toán (TM-9) |
 | **mysql-db** | MySQL 8.0 | `3307` | `3306` | Cơ sở dữ liệu chính (`internhub_db`) |
 
 ---
@@ -85,27 +87,59 @@ Xin chào! API Gateway đã gọi sang Employee Service thành công!
 
 ---
 
-## 👥 Quy chuẩn làm việc nhóm (Team Collaboration Guidelines)
+## 📋 Đặc tả chương trình & Kiến trúc nghiệp vụ (Program Specifications)
 
-### 1. Quy tắc phân nhánh Git (Branching Model)
-- **`main`**: Nhánh chính, chỉ chứa code ổn định đã được kiểm thử.
-- **`develop`**: Nhánh tích hợp chung của cả nhóm.
-- **Tạo nhánh chức năng riêng:**
-  - `feat/<tên-thành-viên>-<tên-chức-năng>` (Ví dụ: `feat/khanh-student-service`)
-  - `fix/<tên-thành-viên>-<tên-lỗi>` (Ví dụ: `fix/thanh-login-401`)
+### 1. Tầm nhìn & Mục tiêu sản phẩm (Product Vision & Goals)
+**InternHub** là hệ thống số hóa toàn diện quy trình quản lý thực tập sinh trong doanh nghiệp, giải quyết bài toán nhập liệu rời rạc trên Excel, thiếu minh bạch trong đánh giá và rời rạc trong giao việc:
+1. **Chuẩn hóa & Số hóa:** Quản lý tập trung hồ sơ, hợp đồng, chấm công và đánh giá trên nền tảng Web/API đồng nhất.
+2. **Tối ưu chi phí nhân sự:** Tự động hóa các tác vụ lặp lại của HR (sinh mã thực tập sinh, tổng hợp chấm công, gửi thông báo).
+3. **Minh bạch trải nghiệm thực tập:** Thực tập sinh chủ động theo dõi lịch thực tập, nhận nhiệm vụ, nộp báo cáo tuần và xem phản hồi từ người hướng dẫn (Mentor).
+4. **Cầu nối Doanh nghiệp - Nhà trường:** Cung cấp số liệu thống kê chính xác về chất lượng đào tạo và sinh viên theo từng trường/ngành.
+5. **Dữ liệu phân tích chiến lược:** Đo lường tỷ lệ hoàn thành kỳ thực tập và tỷ lệ chuyển đổi thành nhân viên chính thức.
 
-### 2. Quy ước viết Commit Message (Conventional Commits)
-- `feat: ...` : Thêm tính năng mới
-- `fix: ...` : Sửa lỗi
-- `refactor: ...` : Tối ưu hóa code
-- `docs: ...` : Cập nhật tài liệu
-- `chore: ...` : Cập nhật thư viện, file cấu hình build
+---
 
-### 3. Quy trình nộp code (Pull Request)
-1. Trước khi tạo PR, chạy `build-all.bat` (hoặc `./gradlew bootJar -x test`) ở local để chắc chắn toàn bộ dự án compile thành công.
-2. Khởi chạy Docker test thử API trước khi đẩy code.
-3. Tạo Pull Request vào nhánh `develop`, điền đầy đủ thông tin theo mẫu **PR Template**.
-4. Chờ GitHub Actions CI chạy pass và ít nhất 1 thành viên review trước khi merge.
+### 2. Các vai trò trong hệ thống (Actors & Permissions)
 
-> [!CAUTION]
-> **Lưu ý an toàn:** Tuyệt đối không commit file cấu hình chứa thông tin nhạy cảm (passwords, token, secrets) và các file cache IDE vào Git.
+| Vai trò (Role) | Mô tả trách nhiệm chính | Phạm vi quyền hạn |
+| :--- | :--- | :--- |
+| 🛡️ **Admin** | Quản trị tài khoản, phân quyền, tích hợp hệ thống ngoài (HRM, thiết bị quét thẻ/QR), xem audit logs | Toàn quyền hệ thống |
+| 👔 **HR (Nhân sự)** | Quản lý hồ sơ, xét duyệt ứng viên, tạo chương trình thực tập, thiết lập ca làm việc, duyệt nghỉ phép, tổng kết đánh giá | Quản lý nghiệp vụ chung |
+| 🧑‍🏫 **Mentor** | Hướng dẫn chuyên môn, giao nhiệm vụ, nhận xét báo cáo tuần, chấm điểm kỹ năng và thái độ | Quản lý nhóm thực tập sinh |
+| 🎓 **Thực tập sinh (Intern)** | Nộp hồ sơ/CV, check-in/check-out hằng ngày, nộp tiến độ công việc, nộp báo cáo tuần, gửi đơn nghỉ phép | Cá nhân thực tập sinh |
+| ⚙️ **Hệ thống (System)** | Tác vụ ngầm tự động: Gửi email nhắc nhở/lịch họp, đẩy thông báo in-app, sao lưu dữ liệu | Tự động hóa nền |
+
+---
+
+### 3. Danh mục 10 Module chức năng cốt lõi (Core Business Modules)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                         HỆ THỐNG QUẢN LÝ INTERNHUB                                │
+├─────────────────────────┬────────────────────────────┬───────────────────────────┤
+│ Module 1: Hồ sơ SV      │ Module 2: Tiếp nhận/Duyệt  │ Module 3: Chương trình TT │
+│ Module 4: Công việc/Task│ Module 5: Chấm công/Nghỉ   │ Module 6: Phụ cấp/Hỗ trợ  │
+│ Module 7: Mentor/Phòng  │ Module 8: Báo cáo/Thống kê │ Module 9: Tích hợp/Thông  │
+│ Module 10: Quản trị/Auth│                            │     báo & Email           │
+└─────────────────────────┴────────────────────────────┴───────────────────────────┘
+```
+
+1. **Module 1: Quản lý hồ sơ thực tập sinh:** Thêm, sửa, tìm kiếm, lọc theo trường/ngành, quản lý CV và tài liệu tiếp nhận ([TM-1](docs/specs/TM-1-create-intern-profile-spec.md), [TM-2](docs/specs/TM-2-update-intern-profile-spec.md), [TM-3](docs/specs/TM-3-search-filter-interns-spec.md)).
+2. **Module 2: Tiếp nhận và xét duyệt:** Đăng ký trực tuyến, quy trình HR phê duyệt hồ sơ, xác nhận hợp đồng thực tập.
+3. **Module 3: Quản lý chương trình thực tập:** Thiết lập khung chương trình theo phòng ban, thời gian bắt đầu/kết thúc, lịch cá nhân.
+4. **Module 4: Quản lý công việc và đánh giá:** Mentor giao task, Intern nộp kết quả & báo cáo tuần, Mentor phản hồi & đánh giá định kỳ, HR tổng kết cuối khóa.
+5. **Module 5: Quản lý chấm công và thời gian:** Check-in / Check-out hằng ngày, thiết lập ca làm việc linh hoạt, nộp và duyệt đơn xin nghỉ phép, báo cáo chuyên cần ([Chi tiết đặc tả](docs/specs/time_and_attendance.md)).
+6. **Module 6: Quản lý hỗ trợ và quyền lợi:** Thiết lập phụ cấp, lịch sử nhận trợ cấp, gửi yêu cầu hỗ trợ (giấy xác nhận thực tập).
+7. **Module 7: Quản lý mentor và phòng ban:** Danh mục phòng ban, gán mentor hướng dẫn cho thực tập sinh, theo dõi số lượng tiếp nhận.
+8. **Module 8: Báo cáo và thống kê:** Thống kê theo trường/ngành, tỷ lệ hoàn thành chương trình, xuất báo cáo ra Excel/PDF.
+9. **Module 9: Tích hợp và thông báo:** In-app Notification, gửi email tự động khi có lịch họp/sự kiện, tích hợp chấm công QR Code/thẻ RFID, tích hợp HRM.
+10. **Module 10: Quản trị hệ thống & Xác thực:** Đăng nhập JWT, quản lý tài khoản theo Role, bảo mật dữ liệu, audit log.
+
+---
+
+## 📚 Tài liệu kỹ thuật liên quan (Documentation Links)
+- 📖 **Hướng dẫn cài đặt & Quy chuẩn làm việc nhóm:** Xem chi tiết tại [`tutorial.md`](tutorial.md) (bao gồm Git Workflow, Branching Model, Commit Convention và Troubleshooting).
+- 🔴 **Quy chuẩn lập trình & Kiến trúc:** Xem chi tiết tại [`.antigravity/rules.md`](.antigravity/rules.md).
+- 📋 **Quy chuẩn viết Đặc tả nghiệp vụ:** Xem chi tiết tại [`.antigravity/spec-rules.md`](.antigravity/spec-rules.md).
+- 📑 **Bộ đặc tả tính năng đã hoàn thiện:** Xem tại thư mục [`docs/specs/`](docs/specs/).
+

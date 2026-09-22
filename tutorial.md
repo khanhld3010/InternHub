@@ -143,46 +143,61 @@ Xin chào! API Gateway đã gọi sang Employee Service thành công!
 
 ---
 
-## 6. Quy trình làm việc nhóm hàng ngày & Quy tắc Git
+## 6. Quy chuẩn làm việc nhóm & Quy tắc Git (Team Collaboration Guidelines)
 
-Để tránh xung đột code và đảm bảo mã nguồn luôn ổn định khi nhiều người cùng làm việc:
+Để tránh xung đột mã nguồn và đảm bảo chất lượng hệ thống Microservices khi nhiều lập trình viên cùng phát triển:
 
-### 6.1. Quy trình lấy code mới và bắt đầu ngày làm việc
+### 6.1. Quy tắc phân nhánh Git (Branching Model)
+* **`main`**: Nhánh chính của dự án, chỉ chứa mã nguồn ổn định tuyệt đối đã qua kiểm thử và sẵn sàng triển khai môi trường Production/Staging. **Tuyệt đối không push trực tiếp vào `main`.**
+* **`develop`**: Nhánh tích hợp chung hằng ngày của toàn bộ nhóm phát triển. Tất cả các nhánh tính năng đều rẽ nhánh từ `develop` và merge trở lại `develop`.
+* **Quy ước đặt tên nhánh chức năng (Feature/Bugfix branches):**
+  * Tính năng mới: `feat/<tên-thành-viên>-<tên-chức-năng>` (hoặc `feature/TM-X/<tên-tính-năng>`)  
+    *Ví dụ:* `feat/khanh-student-service`, `feat/huy-attendance-checkin`
+  * Sửa lỗi: `fix/<tên-thành-viên>-<tên-lỗi>` (hoặc `bugfix/TM-X/<tên-lỗi>`)  
+    *Ví dụ:* `fix/thanh-login-401`, `fix/huy-checkin-duplicate`
+  * Tối ưu hóa: `refactor/<tên-thành-viên>-<nội-dung>`
+
+### 6.2. Quy trình lấy code mới và bắt đầu ngày làm việc
 ```bash
-# 1. Chuyển về nhánh develop và kéo code mới nhất
+# 1. Chuyển về nhánh develop và kéo mã nguồn mới nhất từ remote
 git checkout develop
 git pull origin develop
 
-# 2. Tạo nhánh chức năng mới của bạn
+# 2. Tạo nhánh chức năng mới của bạn từ develop
 git checkout -b feat/<tên-bạn>-<tên-tính-năng>
-# Ví dụ: git checkout -b feat/khanh-student-service
 ```
 
-### 6.2. Quy ước viết Commit Message
-Sử dụng chuẩn **Conventional Commits**:
-- `feat: ...` : Thêm tính năng mới (ví dụ: `feat: add student CRUD endpoints`)
-- `fix: ...` : Sửa lỗi (ví dụ: `fix: fix null pointer in employee controller`)
-- `refactor: ...` : Tái cấu trúc code nhưng không đổi logic
-- `docs: ...` : Cập nhật tài liệu
-- `chore: ...` : Cập nhật cấu hình build, dependencies
+### 6.3. Quy ước viết Commit Message (Conventional Commits)
+Áp dụng chuẩn **Conventional Commits** để tự động hóa changelog và dễ truy vết lịch sử:
+* `feat: ...` : Thêm tính năng hoặc API mới (ví dụ: `feat(TM-21): thêm endpoint check-in chấm công cho thực tập sinh`)
+* `fix: ...` : Sửa lỗi chức năng (ví dụ: `fix(TM-2): sửa lỗi bỏ sót validate ngày kết thúc thực tập`)
+* `refactor: ...` : Tái cấu trúc mã nguồn nhưng không làm thay đổi hành vi nghiệp vụ
+* `docs: ...` : Bổ sung, cập nhật tài liệu hướng dẫn, đặc tả (`spec.md`, `README.md`)
+* `test: ...` : Viết bổ sung Unit Test, Integration Test
+* `chore: ...` : Cập nhật dependencies, file cấu hình build Gradle, Dockerfile
 
-### 6.3. Quy trình nộp code (Tạo Pull Request)
-1. Trước khi nộp code, chạy lệnh kiểm tra build ở local:
-   ```cmd
-   build-all.bat
-   ```
-2. Đẩy nhánh của bạn lên GitHub:
+### 6.4. Quy trình nộp code & Mở Pull Request (PR)
+1. **Kiểm tra biên dịch & Test tại Local trước khi đẩy code:**
+   - Trên Windows: Chạy `build-all.bat` (hoặc lệnh `./gradlew compileJava test`).
+   - Trên macOS/Linux: Chạy `./build-all.sh`.
+   - Chắc chắn toàn bộ các service đều compile thành công `BUILD SUCCESSFUL`.
+2. **Khởi chạy Docker và test thử API:** Chạy `docker compose up -d` và gọi thử API qua Gateway để kiểm tra thực tế.
+3. **Đẩy nhánh lên GitHub:**
    ```bash
-   git push origin feat/<tên-bạn>-<tên-tính-năng>
+   git push -u origin feat/<tên-bạn>-<tên-tính-năng>
    ```
-3. Lên GitHub mở **Pull Request (PR)** từ nhánh của bạn vào nhánh **`develop`**.
-4. Điền đầy đủ thông tin theo mẫu PR Template có sẵn.
-5. GitHub Actions CI sẽ tự động chạy kiểm tra. Đợi ít nhất 1 thành viên review và approve trước khi merge.
+4. **Mở Pull Request vào nhánh `develop`:**
+   - Tạo PR từ nhánh của bạn vào **`develop`** (TUYỆT ĐỐI KHÔNG mở trực tiếp vào `main`).
+   - Điền đầy đủ thông tin theo mẫu **PR Template** (Mô tả tính năng, danh sách API, hình ảnh/kết quả test Postman).
+5. **Review & Merge:**
+   - Chờ GitHub Actions CI kiểm tra tự động thành công (Pass toàn bộ build).
+   - Yêu cầu ít nhất 1 thành viên khác trong nhóm review và Approve trước khi tiến hành Merge.
 
 > [!CAUTION]
-> **Quy tắc an toàn Git:**
-> - Tuyệt đối **không commit** các file tạm, file cấu hình chứa mật khẩu, hoặc thư mục `build/`, `.gradle/`, `.vscode/`.
-> - Tuyệt đối **không push thẳng vào nhánh `main`** hoặc force push (`git push -f`).
+> **Quy tắc an toàn Git & Bảo mật:**
+> - Tuyệt đối **không commit** các file tạm, file cache IDE (`.idea/`, `.vscode/`, `.gradle/`, `build/`).
+> - Tuyệt đối **không commit** file cấu hình chứa thông tin nhạy cảm (passwords, JWT secrets, database credentials thực tế). Luôn đưa vào biến môi trường (`.env` hoặc `application.yml` kèm giá trị mặc định fallback).
+> - Nghiêm cấm sử dụng lệnh Force Push (`git push -f`) lên các nhánh dùng chung (`develop`, `main`).
 
 ---
 
