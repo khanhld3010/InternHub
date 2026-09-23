@@ -3,6 +3,7 @@ package org.example.internservice.intern.controller;
 import org.example.internservice.common.dto.response.ApiResponse;
 import org.example.internservice.common.dto.response.PageResponse;
 import org.example.internservice.intern.dto.request.CreateInternRequest;
+import org.example.internservice.intern.dto.request.InternDecisionRequest;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
 import org.example.internservice.intern.dto.request.UpdateInternRequest;
 import org.example.internservice.intern.dto.response.InternResponse;
@@ -19,6 +20,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 
 import java.util.List;
 
@@ -145,6 +148,64 @@ class InternProfileControllerTest {
         assertEquals("INT-202609-0001", result.getBody().getData().getItems().get(0).getInternCode());
 
         verify(internProfileService).searchInterns(eq(filterRequest), eq(pageable));
+    }
+
+    // =========================================================================
+    // Task 5: Unit Tests for processDecision Endpoint (TM-11)
+    // =========================================================================
+
+    @Test
+    @DisplayName("processDecision: Tra ve 200 OK khi phe duyet ho so thanh cong")
+    void processDecision_whenApproved_shouldReturn200() {
+        InternDecisionRequest request = InternDecisionRequest.builder()
+                .decision(InternStatus.APPROVED)
+                .build();
+
+        mockResponse.setStatus(InternStatus.APPROVED);
+        mockResponse.setReviewedBy("hr_manager");
+
+        when(internProfileService.processDecision(eq(1L), any(), eq("hr_manager"))).thenReturn(mockResponse);
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken("hr_manager", null);
+
+        ResponseEntity<ApiResponse<InternResponse>> result = internProfileController.processDecision(1L, request, authentication);
+
+        assertNotNull(result);
+        assertEquals(HttpStatus.OK, result.getStatusCode());
+        assertNotNull(result.getBody());
+        assertEquals(200, result.getBody().getCode());
+        assertEquals("Duyệt hồ sơ thực tập sinh thành công", result.getBody().getMessage());
+        assertEquals(InternStatus.APPROVED, result.getBody().getData().getStatus());
+
+        verify(internProfileService).processDecision(eq(1L), any(), eq("hr_manager"));
+    }
+
+    @Test
+    @DisplayName("processDecision: Tra ve 200 OK khi tu choi ho so thanh cong")
+    void processDecision_whenRejected_shouldReturn200() {
+        InternDecisionRequest request = InternDecisionRequest.builder()
+                .decision(InternStatus.REJECTED)
+                .rejectionReason("Khong dat tieu chuan")
+                .build();
+
+        mockResponse.setStatus(InternStatus.REJECTED);
+        mockResponse.setRejectionReason("Khong dat tieu chuan");
+        mockResponse.setReviewedBy("hr_admin");
+
+        when(internProfileService.processDecision(eq(1L), any(), eq("hr_admin"))).thenReturn(mockResponse);
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken("hr_admin", null);
+
+        ResponseEntity<ApiResponse<InternResponse>> result = internProfileController.processDecision(1L, request, authentication);
+
+        assertNotNull(result);
+        assertEquals(HttpStatus.OK, result.getStatusCode());
+        assertNotNull(result.getBody());
+        assertEquals(200, result.getBody().getCode());
+        assertEquals("Từ chối hồ sơ thực tập sinh thành công", result.getBody().getMessage());
+        assertEquals(InternStatus.REJECTED, result.getBody().getData().getStatus());
+
+        verify(internProfileService).processDecision(eq(1L), any(), eq("hr_admin"));
     }
 }
 

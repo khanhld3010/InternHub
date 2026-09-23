@@ -2,6 +2,7 @@ package org.example.internservice.intern.service;
 
 import org.example.internservice.common.dto.response.PageResponse;
 import org.example.internservice.intern.dto.request.CreateInternRequest;
+import org.example.internservice.intern.dto.request.InternDecisionRequest;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
 import org.example.internservice.intern.dto.request.UpdateInternRequest;
 import org.example.internservice.intern.dto.response.InternResponse;
@@ -12,6 +13,8 @@ public interface InternProfileService {
     InternResponse createIntern(CreateInternRequest request);
 
     InternResponse updateIntern(Long id, UpdateInternRequest request);
+
+    InternResponse processDecision(Long id, InternDecisionRequest request, String reviewerUsername);
 
     PageResponse<InternResponse> searchInterns(InternFilterRequest request, Pageable pageable);
 }

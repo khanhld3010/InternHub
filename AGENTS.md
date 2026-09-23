@@ -81,18 +81,21 @@ Mỗi khi tiếp nhận một yêu cầu liên quan đến Backend, hãy chủ �
 
 ---
 
-## 4. Tech Stack & Môi Trường Vận Hành (Operational Snapshot)
+## 4. Nguyên Tắc Kiến Trúc & Coding Standards
 
-- **Build Tool:** Gradle Wrapper (`.\gradlew` trên Windows / `./gradlew` trên Linux/macOS)
-- **Runtime:** Java 17 / Java 21, Spring Boot 3.x, Spring Cloud 2023.x / 2024.x
-- **Bản đồ Port Hệ Thống:**
-  - `mysql-db`: Container Port `3306`, Host Port `3307`, Database `internhub_db`
-  - `config-server`: Port `8888` (Config repo: `./config-repo-local`)
-  - `discovery-server`: Port `8761` (Netflix Eureka Server)
-  - `api-gateway`: Port `8080` (Spring Cloud Gateway)
-  - `identity-and-access-service`: Port `8081` (pkg: `org.example.employeeservice`)
-  - `intern-and-program-service`: Port `8082` (pkg: `org.example.internservice`)
-  - `reporting-and-integration-service`: Port `8083` (pkg: `org.example.reportingservice`)
+### Cấu trúc dự án Package-by-Feature (BẮT BUỘC):
+- Tổ chức theo module/feature thay vì gom layer ở cấp cao nhất. Mỗi feature (ví dụ `intern`, `employee`, ...) tự chứa:
+  - `<feature>/entity/`: JPA Entities & Enums của feature. Tất cả JPA Entities phải kế thừa từ `BaseEntity`.
+  - `<feature>/repository/`: Interfaces kế thừa `JpaRepository` / `JpaSpecificationExecutor`.
+  - `<feature>/service/` + `service/impl/`: Chứa toàn bộ Business Logic. Sử dụng `@Transactional` cho các hàm tác động dữ liệu.
+  - `<feature>/controller/`: Chỉ nhận HTTP Request, validate DTO bằng `@Valid`, gọi Service, trả về `ResponseEntity<ApiResponse<T>>`. **Tuyệt đối không viết logic tại Controller**.
+  - `<feature>/dto/`: Phân tách `dto/request/` và `dto/response/`. **Không trả về JPA Entity trực tiếp ra API Response**.
+- **Thư mục dùng chung (Shared/Common):**
+  - `common/entity/`: Chứa `BaseEntity` (chứa `id`, `createdAt`, `updatedAt`).
+  - `common/dto/response/`: Chứa `ApiResponse<T>`.
+  - `exception/`: Bắt ngoại lệ tập trung qua `GlobalExceptionHandler`. Phải bao quát đầy đủ các mã HTTP: `400` (`BadRequestException`, `IllegalArgumentException`, `IllegalStateException`, `HttpMessageNotReadableException`), `401` (`UnauthorizedException`, `BadCredentialsException`), `403` (`AccessDeniedException`), `404` (`ResourceNotFoundException`), `409` (`DuplicateResourceException`), `500` (`Exception`).
+- **Dependency Injection:** Sử dụng Constructor Injection thông qua `@RequiredArgsConstructor` từ Lombok (**KHÔNG dùng `@Autowired` ở trường**).
+- **Quản lý Import:** LUÔN LUÔN khai báo `import` tường minh ở đầu file. **TUYỆT ĐỐI KHÔNG** dùng Fully Qualified Name (FQN) trong thân code.
 
 ---
 

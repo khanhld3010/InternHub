@@ -34,6 +34,9 @@ public class InternResponse {
     private LocalDate endDate;
     private InternStatus status;
     private String notes;
+    private String rejectionReason;
+    private String reviewedBy;
+    private LocalDateTime reviewedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

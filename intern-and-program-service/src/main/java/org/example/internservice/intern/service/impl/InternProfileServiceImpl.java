@@ -3,17 +3,21 @@ package org.example.internservice.intern.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.dto.response.PageResponse;
+import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.dto.request.CreateInternRequest;
+import org.example.internservice.intern.dto.request.InternDecisionRequest;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
 import org.example.internservice.intern.dto.request.UpdateInternRequest;
 import org.example.internservice.intern.dto.response.InternResponse;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
+import org.example.internservice.intern.event.InternDecisionProcessedEvent;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.repository.specification.InternProfileSpecification;
 import org.example.internservice.intern.service.InternProfileService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -41,8 +45,8 @@ public class InternProfileServiceImpl implements InternProfileService {
     private static final int MAX_PAGE_SIZE = 100;
     private static final int DEFAULT_PAGE_SIZE = 10;
 
-
     private final InternProfileRepository internProfileRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -128,6 +132,32 @@ public class InternProfileServiceImpl implements InternProfileService {
         return mapToResponse(updatedProfile);
     }
 
+    @Override
+    @Transactional
+    public InternResponse processDecision(Long id, InternDecisionRequest request, String reviewerUsername) {
+        log.info("Bat dau xu ly quyet dinh {} cho ho so ID: {} boi user: {}", request.getDecision(), id, reviewerUsername);
+
+        InternProfile profile = internProfileRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với ID: " + id));
+
+        if (!request.isValidDecision()) {
+            throw new BadRequestException("Quyết định xét duyệt không hợp lệ. Chỉ chấp nhận APPROVED hoặc REJECTED");
+        }
+
+        if (request.getDecision() == InternStatus.REJECTED && !request.hasValidRejectionReason()) {
+            throw new BadRequestException("Lý do từ chối là bắt buộc và phải có ít nhất 5 ký tự khi từ chối hồ sơ");
+        }
+
+        profile.applyDecision(request.getDecision(), request.getTrimmedRejectionReason(), reviewerUsername);
+
+        InternProfile savedProfile = internProfileRepository.save(profile);
+        log.info("Xu ly quyet dinh {} thanh cong cho ho so ID: {}", savedProfile.getStatus(), savedProfile.getId());
+
+        eventPublisher.publishEvent(new InternDecisionProcessedEvent(this, savedProfile));
+
+        return mapToResponse(savedProfile);
+    }
+
     private void validateStatusTransition(InternStatus currentStatus, InternStatus newStatus) {
         if (!currentStatus.canTransitionTo(newStatus)) {
             throw new IllegalStateException("Không thể chuyển đổi trạng thái từ " + currentStatus + " sang " + newStatus);
@@ -161,6 +191,9 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .endDate(profile.getEndDate())
                 .status(profile.getStatus())
                 .notes(profile.getNotes())
+                .rejectionReason(profile.getRejectionReason())
+                .reviewedBy(profile.getReviewedBy())
+                .reviewedAt(profile.getReviewedAt())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();
