@@ -27,7 +27,7 @@ import java.util.List;
 
 @Slf4j
 @RestController
-@RequestMapping({"/api/system/users", "/api/users"})
+@RequestMapping("/api/system/users")
 @RequiredArgsConstructor
 @Tag(name = "System User Controller", description = "Quản trị danh sách người dùng và trạng thái tài khoản")
 @PreAuthorize("hasRole('ADMIN')")

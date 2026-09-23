@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.storage.FileStorageService;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
+import org.example.internservice.intern.dto.request.ReviewDocumentRequest;
+import org.example.internservice.intern.dto.response.DocumentDownloadDto;
 import org.example.internservice.intern.dto.response.DocumentResponse;
 import org.example.internservice.intern.entity.InternDocument;
 import org.example.internservice.intern.entity.InternProfile;
@@ -13,6 +15,7 @@ import org.example.internservice.intern.entity.enums.DocumentType;
 import org.example.internservice.intern.repository.InternDocumentRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.service.InternDocumentService;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -45,21 +48,14 @@ public class InternDocumentServiceImpl implements InternDocumentService {
     public DocumentResponse uploadDocument(String internCode, MultipartFile file, String documentTypeStr) {
         log.info("Bắt đầu xử lý tải lên tài liệu cho internCode: {}, documentType: {}", internCode, documentTypeStr);
 
-        // 1. Xác thực tính hợp lệ của tệp tin tải lên (Extract Method)
         validateFile(file);
-
-        // 2. Xác thực loại tài liệu
         DocumentType documentType = parseDocumentType(documentTypeStr);
-
-        // 3. Kiểm tra hồ sơ thực tập sinh tồn tại và trạng thái có cho phép nộp tài liệu không
         InternProfile internProfile = getAndValidateInternProfile(internCode);
 
-        // 4. Lưu file vật lý trên đĩa
         String subDirectory = "interns/" + internProfile.getInternCode();
         String uniqueFileName = fileStorageService.storeFile(file, subDirectory);
         String relativeFilePath = subDirectory + "/" + uniqueFileName;
 
-        // 5. Tạo Entity và lưu Metadata vào Database (với cơ chế rollback dọn dẹp file nếu DB lỗi)
         InternDocument document = InternDocument.builder()
                 .internProfile(internProfile)
                 .documentType(documentType)
@@ -73,8 +69,82 @@ public class InternDocumentServiceImpl implements InternDocumentService {
 
         InternDocument savedDocument = saveDocumentMetadataWithRollback(document, relativeFilePath);
 
-        // 6. Chuyển đổi và trả về DTO
         return mapToDocumentResponse(savedDocument, internProfile.getInternCode());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> getDocumentsByInternCode(String internCode) {
+        log.info("Lấy danh sách tài liệu cho thực tập sinh: {}", internCode);
+        if (!StringUtils.hasText(internCode)) {
+            throw new BadRequestException("Mã thực tập sinh không được để trống");
+        }
+
+        InternProfile profile = internProfileRepository.findByInternCode(internCode.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
+
+        List<InternDocument> documents = internDocumentRepository.findByInternProfileInternCodeOrderByCreatedAtDesc(profile.getInternCode());
+
+        return documents.stream()
+                .map(doc -> mapToDocumentResponse(doc, profile.getInternCode()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DocumentDownloadDto loadDocumentForDownload(Long documentId) {
+        log.info("Tải tài liệu với documentId: {}", documentId);
+        if (documentId == null || documentId <= 0) {
+            throw new BadRequestException("ID tài liệu không hợp lệ");
+        }
+
+        InternDocument document = internDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
+
+        Resource resource = fileStorageService.loadFileAsResource(document.getFilePath());
+
+        return DocumentDownloadDto.builder()
+                .resource(resource)
+                .originalFileName(document.getOriginalFileName())
+                .contentType(document.getContentType())
+                .fileSize(document.getFileSize())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse reviewDocument(Long documentId, ReviewDocumentRequest request) {
+        log.info("Xét duyệt tài liệu ID: {}, request: {}", documentId, request);
+        if (documentId == null || documentId <= 0) {
+            throw new BadRequestException("ID tài liệu không hợp lệ");
+        }
+
+        if (request == null || request.getStatus() == null) {
+            throw new BadRequestException("Trạng thái xét duyệt không được để trống");
+        }
+
+        InternDocument document = internDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
+
+        if (request.getStatus() == DocumentStatus.REJECTED) {
+            String reason = request.getRejectionReason();
+            if (!StringUtils.hasText(reason) || reason.trim().length() < 5) {
+                log.warn("Từ chối tài liệu thất bại: Lý do từ chối không hợp lệ ({})", reason);
+                throw new BadRequestException("Lý do từ chối không được để trống và phải có ít nhất 5 ký tự");
+            }
+            document.setStatus(DocumentStatus.REJECTED);
+            document.setRejectionReason(reason.trim());
+        } else if (request.getStatus() == DocumentStatus.APPROVED) {
+            document.setStatus(DocumentStatus.APPROVED);
+            document.setRejectionReason(null);
+        } else {
+            throw new BadRequestException("Trạng thái xét duyệt không hợp lệ. Chỉ chấp nhận: APPROVED, REJECTED");
+        }
+
+        InternDocument updated = internDocumentRepository.save(document);
+        log.info("Cập nhật thành công trạng thái tài liệu ID: {} thành {}", updated.getId(), updated.getStatus());
+
+        return mapToDocumentResponse(updated, updated.getInternProfile().getInternCode());
     }
 
     private void validateFile(MultipartFile file) {
@@ -103,20 +173,24 @@ public class InternDocumentServiceImpl implements InternDocumentService {
 
     private DocumentType parseDocumentType(String documentTypeStr) {
         if (!StringUtils.hasText(documentTypeStr)) {
-            throw new BadRequestException("Loại tài liệu không được để trống. Chỉ chấp nhận: CV, APPLICATION_LETTER");
+            throw new BadRequestException("Loại tài liệu không được để trống");
         }
         try {
             return DocumentType.valueOf(documentTypeStr.trim().toUpperCase());
         } catch (Exception ex) {
-            throw new BadRequestException("Loại tài liệu không hợp lệ. Chỉ chấp nhận: CV, APPLICATION_LETTER");
+            log.warn("Loại tài liệu không hợp lệ: {}", documentTypeStr);
+            throw new BadRequestException("Loại tài liệu không hợp lệ. Chỉ chấp nhận: CV hoặc APPLICATION_LETTER");
         }
     }
 
     private InternProfile getAndValidateInternProfile(String internCode) {
+        if (!StringUtils.hasText(internCode)) {
+            throw new BadRequestException("Mã thực tập sinh không được để trống");
+        }
+
         InternProfile internProfile = internProfileRepository.findByInternCode(internCode.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
 
-        // Ràng buộc nghiệp vụ: Không cho phép nộp tài liệu vào hồ sơ đã đóng (COMPLETED hoặc REJECTED)
         if (internProfile.getStatus() == org.example.internservice.intern.entity.enums.InternStatus.COMPLETED
                 || internProfile.getStatus() == org.example.internservice.intern.entity.enums.InternStatus.REJECTED) {
             log.warn("Từ chối upload tài liệu vì hồ sơ {} đang ở trạng thái đóng: {}", internCode, internProfile.getStatus());
@@ -147,7 +221,9 @@ public class InternDocumentServiceImpl implements InternDocumentService {
                 .fileSize(savedDocument.getFileSize())
                 .contentType(savedDocument.getContentType())
                 .status(savedDocument.getStatus())
+                .rejectionReason(savedDocument.getRejectionReason())
                 .createdAt(savedDocument.getCreatedAt())
+                .updatedAt(savedDocument.getUpdatedAt())
                 .build();
     }
 }
