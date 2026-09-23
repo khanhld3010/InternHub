@@ -31,17 +31,21 @@ Mọi tính năng hoặc thay đổi nghiệp vụ quan trọng đều phải tu
 
 | Cấp độ | Loại thay đổi | Tài liệu yêu cầu | Cổng kiểm soát (Gateways) |
 | :---: | :--- | :--- | :--- |
-| **L1** | Sửa log message, sửa lỗi chính tả comment, format code nhỏ | Giải trình ngắn gọn trong câu trả lời | Chạy compile và kiểm tra |
-| **L2** | Thêm API mới trong feature quen thuộc (ví dụ thêm filter) | `implementation_plan.md` | Người dùng phê duyệt trước khi code |
-| **L3** | Tính năng mới hoàn toàn, tác động Database, Auth, Role | `spec.md` + `implementation_plan.md` | Cổng làm rõ câu hỏi, duyệt Spec và Plan |
-| **L4** | Thay đổi kiến trúc, DB Migration, sửa đổi Gateway/Config Server | Bộ tài liệu đầy đủ + Rollback Plan | Người dùng phê duyệt phương án chi tiết |
+| **L1** | Sửa log message, sửa lỗi chính tả comment, format code nhỏ (< 10 dòng) | Giải trình ngắn gọn trong câu trả lời & commit message | Chạy compile và kiểm tra (miễn trừ cập nhật Spec) |
+| **L2** | Thêm API mới trong feature quen thuộc (ví dụ thêm filter, validate) | `implementation_plan.md` + **Cập nhật Spec & Revision History** | Người dùng phê duyệt trước khi code |
+| **L3** | Tính năng mới hoàn toàn, tác động Database, Auth, Role | **`spec.md` (lưu tại `docs/specs/`)** + `implementation_plan.md` | Cổng làm rõ câu hỏi, duyệt Spec và Plan |
+| **L4** | Thay đổi kiến trúc, DB Migration, sửa đổi Gateway/Config Server | Bộ tài liệu đầy đủ (`spec.md` tại `docs/specs/`) + Rollback Plan | Người dùng phê duyệt phương án chi tiết |
 
 ---
 
-## 3. Cấu Trúc Tài Liệu Đặc Tả Chuẩn 13 Phần (`spec.md`)
+## 3. Cấu Trúc Tài Liệu Đặc Tả Chuẩn 14 Phần (`spec.md`)
 
-Khi triển khai tính năng từ cấp độ L3 trở lên, tài liệu `spec.md` cần bảo đảm 13 phần chuẩn hóa:
+Mọi tài liệu đặc tả tính năng (`spec.md`) của Backend bắt buộc phải được lưu cố định tại thư mục:
+👉 `InternHub/docs/specs/<mã-task>-<tên-tính-năng>-spec.md` (Ví dụ: `docs/specs/TM-1-create-intern-profile-spec.md`).
 
+Tài liệu `spec.md` chuẩn hóa gồm 14 phần (bắt đầu bằng Bảng Nhật ký thay đổi):
+
+0. **Revision History & Change Rationale (Nhật Ký Thay Đổi & Giải Trình Kỹ Thuật):** Bảng ghi nhận lịch sử phiên bản, ngày, người/agent thực hiện, mã task Jira `TM`, loại thay đổi và **lý do kỹ thuật/nghiệp vụ cụ thể (Rationale)** vì sao cần thay đổi.
 1. **Feature Overview (Tổng Quan Tính Năng):** Tên tính năng, Jira ticket (`TM-X`), Target Microservice, Phân quyền người dùng áp dụng, Cấp độ thay đổi (L1 - L4).
 2. **Business Goal & Core Objectives (Mục Tiêu Nghiệp Vụ):** Bối cảnh thực tế và vấn đề cốt lõi cần giải quyết.
 3. **Scope of Work (Phạm Vi Tính Năng):**
@@ -59,6 +63,16 @@ Khi triển khai tính năng từ cấp độ L3 trở lên, tài liệu `spec.m
 13. **Implementation Checklist (Danh Sách File & Hạng Mục Triển Khai):** Checklist chi tiết từng Entity, DTO, Repository, Service, Controller, Exception handler, Tests.
 
 ---
+
+### 3.1. Quy Tắc "Đồng Bộ Nguyên Tử" Giữa Spec & Code (Atomic Spec-Code Sync)
+
+> [!CAUTION]
+> **KHÔNG MỘT THAY ĐỔI LOGIC NÀO ĐƯỢC COI LÀ HOÀN TẤT NẾU CHƯA CẬP NHẬT SPEC VÀ GHI GIẢI TRÌNH.**
+> 
+> - **Khi code thay đổi**: Bất kể khi nào lập trình viên hay AI Agent sửa mã nguồn (thêm/bớt validation, đổi trường DTO, thay đổi câu query JPA, đổi flow xử lý Service):
+>   1. **Bắt buộc mở file Spec tương ứng tại `docs/specs/`** để cập nhật nội dung phản ánh đúng code mới.
+>   2. **Ghi thêm 1 dòng vào bảng Revision History** giải thích cặn kẽ: *Tại sao phải sửa đổi? Quyết định kỹ thuật dựa trên căn cứ nào?*
+> - **Đồng bộ trong cùng một task**: Không tách rời việc sửa code và sửa Spec thành hai lần làm việc riêng biệt. Phải đồng bộ ngay trong cùng một PR/phiên làm việc.
 
 ## 4. Quy Trình 7 Bước Triển Khai Code Theo Chuẩn Package-by-Feature
 

@@ -15,7 +15,7 @@ Nhiệm vụ của bạn là hỗ trợ người dùng xây dựng, tối ưu h�
 
 ---
 
-## 2. Toàn Bộ 28 Nguyên Tắc Bất Biến (28 Non-Negotiable Rules)
+## 2. Toàn Bộ 29 Nguyên Tắc Bất Biến (29 Non-Negotiable Rules)
 
 ### 🏛️ Trụ Cột I: Giao Thức Phối Hợp Người - AI
 1. **KHÔNG TỰ Ý ĐƯA RA QUYẾT ĐỊNH**: Mọi thay đổi về cấu trúc package, thêm thư viện `build.gradle`, logic nghiệp vụ hay can thiệp mã nguồn đều phải thông qua sự phê duyệt của người dùng.
@@ -56,6 +56,12 @@ Nhiệm vụ của bạn là hỗ trợ người dùng xây dựng, tối ưu h�
 28. **XỬ LÝ LỆNH MƠ HỒ & CẢNH BÁO XUNG ĐỘT QUY TẮC (CONSTITUTIONAL GUARDRAIL)**:
     - Nếu câu lệnh của người dùng có thể hiểu theo nhiều cách khác nhau hoặc thiếu thông tin, Agent **bắt buộc phải hỏi lại để làm rõ**, tuyệt đối không tự ý suy đoán và ra quyết định.
     - Nếu yêu cầu của người dùng đi ngược lại bất kỳ quy tắc nào trong bộ quy chuẩn này, Agent **bắt buộc phải lập tức phát cảnh báo, chỉ rõ đích danh điều khoản vi phạm và nêu rủi ro kỹ thuật**, tuyệt đối không âm thầm làm theo khi chưa cảnh báo và nhận được sự tái xác nhận từ người dùng.
+29. **LƯU TRỮ ĐẶC TẢ VĨNH CỬU & BẮT BUỘC GIẢI TRÌNH KHI THAY ĐỔI MÃ NGUỒN (PERSISTENT SPEC & CHANGE RATIONALE)**:
+    - 100% tài liệu đặc tả tính năng (`spec.md`) của Backend bắt buộc phải được lưu trữ cố định trong Git repo tại `InternHub/docs/specs/` (ví dụ: `docs/specs/<mã-task>-<tên-tính-năng>-spec.md`).
+    - Bất kể khi nào lập trình viên hay AI Agent thay đổi mã nguồn ảnh hưởng đến logic nghiệp vụ, API contract, validation hoặc cấu trúc cơ sở dữ liệu (từ cấp độ L2 trở lên):
+      + **Bắt buộc cập nhật tài liệu Spec tương ứng** để phản ánh đúng hiện trạng hệ thống.
+      + **Bắt buộc ghi nhận một dòng giải trình** vào bảng **Nhật Ký Thay Đổi & Giải Trình Kỹ Thuật (Revision History)** ở đầu file Spec, chỉ rõ: *Phiên bản*, *Ngày*, *Người/Agent thực hiện*, *Mã task Jira `TM`*, *Nội dung thay đổi*, và *Lý do kỹ thuật/nghiệp vụ (Rationale)* vì sao cần thay đổi.
+    - **Quy tắc Đồng bộ nguyên tử (Atomic Spec-Code Sync)**: Tuyệt đối không hoàn tất hoặc phê duyệt bất kỳ thay đổi logic nào nếu mã nguồn và tài liệu Spec chưa được đồng bộ cùng nhau trong cùng một task. Ngoại lệ: chỉ miễn trừ cập nhật Spec đối với tác vụ vi mô L1 (sửa lỗi chính tả log/comment, format code dưới 10 dòng).
 
 ---
 
