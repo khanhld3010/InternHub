@@ -59,8 +59,9 @@ AI cần tự động áp dụng các skill sau theo đúng loại tác vụ:
 - **Thư mục dùng chung (Shared/Common):**
   - `common/entity/`: Chứa `BaseEntity` (chứa `id`, `createdAt`, `updatedAt`).
   - `common/dto/response/`: Chứa `ApiResponse<T>`.
-  - `exception/`: Bắt ngoại lệ tập trung qua `GlobalExceptionHandler`.
+  - `exception/`: Bắt ngoại lệ tập trung qua `GlobalExceptionHandler`. Phải bao quát đầy đủ các mã HTTP: `400` (`BadRequestException`, `IllegalArgumentException`, `IllegalStateException`, `HttpMessageNotReadableException`), `401` (`UnauthorizedException`, `BadCredentialsException`), `403` (`AccessDeniedException`), `404` (`ResourceNotFoundException`), `409` (`DuplicateResourceException`), `500` (`Exception`).
 - **Dependency Injection:** Sử dụng Constructor Injection thông qua `@RequiredArgsConstructor` từ Lombok (**KHÔNG dùng `@Autowired` ở trường**).
+- **Quản lý Import:** LUÔN LUÔN khai báo `import` tường minh ở đầu file. **TUYỆT ĐỐI KHÔNG** dùng Fully Qualified Name (FQN) trong thân code.
 
 ---
 

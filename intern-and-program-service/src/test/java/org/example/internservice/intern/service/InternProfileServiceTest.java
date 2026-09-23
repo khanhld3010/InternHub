@@ -1,15 +1,18 @@
 package org.example.internservice.intern.service;
 
 import org.example.internservice.common.dto.response.PageResponse;
+import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.dto.request.CreateInternRequest;
+import org.example.internservice.intern.dto.request.InternDecisionRequest;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
 import org.example.internservice.intern.dto.request.UpdateInternRequest;
 import org.example.internservice.intern.dto.response.InternResponse;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.Gender;
 import org.example.internservice.intern.entity.enums.InternStatus;
+import org.example.internservice.intern.event.InternDecisionProcessedEvent;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.service.impl.InternProfileServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -44,6 +48,9 @@ class InternProfileServiceTest {
 
     @Mock
     private InternProfileRepository internProfileRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private InternProfileServiceImpl internProfileService;
@@ -432,6 +439,106 @@ class InternProfileServiceTest {
         PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
 
         assertThat(response).isNotNull();
+    }
+
+    // =========================================================================
+    // Task 5: Unit Tests for processDecision (TM-11)
+    // =========================================================================
+
+    @Test
+    @DisplayName("processDecision: Phe duyet ho so thanh cong khi status la PENDING")
+    void processDecision_whenApproved_shouldUpdateStatusAndClearRejectionReason() {
+        savedProfile.setStatus(InternStatus.PENDING);
+        savedProfile.setRejectionReason("Previous rejection");
+        InternDecisionRequest request = InternDecisionRequest.builder()
+                .decision(InternStatus.APPROVED)
+                .build();
+
+        when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+        when(internProfileRepository.save(any(InternProfile.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InternResponse response = internProfileService.processDecision(1L, request, "hr_admin");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(InternStatus.APPROVED);
+        assertThat(response.getRejectionReason()).isNull();
+        assertThat(response.getReviewedBy()).isEqualTo("hr_admin");
+        assertThat(response.getReviewedAt()).isNotNull();
+        verify(internProfileRepository).save(savedProfile);
+        verify(eventPublisher).publishEvent(any(InternDecisionProcessedEvent.class));
+    }
+
+    @Test
+    @DisplayName("processDecision: Tu choi ho so thanh cong voi ly do hop le")
+    void processDecision_whenRejected_withValidReason_shouldUpdateStatusAndReason() {
+        savedProfile.setStatus(InternStatus.PENDING);
+        String reason = "Khong dat yeu cau ve chung chi tieng Anh";
+        InternDecisionRequest request = InternDecisionRequest.builder()
+                .decision(InternStatus.REJECTED)
+                .rejectionReason(reason)
+                .build();
+
+        when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+        when(internProfileRepository.save(any(InternProfile.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InternResponse response = internProfileService.processDecision(1L, request, "hr_manager");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(InternStatus.REJECTED);
+        assertThat(response.getRejectionReason()).isEqualTo(reason);
+        assertThat(response.getReviewedBy()).isEqualTo("hr_manager");
+        assertThat(response.getReviewedAt()).isNotNull();
+        verify(internProfileRepository).save(savedProfile);
+        verify(eventPublisher).publishEvent(any(InternDecisionProcessedEvent.class));
+    }
+
+    @Test
+    @DisplayName("processDecision: Nem BadRequestException khi tu choi ma ly do de trong hoac duoi 5 ky tu")
+    void processDecision_whenRejected_withEmptyReason_shouldThrowBadRequestException() {
+        savedProfile.setStatus(InternStatus.PENDING);
+        InternDecisionRequest request = InternDecisionRequest.builder()
+                .decision(InternStatus.REJECTED)
+                .rejectionReason("   ")
+                .build();
+
+        when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+
+        assertThatThrownBy(() -> internProfileService.processDecision(1L, request, "hr_manager"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Lý do từ chối là bắt buộc");
+
+        verify(internProfileRepository, never()).save(any(InternProfile.class));
+    }
+
+    @Test
+    @DisplayName("processDecision: Nem ResourceNotFoundException khi khong tim thay ho so")
+    void processDecision_whenInternNotFound_shouldThrowResourceNotFoundException() {
+        InternDecisionRequest request = InternDecisionRequest.builder()
+                .decision(InternStatus.APPROVED)
+                .build();
+
+        when(internProfileRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> internProfileService.processDecision(999L, request, "hr_admin"))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Không tìm thấy hồ sơ");
+    }
+
+    @Test
+    @DisplayName("processDecision: Nem IllegalStateException khi chuyen doi trang thai khong hop le tu COMPLETED")
+    void processDecision_whenInvalidTransition_shouldThrowIllegalStateException() {
+        savedProfile.setStatus(InternStatus.COMPLETED);
+        InternDecisionRequest request = InternDecisionRequest.builder()
+                .decision(InternStatus.APPROVED)
+                .build();
+
+        when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+
+        assertThatThrownBy(() -> internProfileService.processDecision(1L, request, "hr_admin"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Không thể chuyển đổi trạng thái");
+
+        verify(internProfileRepository, never()).save(any(InternProfile.class));
     }
 }
 

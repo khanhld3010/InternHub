@@ -15,6 +15,7 @@ import org.example.internservice.intern.entity.enums.Gender;
 import org.example.internservice.intern.entity.enums.InternStatus;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "intern_profiles")
@@ -72,6 +73,29 @@ public class InternProfile extends BaseEntity {
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
+
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    @Column(name = "reviewed_by", length = 100)
+    private String reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    public void applyDecision(InternStatus decision, String reason, String reviewerUsername) {
+        if (!this.status.canTransitionTo(decision)) {
+            throw new IllegalStateException("Không thể chuyển đổi trạng thái từ " + this.status + " sang " + decision);
+        }
+        this.status = decision;
+        if (decision == InternStatus.APPROVED) {
+            this.rejectionReason = null;
+        } else if (decision == InternStatus.REJECTED) {
+            this.rejectionReason = reason;
+        }
+        this.reviewedBy = reviewerUsername;
+        this.reviewedAt = LocalDateTime.now();
+    }
 
     public void updateInformation(
             String fullName,
