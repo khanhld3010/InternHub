@@ -2,6 +2,15 @@
 
 ---
 
+## 0. Revision History & Technical Rationale (Nhật Ký Thay Đổi & Giải Trình Kỹ Thuật)
+
+| Phiên bản | Ngày | Tác giả | Mã task Jira | Nội dung thay đổi | Lý do kỹ thuật / Nghiệp vụ (Rationale) |
+| :---: | :---: | :---: | :---: | :--- | :--- |
+| **v1.1** | 2026-09-24 | AI Pair-Programmer | TM-9 | Chuẩn hóa Role JWT và tối ưu route API Gateway | Sửa lỗi 403 Forbidden: vai trò `Admin` từ DB không khớp với `ROLE_ADMIN` của Spring Security do lệch chữ hoa/thường. Bổ sung chuẩn hóa in hoa trong `JwtAuthenticationFilter` và `JwtTokenProvider`, đồng thời cấu hình định tuyến kép tại API Gateway. |
+| **v1.0** | 2026-09-21 | Đội Phát Triển | TM-9 | Khởi tạo tài liệu đặc tả nhật ký hoạt động hệ thống | Thiết kế ban đầu theo quy chuẩn Spec-Driven |
+
+---
+
 ## 1. Feature Overview (Tổng Quan Tính Năng)
 
 - **Feature Name:** Xem nhật ký hoạt động và kiểm toán hệ thống (Admin Activity Log & Audit Trail Management)
