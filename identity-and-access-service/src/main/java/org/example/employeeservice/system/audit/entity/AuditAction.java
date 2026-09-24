@@ -5,6 +5,7 @@ public enum AuditAction {
     LOGIN_SUCCESS,
     LOGIN_FAILED,
     LOGOUT,
+    REGISTER,
 
     // Intern actions
     CREATE_INTERN,

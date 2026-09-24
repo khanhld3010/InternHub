@@ -4,12 +4,17 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.employeeservice.dto.request.LoginRequest;
+import org.example.employeeservice.dto.request.RegisterRequest;
 import org.example.employeeservice.dto.response.ApiResponse;
 import org.example.employeeservice.dto.response.LoginResponse;
+import org.example.employeeservice.dto.response.RegisterResponse;
 import org.example.employeeservice.service.AuthService;
 import org.example.employeeservice.system.audit.annotation.Auditable;
 import org.example.employeeservice.system.audit.entity.AuditAction;
 import org.example.employeeservice.system.audit.entity.AuditModule;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -21,10 +26,12 @@ import java.util.Map;
 @RestController
 @RequestMapping({"/api/employees/auth", "/api/auth"})
 @RequiredArgsConstructor
+@Tag(name = "Authentication Controller", description = "Quản lý đăng nhập, đăng ký tài khoản và thông tin phiên người dùng")
 public class AuthController {
 
     private final AuthService authService;
 
+    @Operation(summary = "Đăng nhập hệ thống bằng username và password")
     @Auditable(action = AuditAction.LOGIN_SUCCESS, module = AuditModule.AUTH, description = "Người dùng đăng nhập vào hệ thống")
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
@@ -33,6 +40,17 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công", response));
     }
 
+    @Operation(summary = "Đăng ký tài khoản người dùng mới (Public Endpoint - Nhận 1 Object tổng hợp)")
+    @Auditable(action = AuditAction.REGISTER, module = AuditModule.AUTH, description = "Đăng ký tài khoản người dùng mới")
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<RegisterResponse>> register(@Valid @RequestBody RegisterRequest request) {
+        log.info("Nhận yêu cầu đăng ký tài khoản từ username: {}, email: {}", request.getUsername(), request.getEmail());
+        RegisterResponse response = authService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Đăng ký tài khoản thành công", response));
+    }
+
+    @Operation(summary = "Lấy thông tin tài khoản đang đăng nhập")
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getCurrentUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
