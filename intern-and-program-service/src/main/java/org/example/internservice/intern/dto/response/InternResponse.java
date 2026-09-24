@@ -37,6 +37,10 @@ public class InternResponse {
     private String rejectionReason;
     private String reviewedBy;
     private LocalDateTime reviewedAt;
+    private String emailStatus;
+    private LocalDateTime emailSentAt;
+    private Integer emailRetryCount;
+    private LocalDateTime lastEmailSentAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

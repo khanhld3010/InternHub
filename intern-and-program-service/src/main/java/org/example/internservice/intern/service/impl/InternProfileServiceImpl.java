@@ -27,8 +27,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import org.example.internservice.exception.RateLimitException;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -158,6 +161,54 @@ public class InternProfileServiceImpl implements InternProfileService {
         return mapToResponse(savedProfile);
     }
 
+    @Override
+    @Transactional
+    public InternResponse resendDecisionEmail(Long id, String reviewerUsername) {
+        log.info("HR {} yeu cau gui lai email cho ho so ID: {}", reviewerUsername, id);
+
+        InternProfile profile = internProfileRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với ID: " + id));
+
+        if (profile.getStatus() != InternStatus.APPROVED && profile.getStatus() != InternStatus.REJECTED) {
+            throw new BadRequestException("Chỉ có thể gửi lại email cho hồ sơ đã được DUYỆT hoặc TỪ CHỐI");
+        }
+
+        // 1. Kiểm tra Cooldown (45 giây)
+        if (profile.getLastEmailSentAt() != null) {
+            long secondsSinceLastSent = ChronoUnit.SECONDS.between(profile.getLastEmailSentAt(), LocalDateTime.now());
+            if (secondsSinceLastSent < 45) {
+                long retryAfter = 45 - secondsSinceLastSent;
+                throw new RateLimitException("Email vừa được gửi cách đây " + secondsSinceLastSent + " giây. Vui lòng đợi trước khi gửi lại.", retryAfter);
+            }
+        }
+
+        // 2. Kiểm tra giới hạn 5 lần resend/ngày
+        if (profile.getEmailRetryCount() != null && profile.getEmailRetryCount() >= 5) {
+            throw new BadRequestException("Không thể gửi lại quá 5 lần. Vui lòng kiểm tra lại địa chỉ email của thực tập sinh.");
+        }
+
+        // Đánh dấu lại trạng thái PENDING và tăng retry count
+        profile.markEmailPending();
+        InternProfile saved = internProfileRepository.save(profile);
+
+        // Bắn lại event gửi mail
+        eventPublisher.publishEvent(new InternDecisionProcessedEvent(this, saved));
+        log.info("Da phat su kien gui lai email thanh cong cho ho so ID: {}", id);
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void updateEmailStatus(Long id, String status, String errorMessage) {
+        log.info("Nhan callback cap nhat emailStatus cho ho so ID: {}, status: {}", id, status);
+        internProfileRepository.findById(id).ifPresent(profile -> {
+            profile.updateEmailStatus(status);
+            internProfileRepository.save(profile);
+            log.info("Cap nhat emailStatus thanh cong cho ho so ID: {} sang {}", id, status);
+        });
+    }
+
     private void validateStatusTransition(InternStatus currentStatus, InternStatus newStatus) {
         if (!currentStatus.canTransitionTo(newStatus)) {
             throw new IllegalStateException("Không thể chuyển đổi trạng thái từ " + currentStatus + " sang " + newStatus);
@@ -194,6 +245,10 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .rejectionReason(profile.getRejectionReason())
                 .reviewedBy(profile.getReviewedBy())
                 .reviewedAt(profile.getReviewedAt())
+                .emailStatus(profile.getEmailStatus())
+                .emailSentAt(profile.getEmailSentAt())
+                .emailRetryCount(profile.getEmailRetryCount())
+                .lastEmailSentAt(profile.getLastEmailSentAt())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();

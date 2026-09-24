@@ -36,6 +36,10 @@ public class SecurityConfig {
                 // Public endpoint cho upload CV (TM-4)
                 .requestMatchers(HttpMethod.POST, "/api/interns/*/documents").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/employees/interns/*/documents").permitAll()
+                // Internal callback cho reporting-and-integration-service
+                .requestMatchers(HttpMethod.PATCH, "/api/interns/*/email-status").permitAll()
+                // Public endpoint cho onboarding activation (TM-12)
+                .requestMatchers("/api/onboarding/**").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
