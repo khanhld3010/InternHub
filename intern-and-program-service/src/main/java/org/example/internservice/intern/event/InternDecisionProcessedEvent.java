@@ -18,6 +18,8 @@ public class InternDecisionProcessedEvent extends ApplicationEvent {
     private final String rejectionReason;
     private final String reviewedBy;
     private final LocalDateTime reviewedAt;
+    private final String appliedPosition;
+    private final java.time.LocalDate startDate;
 
     public InternDecisionProcessedEvent(Object source, InternProfile profile) {
         super(source);
@@ -29,5 +31,7 @@ public class InternDecisionProcessedEvent extends ApplicationEvent {
         this.rejectionReason = profile.getRejectionReason();
         this.reviewedBy = profile.getReviewedBy();
         this.reviewedAt = profile.getReviewedAt();
+        this.appliedPosition = profile.getAppliedPosition();
+        this.startDate = profile.getStartDate();
     }
 }

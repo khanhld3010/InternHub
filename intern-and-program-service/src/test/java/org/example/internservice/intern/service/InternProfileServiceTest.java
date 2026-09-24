@@ -540,5 +540,55 @@ class InternProfileServiceTest {
 
         verify(internProfileRepository, never()).save(any(InternProfile.class));
     }
+
+    @Test
+    @DisplayName("resendDecisionEmail: Gui lai email thanh cong khi thoa man dieu kien")
+    void resendDecisionEmail_whenValid_shouldUpdateStatusAndPublishEvent() {
+        savedProfile.setStatus(InternStatus.APPROVED);
+        savedProfile.setLastEmailSentAt(LocalDateTime.now().minusSeconds(50)); // Đã qua 50s (>45s cooldown)
+        savedProfile.setEmailRetryCount(1);
+
+        when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+        when(internProfileRepository.save(any(InternProfile.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InternResponse response = internProfileService.resendDecisionEmail(1L, "hr_lead");
+
+        assertThat(response).isNotNull();
+        assertThat(response.getEmailStatus()).isEqualTo("PENDING");
+        assertThat(savedProfile.getEmailRetryCount()).isEqualTo(2);
+        verify(internProfileRepository).save(savedProfile);
+        verify(eventPublisher).publishEvent(any(InternDecisionProcessedEvent.class));
+    }
+
+    @Test
+    @DisplayName("resendDecisionEmail: Nem RateLimitException khi vi pham cooldown 45 giay")
+    void resendDecisionEmail_whenWithinCooldown_shouldThrowRateLimitException() {
+        savedProfile.setStatus(InternStatus.APPROVED);
+        savedProfile.setLastEmailSentAt(LocalDateTime.now().minusSeconds(15)); // Mới gửi 15s trước
+
+        when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+
+        assertThatThrownBy(() -> internProfileService.resendDecisionEmail(1L, "hr_lead"))
+                .isInstanceOf(org.example.internservice.exception.RateLimitException.class)
+                .hasMessageContaining("Vui lòng đợi");
+
+        verify(internProfileRepository, never()).save(savedProfile);
+    }
+
+    @Test
+    @DisplayName("resendDecisionEmail: Nem BadRequestException khi vuot qua 5 lan gui/ngay")
+    void resendDecisionEmail_whenExceedsMaxDailyRetries_shouldThrowBadRequestException() {
+        savedProfile.setStatus(InternStatus.APPROVED);
+        savedProfile.setLastEmailSentAt(LocalDateTime.now().minusSeconds(60));
+        savedProfile.setEmailRetryCount(5); // Đã gửi 5 lần
+
+        when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+
+        assertThatThrownBy(() -> internProfileService.resendDecisionEmail(1L, "hr_lead"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Không thể gửi lại quá 5 lần");
+
+        verify(internProfileRepository, never()).save(savedProfile);
+    }
 }
 

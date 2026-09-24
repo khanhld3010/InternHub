@@ -78,6 +78,31 @@ public class InternProfileController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), actionMessage, response));
     }
 
+    @Auditable(action = AuditAction.CHANGE_INTERN_STATUS, module = AuditModule.INTERN, description = "Gửi lại email thông báo kết quả duyệt/từ chối hồ sơ")
+    @PostMapping("/{id}/resend-decision-email")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InternResponse>> resendDecisionEmail(
+            @PathVariable("id") Long id,
+            Authentication authentication
+    ) {
+        String reviewerUsername = (authentication != null) ? authentication.getName() : "system";
+        log.info("Nhan request gui lai email ket qua ho so ID: {} boi user: {}", id, reviewerUsername);
+        InternResponse response = internProfileService.resendDecisionEmail(id, reviewerUsername);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Đã gửi lại email thông báo thành công", response));
+    }
+
+    @PatchMapping("/{id}/email-status")
+    public ResponseEntity<Void> updateEmailStatus(
+            @PathVariable("id") Long id,
+            @RequestBody java.util.Map<String, String> body
+    ) {
+        String status = body != null ? body.get("status") : null;
+        String errorMessage = body != null ? body.get("errorMessage") : null;
+        log.info("Nhan callback cap nhat emailStatus cho ho so ID: {}, status: {}", id, status);
+        internProfileService.updateEmailStatus(id, status, errorMessage);
+        return ResponseEntity.ok().build();
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
     public ResponseEntity<ApiResponse<PageResponse<InternResponse>>> searchInterns(

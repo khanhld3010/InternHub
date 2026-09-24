@@ -138,6 +138,14 @@ services:
     restart: unless-stopped
     environment:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-noreply.internhub@gmail.com}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_MOCK_MODE: ${MAIL_MOCK_MODE:-true}
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:5173}
+      COMPANY_NAME: ${COMPANY_NAME:-InternHub Technology}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@internhub.com}
     ports:
       - "8083:8083"
     depends_on:

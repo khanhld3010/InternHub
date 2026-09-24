@@ -83,6 +83,36 @@ public class InternProfile extends BaseEntity {
     @Column(name = "reviewed_at")
     private LocalDateTime reviewedAt;
 
+    @Column(name = "email_status", length = 20)
+    private String emailStatus;
+
+    @Column(name = "email_sent_at")
+    private LocalDateTime emailSentAt;
+
+    @Column(name = "email_retry_count")
+    @Builder.Default
+    private Integer emailRetryCount = 0;
+
+    @Column(name = "last_email_sent_at")
+    private LocalDateTime lastEmailSentAt;
+
+    public void markEmailPending() {
+        this.emailStatus = "PENDING";
+        this.lastEmailSentAt = LocalDateTime.now();
+        if (this.emailRetryCount == null) {
+            this.emailRetryCount = 1;
+        } else {
+            this.emailRetryCount += 1;
+        }
+    }
+
+    public void updateEmailStatus(String status) {
+        this.emailStatus = status;
+        if ("SENT".equalsIgnoreCase(status)) {
+            this.emailSentAt = LocalDateTime.now();
+        }
+    }
+
     public void applyDecision(InternStatus decision, String reason, String reviewerUsername) {
         if (!this.status.canTransitionTo(decision)) {
             throw new IllegalStateException("Không thể chuyển đổi trạng thái từ " + this.status + " sang " + decision);
@@ -95,6 +125,7 @@ public class InternProfile extends BaseEntity {
         }
         this.reviewedBy = reviewerUsername;
         this.reviewedAt = LocalDateTime.now();
+        markEmailPending();
     }
 
     public void updateInformation(

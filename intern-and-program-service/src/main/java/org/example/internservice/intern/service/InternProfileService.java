@@ -16,6 +16,10 @@ public interface InternProfileService {
 
     InternResponse processDecision(Long id, InternDecisionRequest request, String reviewerUsername);
 
+    InternResponse resendDecisionEmail(Long id, String reviewerUsername);
+
+    void updateEmailStatus(Long id, String status, String errorMessage);
+
     PageResponse<InternResponse> searchInterns(InternFilterRequest request, Pageable pageable);
 }
 

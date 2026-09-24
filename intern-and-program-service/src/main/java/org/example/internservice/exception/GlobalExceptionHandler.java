@@ -103,6 +103,21 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Dung lượng tệp tin tải lên vượt quá giới hạn tối đa cho phép (10MB)"));
     }
 
+    @ExceptionHandler(RateLimitException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleRateLimitException(RateLimitException ex) {
+        log.warn("Rate limit triggered: {}", ex.getMessage());
+        Map<String, Object> data = new HashMap<>();
+        data.put("retryAfter", ex.getRetryAfterSeconds());
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ApiResponse.<Map<String, Object>>builder()
+                        .code(HttpStatus.TOO_MANY_REQUESTS.value())
+                        .message(ex.getMessage())
+                        .data(data)
+                        .build());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGlobalException(Exception ex) {
         log.error("Internal server error: ", ex);
