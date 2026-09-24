@@ -1,11 +1,13 @@
 package org.example.internservice.intern.repository;
 
 import org.example.internservice.intern.entity.InternProfile;
+import org.example.internservice.intern.entity.enums.InternStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -18,6 +20,12 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
     boolean existsByPhone(String phone);
 
     boolean existsByPhoneAndIdNot(String phone, Long id);
+
+    boolean existsByUserIdAndStatusIn(Long userId, List<InternStatus> statuses);
+
+    boolean existsByEmailAndStatusIn(String email, List<InternStatus> statuses);
+
+    Optional<InternProfile> findByUserId(Long userId);
 
     Optional<InternProfile> findByInternCode(String internCode);
 

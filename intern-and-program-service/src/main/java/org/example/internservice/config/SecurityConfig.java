@@ -33,7 +33,11 @@ public class SecurityConfig {
                     "/swagger-ui/**",
                     "/swagger-ui.html"
                 ).permitAll()
-                // Public endpoint cho upload CV (TM-4)
+                // Public endpoints cho nộp hồ sơ trực tuyến và upload CV (TM-4, TM-10)
+                .requestMatchers(HttpMethod.POST, "/api/interns/apply").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/employees/interns/apply").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/interns").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/employees/interns").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/interns/*/documents").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/employees/interns/*/documents").permitAll()
                 .anyRequest().authenticated()

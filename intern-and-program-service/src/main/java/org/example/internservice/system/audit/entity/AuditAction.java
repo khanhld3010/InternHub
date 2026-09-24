@@ -10,6 +10,7 @@ public enum AuditAction {
     CREATE_INTERN,
     UPDATE_INTERN,
     CHANGE_INTERN_STATUS,
+    APPLY_INTERN,
 
     // Document actions
     UPLOAD_DOCUMENT,

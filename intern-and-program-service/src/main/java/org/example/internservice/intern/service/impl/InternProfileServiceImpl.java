@@ -6,6 +6,7 @@ import org.example.internservice.common.dto.response.PageResponse;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.exception.ResourceNotFoundException;
+import org.example.internservice.intern.dto.request.ApplyInternRequest;
 import org.example.internservice.intern.dto.request.CreateInternRequest;
 import org.example.internservice.intern.dto.request.InternDecisionRequest;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
@@ -83,6 +84,76 @@ public class InternProfileServiceImpl implements InternProfileService {
 
         InternProfile savedProfile = internProfileRepository.save(internProfile);
         log.info("Tao thanh cong ho so thuc tap sinh voi ID: {}, Code: {}", savedProfile.getId(), savedProfile.getInternCode());
+
+        return mapToResponse(savedProfile);
+    }
+
+    @Override
+    @Transactional
+    public InternResponse applyOnline(ApplyInternRequest request) {
+        log.info("Bắt đầu xử lý nộp hồ sơ ứng tuyển trực tuyến: email={}, userId={}", request.getEmail(), request.getUserId());
+
+        // 1. Kiểm tra nếu có userId, kiểm tra xem tài khoản này đã có hồ sơ đang xử lý chưa
+        if (request.getUserId() != null) {
+            boolean hasActiveApplication = internProfileRepository.existsByUserIdAndStatusIn(
+                    request.getUserId(),
+                    List.of(InternStatus.PENDING, InternStatus.APPROVED, InternStatus.INTERNING)
+            );
+            if (hasActiveApplication) {
+                log.warn("Nộp hồ sơ thất bại: Tài khoản ID={} đã có hồ sơ đang chờ xét duyệt hoặc đang thực tập", request.getUserId());
+                throw new BadRequestException("Bạn đã có một hồ sơ đang chờ xét duyệt hoặc đang trong quá trình thực tập");
+            }
+        }
+
+        // 2. Kiểm tra nếu email đã có hồ sơ đang xử lý
+        boolean hasEmailInProcess = internProfileRepository.existsByEmailAndStatusIn(
+                request.getEmail().trim(),
+                List.of(InternStatus.PENDING, InternStatus.APPROVED, InternStatus.INTERNING)
+        );
+        if (hasEmailInProcess) {
+            log.warn("Nộp hồ sơ thất bại: Email {} đã có hồ sơ đang xử lý", request.getEmail());
+            throw new BadRequestException("Hồ sơ với email '" + request.getEmail() + "' đang chờ xét duyệt hoặc đang trong quá trình thực tập");
+        }
+
+        // 3. Kiểm tra tính duy nhất của email và phone
+        if (internProfileRepository.existsByEmail(request.getEmail().trim())) {
+            throw new DuplicateResourceException("Email '" + request.getEmail() + "' đã tồn tại trong hệ thống");
+        }
+
+        if (internProfileRepository.existsByPhone(request.getPhone().trim())) {
+            throw new DuplicateResourceException("Số điện thoại '" + request.getPhone() + "' đã tồn tại trong hệ thống");
+        }
+
+        // 4. Validate ngày kết thúc nếu có
+        if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) {
+            throw new BadRequestException("Ngày kết thúc thực tập không thể trước ngày bắt đầu");
+        }
+
+        // 5. Tự động sinh mã thực tập sinh
+        String internCode = generateInternCode();
+
+        // 6. Tạo entity InternProfile
+        InternProfile profile = InternProfile.builder()
+                .userId(request.getUserId())
+                .internCode(internCode)
+                .fullName(request.getFullName().trim())
+                .email(request.getEmail().trim())
+                .phone(request.getPhone().trim())
+                .dateOfBirth(request.getDateOfBirth())
+                .gender(request.getGender())
+                .address(request.getAddress() != null ? request.getAddress().trim() : null)
+                .university(request.getUniversity().trim())
+                .major(request.getMajor().trim())
+                .academicYear(request.getAcademicYear() != null ? request.getAcademicYear().trim() : null)
+                .appliedPosition(request.getAppliedPosition().trim())
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
+                .status(InternStatus.PENDING)
+                .notes(request.getNotes() != null ? request.getNotes().trim() : null)
+                .build();
+
+        InternProfile savedProfile = internProfileRepository.save(profile);
+        log.info("Nộp hồ sơ thành công cho ứng viên: internCode={}, ID={}", internCode, savedProfile.getId());
 
         return mapToResponse(savedProfile);
     }
@@ -176,6 +247,7 @@ public class InternProfileServiceImpl implements InternProfileService {
     private InternResponse mapToResponse(InternProfile profile) {
         return InternResponse.builder()
                 .id(profile.getId())
+                .userId(profile.getUserId())
                 .internCode(profile.getInternCode())
                 .fullName(profile.getFullName())
                 .email(profile.getEmail())

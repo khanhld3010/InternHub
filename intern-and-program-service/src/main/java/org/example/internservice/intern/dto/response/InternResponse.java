@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 public class InternResponse {
 
     private Long id;
+    private Long userId;
     private String internCode;
     private String fullName;
     private String email;

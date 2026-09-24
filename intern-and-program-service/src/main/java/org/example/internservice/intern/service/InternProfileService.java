@@ -1,6 +1,7 @@
 package org.example.internservice.intern.service;
 
 import org.example.internservice.common.dto.response.PageResponse;
+import org.example.internservice.intern.dto.request.ApplyInternRequest;
 import org.example.internservice.intern.dto.request.CreateInternRequest;
 import org.example.internservice.intern.dto.request.InternDecisionRequest;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
@@ -11,6 +12,8 @@ import org.springframework.data.domain.Pageable;
 public interface InternProfileService {
 
     InternResponse createIntern(CreateInternRequest request);
+
+    InternResponse applyOnline(ApplyInternRequest request);
 
     InternResponse updateIntern(Long id, UpdateInternRequest request);
 
