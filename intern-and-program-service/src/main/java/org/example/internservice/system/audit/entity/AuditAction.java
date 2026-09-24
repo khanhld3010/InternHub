@@ -15,6 +15,7 @@ public enum AuditAction {
     UPLOAD_DOCUMENT,
     REVIEW_DOCUMENT,
     DOWNLOAD_DOCUMENT,
+    UPLOAD_CONTRACT,
 
     // System actions
     TRIGGER_BACKUP,
