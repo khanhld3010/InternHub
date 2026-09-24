@@ -22,32 +22,32 @@ spring:
             - id: identity-users
               uri: lb://identity-and-access-service
               predicates:
-                - Path=/api/users/**
+                - Path=/api/users, /api/users/**
 
             # 2. Intern and Program Service (Interns, Documents)
             # Route cũ tương thích ngược: /api/employees/interns/** -> /api/interns/**
             - id: intern-legacy-compat
               uri: lb://intern-and-program-service
               predicates:
-                - Path=/api/employees/interns/**
+                - Path=/api/employees/interns, /api/employees/interns/**
               filters:
                 - RewritePath=/api/employees/interns(?<segment>/?.*), /api/interns$\{segment}
 
             - id: intern-and-program-service
               uri: lb://intern-and-program-service
               predicates:
-                - Path=/api/interns/**
+                - Path=/api/interns, /api/interns/**
 
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
               uri: lb://reporting-and-integration-service
               predicates:
-                - Path=/api/system/backups/**
+                - Path=/api/system/backups, /api/system/backups/**
 
             - id: reporting-audit-logs
               uri: lb://reporting-and-integration-service
               predicates:
-                - Path=/api/system/audit-logs/**
+                - Path=/api/system/audit-logs, /api/system/audit-logs/**
 
             # 4. Identity fallback cho /api/employees/**
             - id: identity-employees
