@@ -74,9 +74,14 @@ public class ProgramController {
         return ResponseEntity.ok(ApiResponse.success(programService.getPrograms(filter, pageable)));
     }
 
+    @Operation(summary = "Lấy danh sách các chương trình đang mở tuyển (Dành cho ứng viên & Card Frontend)")
+    @GetMapping("/programs/open")
+    public ResponseEntity<ApiResponse<List<ProgramSummaryResponse>>> getOpenPrograms() {
+        return ResponseEntity.ok(ApiResponse.success(programService.getOpenPrograms()));
+    }
+
     @Operation(summary = "Xem chi tiết chương trình thực tập (Chiếu DTO theo Role)")
     @GetMapping("/programs/{id}")
-    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<?>> getProgramDetail(
             @PathVariable Long id,
             Authentication authentication

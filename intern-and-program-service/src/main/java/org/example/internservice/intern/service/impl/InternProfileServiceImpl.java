@@ -95,53 +95,78 @@ public class InternProfileServiceImpl implements InternProfileService {
     @Override
     @Transactional
     public InternResponse applyOnline(ApplyInternRequest request) {
-        log.info("Bắt đầu xử lý nộp hồ sơ ứng tuyển trực tuyến: email={}, userId={}", request.getEmail(), request.getUserId());
+        log.info("Bắt đầu xử lý nộp hồ sơ ứng tuyển trực tuyến: email={}, userId={}, programId={}", 
+                request.getEmail(), request.getUserId(), request.getProgramId());
 
-        // 1. Kiểm tra nếu có userId, kiểm tra xem tài khoản này đã có hồ sơ đang xử lý chưa
+        if (request.getProgramId() == null) {
+            throw new BadRequestException("Vui lòng chọn chương trình thực tập ứng tuyển");
+        }
+
+        org.example.internservice.program.entity.InternshipProgram program = programRepository.findById(request.getProgramId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + request.getProgramId()));
+
+        if (program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.PLANNING 
+                && program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.OPEN) {
+            throw new BadRequestException("Chương trình thực tập không ở trạng thái mở nhận hồ sơ (" + program.getStatus().getDisplayName() + ")");
+        }
+
+        if (!Boolean.TRUE.equals(program.getIsRecruitmentOpen())) {
+            throw new BadRequestException("Chương trình thực tập hiện đang tạm dừng nhận hồ sơ tuyển sinh");
+        }
+
+        // 1. Kiểm tra nếu có userId, kiểm tra xem tài khoản này đã có hồ sơ đang xử lý trong chương trình này chưa
         if (request.getUserId() != null) {
-            boolean hasActiveApplication = internProfileRepository.existsByUserIdAndStatusIn(
+            boolean hasActiveApplication = internProfileRepository.existsByUserIdAndProgramIdAndStatusIn(
                     request.getUserId(),
+                    program.getId(),
                     List.of(InternStatus.PENDING, InternStatus.APPROVED, InternStatus.INTERNING)
             );
             if (hasActiveApplication) {
-                log.warn("Nộp hồ sơ thất bại: Tài khoản ID={} đã có hồ sơ đang chờ xét duyệt hoặc đang thực tập", request.getUserId());
-                throw new BadRequestException("Bạn đã có một hồ sơ đang chờ xét duyệt hoặc đang trong quá trình thực tập");
+                log.warn("Nộp hồ sơ thất bại: Tài khoản ID={} đã có hồ sơ đang chờ xét duyệt hoặc đang thực tập trong chương trình ID={}", 
+                        request.getUserId(), program.getId());
+                throw new BadRequestException("Bạn đã có một hồ sơ đang chờ xét duyệt hoặc đang thực tập trong chương trình này");
             }
         }
 
-        // 2. Kiểm tra nếu email đã có hồ sơ đang xử lý
-        boolean hasEmailInProcess = internProfileRepository.existsByEmailAndStatusIn(
-                request.getEmail().trim(),
+        // 2. Kiểm tra nếu email đã có hồ sơ đang xử lý trong cùng chương trình
+        boolean hasEmailInProgram = internProfileRepository.existsByEmailAndProgramIdAndStatusIn(
+                request.getEmail().trim().toLowerCase(),
+                program.getId(),
                 List.of(InternStatus.PENDING, InternStatus.APPROVED, InternStatus.INTERNING)
         );
-        if (hasEmailInProcess) {
-            log.warn("Nộp hồ sơ thất bại: Email {} đã có hồ sơ đang xử lý", request.getEmail());
-            throw new BadRequestException("Hồ sơ với email '" + request.getEmail() + "' đang chờ xét duyệt hoặc đang trong quá trình thực tập");
+        if (hasEmailInProgram) {
+            log.warn("Nộp hồ sơ thất bại: Email {} đã có hồ sơ đang xử lý trong chương trình ID={}", request.getEmail(), program.getId());
+            throw new BadRequestException("Hồ sơ với email '" + request.getEmail() + "' đang chờ xét duyệt hoặc đang thực tập trong chương trình này");
         }
 
-        // 3. Kiểm tra tính duy nhất của email và phone
-        if (internProfileRepository.existsByEmail(request.getEmail().trim())) {
-            throw new DuplicateResourceException("Email '" + request.getEmail() + "' đã tồn tại trong hệ thống");
+        // 3. Kiểm tra nếu số điện thoại đã có hồ sơ đang xử lý trong cùng chương trình
+        boolean hasPhoneInProgram = internProfileRepository.existsByPhoneAndProgramIdAndStatusIn(
+                request.getPhone().trim(),
+                program.getId(),
+                List.of(InternStatus.PENDING, InternStatus.APPROVED, InternStatus.INTERNING)
+        );
+        if (hasPhoneInProgram) {
+            log.warn("Nộp hồ sơ thất bại: Số điện thoại {} đã có hồ sơ đang xử lý trong chương trình ID={}", request.getPhone(), program.getId());
+            throw new BadRequestException("Hồ sơ với số điện thoại '" + request.getPhone() + "' đang chờ xét duyệt hoặc đang thực tập trong chương trình này");
         }
 
-        if (internProfileRepository.existsByPhone(request.getPhone().trim())) {
-            throw new DuplicateResourceException("Số điện thoại '" + request.getPhone() + "' đã tồn tại trong hệ thống");
-        }
+        // 4. Kế thừa ngày bắt đầu / kết thúc từ chương trình nếu ứng viên để trống
+        LocalDate effectiveStartDate = request.getStartDate() != null ? request.getStartDate() : program.getStartDate();
+        LocalDate effectiveEndDate = request.getEndDate() != null ? request.getEndDate() : program.getEndDate();
 
-        // 4. Validate ngày kết thúc nếu có
-        if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) {
+        if (effectiveStartDate != null && effectiveEndDate != null && effectiveEndDate.isBefore(effectiveStartDate)) {
             throw new BadRequestException("Ngày kết thúc thực tập không thể trước ngày bắt đầu");
         }
 
         // 5. Tự động sinh mã thực tập sinh
         String internCode = generateInternCode();
 
-        // 6. Tạo entity InternProfile
+        // 6. Tạo entity InternProfile liên kết với chương trình
         InternProfile profile = InternProfile.builder()
                 .userId(request.getUserId())
                 .internCode(internCode)
                 .fullName(request.getFullName().trim())
-                .email(request.getEmail().trim())
+                .email(request.getEmail().trim().toLowerCase())
                 .phone(request.getPhone().trim())
                 .dateOfBirth(request.getDateOfBirth())
                 .gender(request.getGender())
@@ -150,14 +175,16 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .major(request.getMajor().trim())
                 .academicYear(request.getAcademicYear() != null ? request.getAcademicYear().trim() : null)
                 .appliedPosition(request.getAppliedPosition().trim())
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
+                .startDate(effectiveStartDate)
+                .endDate(effectiveEndDate)
+                .program(program)
                 .status(InternStatus.PENDING)
                 .notes(request.getNotes() != null ? request.getNotes().trim() : null)
                 .build();
 
         InternProfile savedProfile = internProfileRepository.save(profile);
-        log.info("Nộp hồ sơ thành công cho ứng viên: internCode={}, ID={}", internCode, savedProfile.getId());
+        log.info("Nộp hồ sơ thành công cho ứng viên: internCode={}, ID={}, programId={}", 
+                internCode, savedProfile.getId(), program.getId());
 
         return mapToResponse(savedProfile);
     }
@@ -224,11 +251,15 @@ public class InternProfileServiceImpl implements InternProfileService {
         }
 
         if (request.getDecision() == InternStatus.APPROVED) {
-            if (request.getProgramId() == null) {
+            Long targetProgramId = request.getProgramId() != null 
+                    ? request.getProgramId() 
+                    : (profile.getProgram() != null ? profile.getProgram().getId() : null);
+
+            if (targetProgramId == null) {
                 throw new BadRequestException("Vui lòng chọn chương trình thực tập tiếp nhận khi duyệt hồ sơ");
             }
-            org.example.internservice.program.entity.InternshipProgram program = programRepository.findByIdWithLock(request.getProgramId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + request.getProgramId()));
+            org.example.internservice.program.entity.InternshipProgram program = programRepository.findByIdWithLock(targetProgramId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + targetProgramId));
 
             if (program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.PLANNING 
                     && program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.OPEN) {

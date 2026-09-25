@@ -65,7 +65,9 @@ public class ApplyInternRequest {
     @Size(max = 100, message = "Vị trí ứng tuyển không được vượt quá 100 ký tự")
     private String appliedPosition;
 
-    @NotNull(message = "Ngày bắt đầu thực tập không được để trống")
+    @NotNull(message = "Vui lòng chọn chương trình thực tập ứng tuyển")
+    private Long programId;
+
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate startDate;
 
