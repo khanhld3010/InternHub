@@ -57,6 +57,11 @@ public class InternProfileSpecification {
                 predicates.add(criteriaBuilder.equal(root.get("status"), request.getStatus()));
             }
 
+            // 6. Program filter (Exact match)
+            if (request.getProgramId() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("program").get("id"), request.getProgramId()));
+            }
+
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
     }

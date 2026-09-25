@@ -26,6 +26,9 @@ public class ProgramSummaryResponse {
     private LocalDate startDate;
     private LocalDate endDate;
     private Long durationWeeks;
+    private Integer maxInterns;
+    private Integer currentInterns;
+    private Boolean isRecruitmentOpen;
     private ProgramStatus status;
     private String statusDisplayName;
 
@@ -47,6 +50,9 @@ public class ProgramSummaryResponse {
                 .startDate(program.getStartDate())
                 .endDate(program.getEndDate())
                 .durationWeeks(weeks)
+                .maxInterns(program.getMaxInterns())
+                .currentInterns(program.getCurrentInterns())
+                .isRecruitmentOpen(program.getIsRecruitmentOpen())
                 .status(program.getStatus())
                 .statusDisplayName(program.getStatus() != null ? program.getStatus().getDisplayName() : null)
                 .build();

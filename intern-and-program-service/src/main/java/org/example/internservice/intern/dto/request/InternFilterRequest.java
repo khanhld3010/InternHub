@@ -19,4 +19,5 @@ public class InternFilterRequest {
     private String major;
     private String appliedPosition;
     private InternStatus status;
+    private Long programId;
 }
