@@ -20,6 +20,8 @@ public class InternDecisionRequest {
     @Size(max = 1000, message = "Lý do từ chối không được vượt quá 1000 ký tự")
     private String rejectionReason;
 
+    private Long programId;
+
     public boolean isValidDecision() {
         return decision == InternStatus.APPROVED || decision == InternStatus.REJECTED;
     }

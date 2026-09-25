@@ -39,6 +39,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,6 +49,9 @@ class InternProfileServiceTest {
 
     @Mock
     private InternProfileRepository internProfileRepository;
+
+    @Mock
+    private org.example.internservice.program.repository.InternshipProgramRepository programRepository;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -452,9 +456,20 @@ class InternProfileServiceTest {
         savedProfile.setRejectionReason("Previous rejection");
         InternDecisionRequest request = InternDecisionRequest.builder()
                 .decision(InternStatus.APPROVED)
+                .programId(10L)
                 .build();
 
+        org.example.internservice.program.entity.InternshipProgram program = org.example.internservice.program.entity.InternshipProgram.builder()
+                .name("Chương trình Java")
+                .status(org.example.internservice.program.entity.enums.ProgramStatus.OPEN)
+                .isRecruitmentOpen(true)
+                .maxInterns(10)
+                .build();
+        program.setId(10L);
+
         when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+        when(programRepository.findByIdWithLock(10L)).thenReturn(Optional.of(program));
+        when(internProfileRepository.countByProgramIdAndStatusIn(eq(10L), any())).thenReturn(5L);
         when(internProfileRepository.save(any(InternProfile.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         InternResponse response = internProfileService.processDecision(1L, request, "hr_admin");
@@ -464,6 +479,7 @@ class InternProfileServiceTest {
         assertThat(response.getRejectionReason()).isNull();
         assertThat(response.getReviewedBy()).isEqualTo("hr_admin");
         assertThat(response.getReviewedAt()).isNotNull();
+        assertThat(response.getProgramId()).isEqualTo(10L);
         verify(internProfileRepository).save(savedProfile);
         verify(eventPublisher).publishEvent(any(InternDecisionProcessedEvent.class));
     }
@@ -530,9 +546,20 @@ class InternProfileServiceTest {
         savedProfile.setStatus(InternStatus.COMPLETED);
         InternDecisionRequest request = InternDecisionRequest.builder()
                 .decision(InternStatus.APPROVED)
+                .programId(10L)
                 .build();
 
+        org.example.internservice.program.entity.InternshipProgram program = org.example.internservice.program.entity.InternshipProgram.builder()
+                .name("Chương trình Java")
+                .status(org.example.internservice.program.entity.enums.ProgramStatus.OPEN)
+                .isRecruitmentOpen(true)
+                .maxInterns(10)
+                .build();
+        program.setId(10L);
+
         when(internProfileRepository.findById(1L)).thenReturn(Optional.of(savedProfile));
+        when(programRepository.findByIdWithLock(10L)).thenReturn(Optional.of(program));
+        when(internProfileRepository.countByProgramIdAndStatusIn(eq(10L), any())).thenReturn(5L);
 
         assertThatThrownBy(() -> internProfileService.processDecision(1L, request, "hr_admin"))
                 .isInstanceOf(IllegalStateException.class)

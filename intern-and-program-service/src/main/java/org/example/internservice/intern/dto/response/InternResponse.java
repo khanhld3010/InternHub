@@ -42,6 +42,11 @@ public class InternResponse {
     private LocalDateTime emailSentAt;
     private Integer emailRetryCount;
     private LocalDateTime lastEmailSentAt;
+    private Long programId;
+    private String programCode;
+    private String programName;
+    private Boolean needsReassignment;
+    private String reassignmentReason;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

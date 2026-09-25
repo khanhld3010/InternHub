@@ -38,6 +38,16 @@ spring:
               predicates:
                 - Path=/api/interns, /api/interns/**
 
+            - id: program-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/programs/**
+
+            - id: department-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/departments/**
+
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
               uri: lb://reporting-and-integration-service

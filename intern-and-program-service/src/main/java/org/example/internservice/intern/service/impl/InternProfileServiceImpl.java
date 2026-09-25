@@ -50,6 +50,7 @@ public class InternProfileServiceImpl implements InternProfileService {
     private static final int DEFAULT_PAGE_SIZE = 10;
 
     private final InternProfileRepository internProfileRepository;
+    private final org.example.internservice.program.repository.InternshipProgramRepository programRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -222,6 +223,35 @@ public class InternProfileServiceImpl implements InternProfileService {
             throw new BadRequestException("Lý do từ chối là bắt buộc và phải có ít nhất 5 ký tự khi từ chối hồ sơ");
         }
 
+        if (request.getDecision() == InternStatus.APPROVED) {
+            if (request.getProgramId() == null) {
+                throw new BadRequestException("Vui lòng chọn chương trình thực tập tiếp nhận khi duyệt hồ sơ");
+            }
+            org.example.internservice.program.entity.InternshipProgram program = programRepository.findByIdWithLock(request.getProgramId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + request.getProgramId()));
+
+            if (program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.PLANNING 
+                    && program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.OPEN) {
+                throw new BadRequestException("Chương trình thực tập không ở trạng thái nhận hồ sơ (" + program.getStatus().getDisplayName() + ")");
+            }
+
+            if (!Boolean.TRUE.equals(program.getIsRecruitmentOpen())) {
+                throw new BadRequestException("Chương trình thực tập hiện đang tạm dừng nhận hồ sơ tuyển sinh");
+            }
+
+            long currentActive = internProfileRepository.countByProgramIdAndStatusIn(
+                    program.getId(), 
+                    List.of(InternStatus.APPROVED, InternStatus.INTERNING, InternStatus.COMPLETED)
+            );
+            if (currentActive >= program.getMaxInterns()) {
+                throw new BadRequestException("Chương trình đã đạt giới hạn chỉ tiêu tiếp nhận (" + program.getMaxInterns() + " TTS)");
+            }
+
+            profile.setProgram(program);
+            profile.setNeedsReassignment(false);
+            profile.setReassignmentReason(null);
+        }
+
         profile.applyDecision(request.getDecision(), request.getTrimmedRejectionReason(), reviewerUsername);
 
         InternProfile savedProfile = internProfileRepository.save(profile);
@@ -321,6 +351,11 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .emailSentAt(profile.getEmailSentAt())
                 .emailRetryCount(profile.getEmailRetryCount())
                 .lastEmailSentAt(profile.getLastEmailSentAt())
+                .programId(profile.getProgram() != null ? profile.getProgram().getId() : null)
+                .programCode(profile.getProgram() != null ? profile.getProgram().getProgramCode() : null)
+                .programName(profile.getProgram() != null ? profile.getProgram().getName() : null)
+                .needsReassignment(profile.getNeedsReassignment())
+                .reassignmentReason(profile.getReassignmentReason())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();
