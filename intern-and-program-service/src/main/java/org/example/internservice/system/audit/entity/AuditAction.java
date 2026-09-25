@@ -10,11 +10,13 @@ public enum AuditAction {
     CREATE_INTERN,
     UPDATE_INTERN,
     CHANGE_INTERN_STATUS,
+    APPLY_INTERN,
 
     // Document actions
     UPLOAD_DOCUMENT,
     REVIEW_DOCUMENT,
     DOWNLOAD_DOCUMENT,
+    UPLOAD_CONTRACT,
 
     // System actions
     TRIGGER_BACKUP,

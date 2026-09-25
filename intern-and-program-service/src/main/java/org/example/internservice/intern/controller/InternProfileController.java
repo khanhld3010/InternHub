@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.dto.response.ApiResponse;
 import org.example.internservice.common.dto.response.PageResponse;
+import org.example.internservice.intern.dto.request.ApplyInternRequest;
 import org.example.internservice.intern.dto.request.CreateInternRequest;
 import org.example.internservice.intern.dto.request.InternDecisionRequest;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
@@ -26,6 +27,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -36,10 +39,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/interns")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Intern Profile Controller", description = "Quản lý hồ sơ thực tập sinh và nộp hồ sơ ứng tuyển trực tuyến")
 public class InternProfileController {
 
     private final InternProfileService internProfileService;
 
+    @Operation(summary = "Tạo mới hồ sơ thực tập sinh (Dành cho HR)")
     @Auditable(action = AuditAction.CREATE_INTERN, module = AuditModule.INTERN, description = "Tạo mới hồ sơ thực tập sinh")
     @PostMapping
     public ResponseEntity<ApiResponse<InternResponse>> createIntern(@Valid @RequestBody CreateInternRequest request) {
@@ -47,6 +52,16 @@ public class InternProfileController {
         InternResponse response = internProfileService.createIntern(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Tạo hồ sơ thực tập sinh thành công", response));
+    }
+
+    @Operation(summary = "Nộp hồ sơ ứng tuyển trực tuyến (Public Endpoint - TM-10)")
+    @Auditable(action = AuditAction.APPLY_INTERN, module = AuditModule.INTERN, description = "Nộp hồ sơ ứng tuyển trực tuyến")
+    @PostMapping("/apply")
+    public ResponseEntity<ApiResponse<InternResponse>> applyOnline(@Valid @RequestBody ApplyInternRequest request) {
+        log.info("Nhận hồ sơ ứng tuyển trực tuyến: email={}, position={}", request.getEmail(), request.getAppliedPosition());
+        InternResponse response = internProfileService.applyOnline(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Nộp hồ sơ ứng tuyển thành công", response));
     }
 
     @Auditable(action = AuditAction.UPDATE_INTERN, module = AuditModule.INTERN, description = "Cập nhật thông tin hồ sơ thực tập sinh")

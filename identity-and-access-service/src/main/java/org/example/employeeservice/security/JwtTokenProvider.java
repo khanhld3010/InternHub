@@ -44,7 +44,7 @@ public class JwtTokenProvider {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtProperties.getExpiration());
 
-        String roleName = (account.getRole() != null) ? account.getRole().getName() : "USER";
+        String roleName = (account.getRole() != null) ? account.getRole().getName().toUpperCase() : "USER";
 
         return Jwts.builder()
                 .subject(account.getUsername())

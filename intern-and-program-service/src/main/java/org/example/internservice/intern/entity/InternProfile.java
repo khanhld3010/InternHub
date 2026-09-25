@@ -26,6 +26,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class InternProfile extends BaseEntity {
 
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "intern_code", unique = true, nullable = false, length = 50)
     private String internCode;
 
