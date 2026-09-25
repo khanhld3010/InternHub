@@ -71,6 +71,17 @@ public class InternProfile extends BaseEntity {
     @Builder.Default
     private InternStatus status = InternStatus.PENDING;
 
+    @jakarta.persistence.ManyToOne(fetch = jakarta.persistence.FetchType.LAZY)
+    @jakarta.persistence.JoinColumn(name = "program_id")
+    private org.example.internservice.program.entity.InternshipProgram program;
+
+    @Column(name = "needs_reassignment", nullable = false)
+    @Builder.Default
+    private Boolean needsReassignment = false;
+
+    @Column(name = "reassignment_reason", length = 255)
+    private String reassignmentReason;
+
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 

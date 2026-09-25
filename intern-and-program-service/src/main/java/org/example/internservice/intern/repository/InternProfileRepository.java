@@ -24,4 +24,12 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 
     java.util.List<InternProfile> findByEmailStatusAndLastEmailSentAtBefore(String emailStatus, LocalDateTime threshold);
+
+    long countByProgramId(Long programId);
+
+    long countByProgramIdAndStatusIn(Long programId, java.util.Collection<org.example.internservice.intern.entity.enums.InternStatus> statuses);
+
+    boolean existsByProgramIdAndStatusIn(Long programId, java.util.Collection<org.example.internservice.intern.entity.enums.InternStatus> statuses);
+
+    java.util.List<InternProfile> findByProgramId(Long programId);
 }
