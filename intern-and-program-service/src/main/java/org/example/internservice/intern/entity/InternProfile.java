@@ -74,9 +74,29 @@ public class InternProfile extends BaseEntity {
     @Builder.Default
     private InternStatus status = InternStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "candidate_type", length = 30)
+    @Builder.Default
+    private org.example.internservice.intern.entity.enums.CandidateType candidateType = org.example.internservice.intern.entity.enums.CandidateType.UNIVERSITY;
+
+    @Column(name = "desired_department_id")
+    private Long desiredDepartmentId;
+
+    @Column(name = "desired_department_name", length = 150)
+    private String desiredDepartmentName;
+
     @jakarta.persistence.ManyToOne(fetch = jakarta.persistence.FetchType.LAZY)
     @jakarta.persistence.JoinColumn(name = "program_id")
     private org.example.internservice.program.entity.InternshipProgram program;
+
+    @Column(name = "mentor_id")
+    private Long mentorId;
+
+    @Column(name = "mentor_name", length = 100)
+    private String mentorName;
+
+    @Column(name = "mentor_email", length = 100)
+    private String mentorEmail;
 
     @Column(name = "needs_reassignment", nullable = false)
     @Builder.Default
@@ -84,6 +104,13 @@ public class InternProfile extends BaseEntity {
 
     @Column(name = "reassignment_reason", length = 255)
     private String reassignmentReason;
+
+    @Column(name = "needs_mentor_reassignment", nullable = false)
+    @Builder.Default
+    private Boolean needsMentorReassignment = false;
+
+    @Column(name = "mentor_reassignment_reason", length = 255)
+    private String mentorReassignmentReason;
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;

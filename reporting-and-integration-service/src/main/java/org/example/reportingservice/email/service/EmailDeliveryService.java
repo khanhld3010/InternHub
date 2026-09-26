@@ -100,4 +100,89 @@ public class EmailDeliveryService {
             callbackClient.notifyStatusCallback(request.getInternProfileId(), "FAILED", emailLog.getErrorMessage(), request.getIdempotencyKey());
         }
     }
+
+    @Async
+    public void sendMentorAssignmentEmailsAsync(org.example.reportingservice.email.dto.request.SendMentorAssignmentEmailRequest request) {
+        log.info("Bat dau xu ly gui email mentor assignment async. Type: {}, internId: {}",
+                request.getEventType(), request.getInternProfileId());
+
+        String eventType = request.getEventType(); // ASSIGNED, REPLACED, REVOKED
+
+        // 1. Gửi cho Thực tập sinh
+        if (request.getInternEmail() != null && !request.getInternEmail().isBlank()) {
+            if ("ASSIGNED".equalsIgnoreCase(eventType) || "REPLACED".equalsIgnoreCase(eventType)) {
+                String sub = "[InternHub] Thông báo phân công Người hướng dẫn (Mentor)";
+                String content = emailTemplateBuilder.buildInternMentorAssignedEmail(
+                        request.getInternName(), request.getNewMentorName(), request.getNewMentorEmail(), request.getProgramName());
+                sendSingleEmail(request.getInternEmail(), request.getInternName(), sub, "INTERN_MENTOR_ASSIGNED", content, request.getInternProfileId());
+            } else if ("REVOKED".equalsIgnoreCase(eventType)) {
+                String sub = "[InternHub] Thông báo thay đổi Người hướng dẫn (Mentor)";
+                String content = emailTemplateBuilder.buildInternMentorRevokedEmail(
+                        request.getInternName(), request.getOldMentorName(), request.getReason());
+                sendSingleEmail(request.getInternEmail(), request.getInternName(), sub, "INTERN_MENTOR_REVOKED", content, request.getInternProfileId());
+            }
+        }
+
+        // 2. Gửi cho Mentor mới
+        if (request.getNewMentorEmail() != null && !request.getNewMentorEmail().isBlank()) {
+            String sub = "[InternHub] Tiếp nhận hướng dẫn thực tập sinh mới";
+            String content = emailTemplateBuilder.buildMentorNewAssignedEmail(
+                    request.getNewMentorName(), request.getInternName(), request.getInternEmail(),
+                    request.getInternCode(), request.getProgramName(), request.getAppliedPosition(), request.getNotes());
+            sendSingleEmail(request.getNewMentorEmail(), request.getNewMentorName(), sub, "MENTOR_NEW_ASSIGNED", content, request.getInternProfileId());
+        }
+
+        // 3. Gửi cho Mentor cũ khi REPLACED
+        if ("REPLACED".equalsIgnoreCase(eventType) && request.getOldMentorEmail() != null && !request.getOldMentorEmail().isBlank()) {
+            String sub = "[InternHub] Bàn giao hướng dẫn thực tập sinh";
+            String content = emailTemplateBuilder.buildMentorOldHandoverEmail(
+                    request.getOldMentorName(), request.getInternName(), request.getInternCode(),
+                    request.getNewMentorName(), request.getReason());
+            sendSingleEmail(request.getOldMentorEmail(), request.getOldMentorName(), sub, "MENTOR_HANDOVER", content, request.getInternProfileId());
+        }
+
+        // 4. Gửi cho Mentor cũ khi REVOKED
+        if ("REVOKED".equalsIgnoreCase(eventType) && request.getOldMentorEmail() != null && !request.getOldMentorEmail().isBlank()) {
+            String sub = "[InternHub] Kết thúc phụ trách thực tập sinh";
+            String content = emailTemplateBuilder.buildMentorRevokedEmail(
+                    request.getOldMentorName(), request.getInternName(), request.getInternCode(), request.getReason());
+            sendSingleEmail(request.getOldMentorEmail(), request.getOldMentorName(), sub, "MENTOR_REVOKED", content, request.getInternProfileId());
+        }
+    }
+
+    private void sendSingleEmail(String to, String toName, String subject, String templateCode, String htmlContent, Long refId) {
+        EmailLog emailLog = EmailLog.builder()
+                .referenceId(refId)
+                .recipientEmail(to)
+                .recipientName(toName)
+                .subject(subject)
+                .templateCode(templateCode)
+                .status(EmailStatus.PENDING)
+                .build();
+        emailLog = emailLogRepository.save(emailLog);
+
+        try {
+            if (mockMode || fromEmail == null || fromEmail.isBlank()) {
+                log.info("[MOCK EMAIL SENDER] Gui email toi {}. Subject: '{}'", to, subject);
+                Thread.sleep(300);
+            } else {
+                MimeMessage message = mailSender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+                helper.setFrom(fromEmail, companyName);
+                helper.setTo(to);
+                helper.setSubject(subject);
+                helper.setText(htmlContent, true);
+                mailSender.send(message);
+                log.info("Gui email SMTP thanh cong toi {}", to);
+            }
+            emailLog.setStatus(EmailStatus.SENT);
+            emailLog.setSentAt(LocalDateTime.now());
+            emailLogRepository.save(emailLog);
+        } catch (Exception e) {
+            log.error("Loi khi gui email toi {}: {}", to, e.getMessage());
+            emailLog.setStatus(EmailStatus.FAILED);
+            emailLog.setErrorMessage(e.getMessage());
+            emailLogRepository.save(emailLog);
+        }
+    }
 }

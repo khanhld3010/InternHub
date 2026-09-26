@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -127,6 +128,56 @@ public class InternProfileController {
         log.info("Nhan request tim kiem ho so thuc tap sinh");
         PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách hồ sơ thực tập sinh thành công", response));
+    }
+
+    @Operation(summary = "Lấy danh sách Mentor khả dụng để phân công (TM-16)")
+    @GetMapping("/mentors")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.List<org.example.internservice.intern.dto.response.MentorOptionResponse>>> getAvailableMentors() {
+        log.info("API: Lấy danh sách Mentor khả dụng");
+        java.util.List<org.example.internservice.intern.dto.response.MentorOptionResponse> response = internProfileService.getAvailableMentors();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách Mentor thành công", response));
+    }
+
+    @Operation(summary = "Phân công hoặc đổi Mentor cho thực tập sinh (TM-16)")
+    @Auditable(action = AuditAction.UPDATE_INTERN, module = AuditModule.INTERN, description = "Phân công hoặc thay đổi người hướng dẫn thực tập")
+    @PostMapping("/{id}/assign-mentor")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InternResponse>> assignMentor(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody org.example.internservice.intern.dto.request.AssignMentorRequest request,
+            Authentication authentication
+    ) {
+        String username = (authentication != null) ? authentication.getName() : "system";
+        log.info("API: Phân công Mentor cho TTS ID: {} bởi user: {}", id, username);
+        InternResponse response = internProfileService.assignMentor(id, request, username);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Phân công Mentor thành công", response));
+    }
+
+    @Operation(summary = "Thu hồi người hướng dẫn thực tập (TM-16)")
+    @Auditable(action = AuditAction.UPDATE_INTERN, module = AuditModule.INTERN, description = "Thu hồi người hướng dẫn thực tập")
+    @DeleteMapping("/{id}/mentor")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InternResponse>> revokeMentor(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody org.example.internservice.intern.dto.request.RevokeMentorRequest request,
+            Authentication authentication
+    ) {
+        String username = (authentication != null) ? authentication.getName() : "system";
+        log.info("API: Thu hồi Mentor của TTS ID: {} bởi user: {}", id, username);
+        InternResponse response = internProfileService.revokeMentor(id, request, username);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Thu hồi phân công Mentor thành công", response));
+    }
+
+    @Operation(summary = "Xem lịch sử phân công Mentor của thực tập sinh (TM-16)")
+    @GetMapping("/{id}/mentor-history")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<java.util.List<org.example.internservice.intern.dto.response.MentorAssignmentResponse>>> getMentorHistory(
+            @PathVariable("id") Long id
+    ) {
+        log.info("API: Xem lịch sử phân công Mentor của TTS ID: {}", id);
+        java.util.List<org.example.internservice.intern.dto.response.MentorAssignmentResponse> response = internProfileService.getMentorHistory(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy lịch sử phân công Mentor thành công", response));
     }
 }
 

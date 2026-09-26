@@ -178,6 +178,76 @@ public class EmailTemplateBuilder {
                 "</html>";
     }
 
+    public String buildInternMentorAssignedEmail(String internName, String mentorName, String mentorEmail, String programName) {
+        return "<!DOCTYPE html><html><body style=\"font-family: sans-serif; background-color: #f8fafc; padding: 20px;\">" +
+                "<div style=\"max-width: 600px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;\">" +
+                "<h2 style=\"color: #0f172a;\">Thông Báo Người Hướng Dẫn Kỹ Thuật (Mentor)</h2>" +
+                "<p>Xin chào <strong>" + escapeHtml(internName) + "</strong>,</p>" +
+                "<p>Ban Nhân sự xin thông báo bạn đã được phân công Người hướng dẫn (Mentor) chính thức thuộc chương trình <strong>" + escapeHtml(programName) + "</strong>.</p>" +
+                "<div style=\"background: #f1f5f9; padding: 16px; border-radius: 6px; margin: 16px 0;\">" +
+                "<p style=\"margin: 4px 0;\"><strong>Họ và tên Mentor:</strong> " + escapeHtml(mentorName) + "</p>" +
+                "<p style=\"margin: 4px 0;\"><strong>Email liên hệ:</strong> " + escapeHtml(mentorEmail) + "</p>" +
+                "</div>" +
+                "<p>Mentor sẽ trực tiếp hướng dẫn, giao việc và đánh giá kết quả thực tập của bạn. Hãy chủ động liên hệ với Mentor để chuẩn bị cho kỳ thực tập nhé!</p>" +
+                "<p style=\"color: #64748b; font-size: 13px; margin-top: 24px;\">Trân trọng,<br>" + escapeHtml(companyName) + "</p>" +
+                "</div></body></html>";
+    }
+
+    public String buildMentorNewAssignedEmail(String mentorName, String internName, String internEmail, String internCode, String programName, String position, String notes) {
+        return "<!DOCTYPE html><html><body style=\"font-family: sans-serif; background-color: #f8fafc; padding: 20px;\">" +
+                "<div style=\"max-width: 600px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;\">" +
+                "<h2 style=\"color: #0f172a;\">Thông Báo Tiếp Nhận Thực Tập Sinh Mới</h2>" +
+                "<p>Xin chào <strong>" + escapeHtml(mentorName) + "</strong>,</p>" +
+                "<p>Ban Nhân sự vừa phân công bạn phụ trách hướng dẫn thực tập sinh sau đây:</p>" +
+                "<div style=\"background: #f1f5f9; padding: 16px; border-radius: 6px; margin: 16px 0;\">" +
+                "<p style=\"margin: 4px 0;\"><strong>Họ và tên TTS:</strong> " + escapeHtml(internName) + " (" + escapeHtml(internCode) + ")</p>" +
+                "<p style=\"margin: 4px 0;\"><strong>Email TTS:</strong> " + escapeHtml(internEmail) + "</p>" +
+                "<p style=\"margin: 4px 0;\"><strong>Chương trình:</strong> " + escapeHtml(programName) + "</p>" +
+                "<p style=\"margin: 4px 0;\"><strong>Vị trí ứng tuyển:</strong> " + escapeHtml(position) + "</p>" +
+                (notes != null && !notes.isBlank() ? "<p style=\"margin: 4px 0;\"><strong>Ghi chú từ HR:</strong> " + escapeHtml(notes) + "</p>" : "") +
+                "</div>" +
+                "<p>Vui lòng đăng nhập vào hệ thống InternHub tại <a href=\"" + frontendUrl + "/mentor/dashboard\" style=\"color: #4f46e5;\">Mentor Portal</a> để xem chi tiết hồ sơ và chuẩn bị kế hoạch đào tạo.</p>" +
+                "<p style=\"color: #64748b; font-size: 13px; margin-top: 24px;\">Trân trọng,<br>" + escapeHtml(companyName) + "</p>" +
+                "</div></body></html>";
+    }
+
+    public String buildMentorOldHandoverEmail(String oldMentorName, String internName, String internCode, String newMentorName, String reason) {
+        return "<!DOCTYPE html><html><body style=\"font-family: sans-serif; background-color: #f8fafc; padding: 20px;\">" +
+                "<div style=\"max-width: 600px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;\">" +
+                "<h2 style=\"color: #0f172a;\">Thông Báo Bàn Giao Hướng Dẫn Thực Tập Sinh</h2>" +
+                "<p>Xin chào <strong>" + escapeHtml(oldMentorName) + "</strong>,</p>" +
+                "<p>Ban Nhân sự xin thông báo thực tập sinh <strong>" + escapeHtml(internName) + "</strong> (" + escapeHtml(internCode) + ") đã được điều chuyển sang người hướng dẫn mới (" + escapeHtml(newMentorName) + ").</p>" +
+                (reason != null && !reason.isBlank() ? "<div style=\"background: #fff1f2; border-left: 3px solid #f43f5e; padding: 12px; margin: 16px 0; color: #9f1239;\"><strong>Lý do thay đổi:</strong> " + escapeHtml(reason) + "</div>" : "") +
+                "<p>Cảm ơn bạn đã đồng hành và hỗ trợ thực tập sinh trong thời gian qua.</p>" +
+                "<p style=\"color: #64748b; font-size: 13px; margin-top: 24px;\">Trân trọng,<br>" + escapeHtml(companyName) + "</p>" +
+                "</div></body></html>";
+    }
+
+    public String buildMentorRevokedEmail(String oldMentorName, String internName, String internCode, String reason) {
+        return "<!DOCTYPE html><html><body style=\"font-family: sans-serif; background-color: #f8fafc; padding: 20px;\">" +
+                "<div style=\"max-width: 600px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;\">" +
+                "<h2 style=\"color: #0f172a;\">Thông Báo Kết Thúc Phụ Trách Thực Tập Sinh</h2>" +
+                "<p>Xin chào <strong>" + escapeHtml(oldMentorName) + "</strong>,</p>" +
+                "<p>Ban Nhân sự xin thông báo bạn đã được thu hồi phân công hướng dẫn đối với thực tập sinh <strong>" + escapeHtml(internName) + "</strong> (" + escapeHtml(internCode) + ").</p>" +
+                (reason != null && !reason.isBlank() ? "<div style=\"background: #fff1f2; border-left: 3px solid #f43f5e; padding: 12px; margin: 16px 0; color: #9f1239;\"><strong>Lý do:</strong> " + escapeHtml(reason) + "</div>" : "") +
+                "<p style=\"color: #64748b; font-size: 13px; margin-top: 24px;\">Trân trọng,<br>" + escapeHtml(companyName) + "</p>" +
+                "</div></body></html>";
+    }
+
+    public String buildInternMentorRevokedEmail(String internName, String oldMentorName, String reason) {
+        return "<!DOCTYPE html><html><body style=\"font-family: sans-serif; background-color: #f8fafc; padding: 20px;\">" +
+                "<div style=\"max-width: 600px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0;\">" +
+                "<h2 style=\"color: #0f172a;\">Thông Báo Thay Đổi Người Hướng Dẫn (Mentor)</h2>" +
+                "<p>Xin chào <strong>" + escapeHtml(internName) + "</strong>,</p>" +
+                "<p>Ban Nhân sự xin thông báo: Người hướng dẫn <strong>" + escapeHtml(oldMentorName != null && !oldMentorName.isBlank() ? oldMentorName : "hiện tại") + "</strong> đã kết thúc phụ trách hướng dẫn bạn.</p>" +
+                (reason != null && !reason.isBlank() ? "<div style=\"background: #fff1f2; border-left: 3px solid #f43f5e; padding: 12px; margin: 16px 0; color: #9f1239;\"><strong>Lý do thay đổi:</strong> " + escapeHtml(reason) + "</div>" : "") +
+                "<div style=\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin: 16px 0;\">" +
+                "<p style=\"margin: 0; color: #334155; font-size: 14px;\">Ban Nhân sự đang tiến hành sắp xếp Người hướng dẫn mới phù hợp cho bạn trong thời gian sớm nhất. Lịch trình và thông tin Mentor mới sẽ được cập nhật trực tiếp trên hệ thống InternHub.</p>" +
+                "</div>" +
+                "<p style=\"color: #64748b; font-size: 13px; margin-top: 24px;\">Trân trọng,<br>" + escapeHtml(companyName) + "</p>" +
+                "</div></body></html>";
+    }
+
     private String escapeHtml(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;")

@@ -45,4 +45,22 @@ public class IntegrationEmailClient {
             // Khong nem exception de tranh rollback giao dich duyet ho so cua HR
         }
     }
+
+    public void sendMentorAssignmentEmail(Map<String, Object> payload) {
+        String url = reportingServiceUrl + "/api/integration/emails/mentor-assignment";
+        log.info("Gui yeu cau mentor assignment email sang ReportingService tai URL: {}, payload: {}", url, payload);
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Call", "true");
+
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
+            restTemplate.postForEntity(url, requestEntity, Void.class);
+            log.info("Gui yeu cau mentor assignment email thanh cong cho internProfileId: {}", payload.get("internProfileId"));
+        } catch (Exception e) {
+            log.warn("Khong the ket noi toi ReportingService ({}) cho mentor assignment internProfileId: {}. Loi: {}",
+                    url, payload.get("internProfileId"), e.getMessage());
+        }
+    }
 }

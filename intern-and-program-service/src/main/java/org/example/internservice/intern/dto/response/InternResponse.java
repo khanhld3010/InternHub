@@ -45,8 +45,16 @@ public class InternResponse {
     private Long programId;
     private String programCode;
     private String programName;
+    private org.example.internservice.intern.entity.enums.CandidateType candidateType;
+    private Long desiredDepartmentId;
+    private String desiredDepartmentName;
+    private Long mentorId;
+    private String mentorName;
+    private String mentorEmail;
     private Boolean needsReassignment;
     private String reassignmentReason;
+    private Boolean needsMentorReassignment;
+    private String mentorReassignmentReason;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

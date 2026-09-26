@@ -35,6 +35,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -51,6 +52,9 @@ public class InternProfileServiceImpl implements InternProfileService {
 
     private final InternProfileRepository internProfileRepository;
     private final org.example.internservice.program.repository.InternshipProgramRepository programRepository;
+    private final org.example.internservice.intern.repository.InternMentorAssignmentRepository internMentorAssignmentRepository;
+    private final org.example.internservice.program.repository.DepartmentRepository departmentRepository;
+    private final org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -354,18 +358,295 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .programId(profile.getProgram() != null ? profile.getProgram().getId() : null)
                 .programCode(profile.getProgram() != null ? profile.getProgram().getProgramCode() : null)
                 .programName(profile.getProgram() != null ? profile.getProgram().getName() : null)
+                .candidateType(profile.getCandidateType())
+                .desiredDepartmentId(profile.getDesiredDepartmentId())
+                .desiredDepartmentName(profile.getDesiredDepartmentName())
+                .mentorId(profile.getMentorId())
+                .mentorName(profile.getMentorName())
+                .mentorEmail(profile.getMentorEmail())
                 .needsReassignment(profile.getNeedsReassignment())
                 .reassignmentReason(profile.getReassignmentReason())
+                .needsMentorReassignment(profile.getNeedsMentorReassignment())
+                .mentorReassignmentReason(profile.getMentorReassignmentReason())
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();
     }
 
     @Override
+    @Transactional
+    public InternResponse assignMentor(Long id, org.example.internservice.intern.dto.request.AssignMentorRequest request, String assignedBy) {
+        log.info("HR {} thực hiện phân công Mentor cho TTS ID: {}", assignedBy, id);
+        InternProfile intern = internProfileRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với ID: " + id));
+
+        // 1. Chặn nếu chưa có program hoặc program đang chờ điều phối lại
+        if (Boolean.TRUE.equals(intern.getNeedsReassignment()) || intern.getProgram() == null) {
+            throw new IllegalArgumentException("Không thể phân công Mentor cho thực tập sinh đang chờ điều phối chương trình thực tập. Vui lòng xếp chương trình mới trước.");
+        }
+
+        // 2. Chỉ cho phép gán mentor khi ở trạng thái APPROVED hoặc INTERNING
+        if (intern.getStatus() != InternStatus.APPROVED && intern.getStatus() != InternStatus.INTERNING) {
+            throw new IllegalStateException("Chỉ có thể phân công Mentor cho hồ sơ đã được duyệt (APPROVED) hoặc đang thực tập (INTERNING). Trạng thái hiện tại: " + intern.getStatus());
+        }
+
+        // 3. Tìm thông tin Mentor từ Identity Service
+        List<Map<String, Object>> users = identityServiceClient.getAllUsers();
+        Map<String, Object> mentorUser = users.stream()
+                .filter(u -> {
+                    Object uid = u.get("id");
+                    return uid != null && Long.valueOf(uid.toString()).equals(request.getMentorId());
+                })
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông tin Mentor với ID: " + request.getMentorId()));
+
+        String mentorRole = (String) mentorUser.get("role");
+        String mentorStatus = (String) mentorUser.get("status");
+        if (!"MENTOR".equalsIgnoreCase(mentorRole)) {
+            throw new IllegalArgumentException("Người dùng được chọn không có vai trò MENTOR");
+        }
+        if (!"ACTIVE".equalsIgnoreCase(mentorStatus)) {
+            throw new IllegalArgumentException("Tài khoản Mentor đang bị vô hiệu hóa hoặc không hoạt động");
+        }
+
+        String mentorFullName = (String) mentorUser.get("fullName");
+        String mentorEmail = (String) mentorUser.get("email");
+
+        Long oldMentorId = intern.getMentorId();
+        String oldMentorName = intern.getMentorName();
+        String oldMentorEmail = intern.getMentorEmail();
+        boolean isReplacing = oldMentorId != null;
+
+        // 4. Xử lý trường hợp Thay thế Mentor cũ
+        if (isReplacing) {
+            if (request.getReplaceReason() == null || request.getReplaceReason().trim().isEmpty()) {
+                throw new IllegalArgumentException("Vui lòng nhập lý do thay đổi người hướng dẫn");
+            }
+
+            // Đóng bản ghi phân công cũ sang REPLACED
+            internMentorAssignmentRepository.findByInternIdAndStatus(intern.getId(), org.example.internservice.intern.entity.enums.MentorAssignmentStatus.ACTIVE)
+                    .ifPresent(oldAssignment -> {
+                        oldAssignment.setStatus(org.example.internservice.intern.entity.enums.MentorAssignmentStatus.REPLACED);
+                        oldAssignment.setRevokedAt(LocalDateTime.now());
+                        oldAssignment.setRevocationReason(request.getReplaceReason().trim());
+                        internMentorAssignmentRepository.save(oldAssignment);
+                    });
+        }
+
+        // 5. Tạo bản ghi phân công mới ACTIVE
+        org.example.internservice.intern.entity.InternMentorAssignment newAssignment = org.example.internservice.intern.entity.InternMentorAssignment.builder()
+                .intern(intern)
+                .mentorId(request.getMentorId())
+                .mentorName(mentorFullName)
+                .mentorEmail(mentorEmail)
+                .assignedBy(assignedBy)
+                .assignedAt(LocalDateTime.now())
+                .status(org.example.internservice.intern.entity.enums.MentorAssignmentStatus.ACTIVE)
+                .notes(request.getNotes())
+                .build();
+        internMentorAssignmentRepository.save(newAssignment);
+
+        // 6. Cập nhật hồ sơ InternProfile
+        intern.setMentorId(request.getMentorId());
+        intern.setMentorName(mentorFullName);
+        intern.setMentorEmail(mentorEmail);
+        intern.setNeedsMentorReassignment(false);
+        intern.setMentorReassignmentReason(null);
+
+        // 7. Cơ chế điều kiện kép: Chuyển APPROVED sang INTERNING nếu Program đã ONGOING
+        if (intern.getStatus() == InternStatus.APPROVED && intern.getProgram() != null && intern.getProgram().getStatus() == org.example.internservice.program.entity.enums.ProgramStatus.ONGOING) {
+            intern.setStatus(InternStatus.INTERNING);
+            log.info("TTS {} ({}) thỏa mãn điều kiện kép -> Tự động chuyển APPROVED -> INTERNING", intern.getFullName(), intern.getInternCode());
+        }
+
+        InternProfile saved = internProfileRepository.save(intern);
+
+        // Bắn sự kiện gửi email 3 chiều (Intern, New Mentor, Old Mentor)
+        try {
+            eventPublisher.publishEvent(new org.example.internservice.intern.event.InternMentorAssignedEvent(
+                    this,
+                    saved.getId(),
+                    saved.getInternCode(),
+                    saved.getFullName(),
+                    saved.getEmail(),
+                    saved.getProgram() != null ? saved.getProgram().getName() : "Chương trình thực tập",
+                    saved.getAppliedPosition(),
+                    isReplacing ? "REPLACED" : "ASSIGNED",
+                    request.getMentorId(),
+                    mentorFullName,
+                    mentorEmail,
+                    oldMentorId,
+                    oldMentorName,
+                    oldMentorEmail,
+                    request.getReplaceReason(),
+                    request.getNotes(),
+                    assignedBy
+            ));
+        } catch (Exception e) {
+            log.warn("Loi phat su kien gui email mentor: {}", e.getMessage());
+        }
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public InternResponse revokeMentor(Long id, org.example.internservice.intern.dto.request.RevokeMentorRequest request, String revokedBy) {
+        log.info("HR {} thực hiện thu hồi Mentor của TTS ID: {}", revokedBy, id);
+        InternProfile intern = internProfileRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với ID: " + id));
+
+        if (intern.getMentorId() == null) {
+            throw new IllegalStateException("Thực tập sinh hiện tại chưa được phân công Mentor để thu hồi");
+        }
+
+        if (request.getReason() == null || request.getReason().trim().isEmpty()) {
+            throw new IllegalArgumentException("Lý do thu hồi người hướng dẫn không được để trống");
+        }
+
+        Long oldMentorId = intern.getMentorId();
+        String oldMentorName = intern.getMentorName();
+        String oldMentorEmail = intern.getMentorEmail();
+
+        // Chuyển bản ghi assignment sang REVOKED
+        internMentorAssignmentRepository.findByInternIdAndStatus(intern.getId(), org.example.internservice.intern.entity.enums.MentorAssignmentStatus.ACTIVE)
+                .ifPresent(assignment -> {
+                    assignment.setStatus(org.example.internservice.intern.entity.enums.MentorAssignmentStatus.REVOKED);
+                    assignment.setRevokedAt(LocalDateTime.now());
+                    assignment.setRevocationReason(request.getReason().trim());
+                    internMentorAssignmentRepository.save(assignment);
+                });
+
+        intern.setMentorId(null);
+        intern.setMentorName(null);
+        intern.setMentorEmail(null);
+        intern.setNeedsMentorReassignment(true);
+        intern.setMentorReassignmentReason(request.getReason().trim());
+
+        InternProfile saved = internProfileRepository.save(intern);
+
+        // Bắn sự kiện gửi email thu hồi cho Mentor cũ và TTS
+        try {
+            eventPublisher.publishEvent(new org.example.internservice.intern.event.InternMentorAssignedEvent(
+                    this,
+                    saved.getId(),
+                    saved.getInternCode(),
+                    saved.getFullName(),
+                    saved.getEmail(),
+                    saved.getProgram() != null ? saved.getProgram().getName() : "Chương trình thực tập",
+                    saved.getAppliedPosition(),
+                    "REVOKED",
+                    null,
+                    null,
+                    null,
+                    oldMentorId,
+                    oldMentorName,
+                    oldMentorEmail,
+                    request.getReason(),
+                    null,
+                    revokedBy
+            ));
+        } catch (Exception e) {
+            log.warn("Loi phat su kien gui email thu hoi mentor: {}", e.getMessage());
+        }
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    public List<org.example.internservice.intern.dto.response.MentorAssignmentResponse> getMentorHistory(Long id) {
+        return internMentorAssignmentRepository.findByInternIdOrderByAssignedAtDesc(id).stream()
+                .map(a -> org.example.internservice.intern.dto.response.MentorAssignmentResponse.builder()
+                        .id(a.getId())
+                        .internId(a.getIntern() != null ? a.getIntern().getId() : null)
+                        .mentorId(a.getMentorId())
+                        .mentorName(a.getMentorName())
+                        .mentorEmail(a.getMentorEmail())
+                        .assignedBy(a.getAssignedBy())
+                        .assignedAt(a.getAssignedAt())
+                        .status(a.getStatus())
+                        .notes(a.getNotes())
+                        .revokedAt(a.getRevokedAt())
+                        .revocationReason(a.getRevocationReason())
+                        .build())
+                .toList();
+    }
+
+    @Override
+    public List<org.example.internservice.intern.dto.response.MentorOptionResponse> getAvailableMentors() {
+        List<Map<String, Object>> users = identityServiceClient.getAllUsers();
+        List<org.example.internservice.program.entity.Department> departments = departmentRepository.findAll();
+
+        return users.stream()
+                .filter(u -> "MENTOR".equalsIgnoreCase((String) u.get("role")) && "ACTIVE".equalsIgnoreCase((String) u.get("status")))
+                .map(u -> {
+                    Long mentorId = Long.valueOf(u.get("id").toString());
+                    long activeCount = internProfileRepository.countByMentorIdAndStatus(mentorId, InternStatus.INTERNING);
+
+                    // Map phong ban dua vao email hoac id de co Mentor rieng cho tung phong ban
+                    Long deptId = 1L;
+                    String deptName = "Trung tâm Phát triển Phần mềm";
+                    String deptCode = "IT-DEV";
+                    String email = u.get("email") != null ? u.get("email").toString().toLowerCase() : "";
+
+                    if (!departments.isEmpty()) {
+                        org.example.internservice.program.entity.Department matchedDept = null;
+                        if (email.contains("qa")) {
+                            matchedDept = departments.stream().filter(d -> "QA".equalsIgnoreCase(d.getCode())).findFirst().orElse(null);
+                        } else if (email.contains("sec")) {
+                            matchedDept = departments.stream().filter(d -> "SEC".equalsIgnoreCase(d.getCode())).findFirst().orElse(null);
+                        } else if (email.contains("hr")) {
+                            matchedDept = departments.stream().filter(d -> "HR-TD".equalsIgnoreCase(d.getCode())).findFirst().orElse(null);
+                        } else {
+                            matchedDept = departments.stream().filter(d -> "IT-DEV".equalsIgnoreCase(d.getCode())).findFirst().orElse(null);
+                        }
+
+                        if (matchedDept == null) {
+                            int idx = (int) (mentorId % departments.size());
+                            matchedDept = departments.get(idx);
+                        }
+
+                        if (matchedDept != null) {
+                            deptId = matchedDept.getId();
+                            deptName = matchedDept.getName();
+                            deptCode = matchedDept.getCode();
+                        }
+                    }
+
+                    return org.example.internservice.intern.dto.response.MentorOptionResponse.builder()
+                            .id(mentorId)
+                            .fullName((String) u.get("fullName"))
+                            .email((String) u.get("email"))
+                            .phone((String) u.get("phone"))
+                            .departmentId(deptId)
+                            .departmentName(deptName)
+                            .departmentCode(deptCode)
+                            .status((String) u.get("status"))
+                            .activeInternCount(activeCount)
+                            .build();
+                })
+                .toList();
+    }
+
+    @Override
     public PageResponse<InternResponse> searchInterns(InternFilterRequest request, Pageable pageable) {
         log.info("Tim kiem va loc ho so thuc tap sinh");
         Pageable sanitizedPageable = sanitizePageable(pageable);
-        Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request);
+
+        // Bảo mật cấp API: Tự động ép lọc theo mentorId nếu người gọi là ROLE_MENTOR
+        Long enforceMentorId = null;
+        org.springframework.security.core.Authentication authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof org.example.internservice.security.CustomUserDetails userDetails) {
+            boolean isMentor = userDetails.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_MENTOR") || a.getAuthority().equalsIgnoreCase("MENTOR"));
+            if (isMentor) {
+                enforceMentorId = userDetails.getUserId();
+                log.info("Phát hiện tài khoản Mentor [id={}, user={}]. Tự động giới hạn dữ liệu chỉ hiển thị TTS do mentor này phụ trách.",
+                        enforceMentorId, userDetails.getUsername());
+            }
+        }
+
+        Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request, enforceMentorId);
         Page<InternProfile> internPage = internProfileRepository.findAll(spec, sanitizedPageable);
         return PageResponse.from(internPage, this::mapToResponse);
     }
