@@ -47,4 +47,53 @@ public class IdentityServiceClient {
         }
         return Collections.emptyList();
     }
+
+    public Long findUserIdByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        try {
+            List<Map<String, Object>> users = getAllUsers();
+            for (Map<String, Object> u : users) {
+                Object uEmail = u.get("email");
+                Object uUsername = u.get("username");
+                if ((uEmail != null && email.equalsIgnoreCase(uEmail.toString())) ||
+                    (uUsername != null && email.equalsIgnoreCase(uUsername.toString()))) {
+                    Object idVal = u.get("id");
+                    if (idVal != null) {
+                        return Long.valueOf(idVal.toString());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Không thể tra cứu userId theo email '{}': {}", email, e.getMessage());
+        }
+        return null;
+    }
+
+    public Map<String, Object> createUserAccount(Map<String, Object> registerRequest) {
+        String url = identityServiceUrl + "/api/auth/register";
+        log.info("Gọi sang identity-service để tạo tài khoản mới: url={}, username={}", url, registerRequest.get("username"));
+        try {
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Call", "true");
+
+            org.springframework.http.HttpEntity<Map<String, Object>> requestEntity = new org.springframework.http.HttpEntity<>(registerRequest, headers);
+            ResponseEntity<ApiResponse<Map<String, Object>>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    requestEntity,
+                    new ParameterizedTypeReference<ApiResponse<Map<String, Object>>>() {}
+            );
+
+            if (response.getBody() != null && response.getBody().getData() != null) {
+                return response.getBody().getData();
+            }
+        } catch (Exception e) {
+            log.error("Lỗi khi gọi sang identity-service để tạo tài khoản: {}", e.getMessage());
+            throw new RuntimeException("Không thể tạo tài khoản người dùng trên Identity Service: " + e.getMessage(), e);
+        }
+        throw new RuntimeException("Tạo tài khoản không thành công, không nhận được phản hồi hợp lệ");
+    }
 }

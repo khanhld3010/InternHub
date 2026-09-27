@@ -185,4 +185,24 @@ public class EmailDeliveryService {
             emailLogRepository.save(emailLog);
         }
     }
+
+    @Async
+    public void sendMentorOnboardingEmailAsync(org.example.reportingservice.email.dto.request.SendMentorOnboardingEmailRequest request) {
+        log.info("Bat dau gui email thu moi Mentor async cho ID: {}, email: {}", request.getMentorProfileId(), request.getEmail());
+        String subject = "[InternHub] Thư mời gia nhập đội ngũ Người Hướng Dẫn Kỹ Thuật (Mentor)";
+        String htmlContent = emailTemplateBuilder.buildMentorOnboardingEmail(
+                request.getFullName(),
+                request.getDepartmentName(),
+                request.getOnboardingToken()
+        );
+
+        sendSingleEmail(
+                request.getEmail(),
+                request.getFullName(),
+                subject,
+                "MENTOR_ONBOARDING_INVITATION",
+                htmlContent,
+                request.getMentorProfileId()
+        );
+    }
 }

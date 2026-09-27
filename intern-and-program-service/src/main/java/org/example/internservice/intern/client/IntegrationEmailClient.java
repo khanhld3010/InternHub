@@ -63,4 +63,22 @@ public class IntegrationEmailClient {
                     url, payload.get("internProfileId"), e.getMessage());
         }
     }
+
+    public void sendMentorOnboardingEmail(Map<String, Object> payload) {
+        String url = reportingServiceUrl + "/api/integration/emails/mentor-onboarding";
+        log.info("Gui yeu cau mentor onboarding email sang ReportingService tai URL: {}, email: {}", url, payload.get("email"));
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Call", "true");
+
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
+            restTemplate.postForEntity(url, requestEntity, Void.class);
+            log.info("Gui yeu cau mentor onboarding email thanh cong cho email: {}", payload.get("email"));
+        } catch (Exception e) {
+            log.warn("Khong the ket noi toi ReportingService ({}) cho mentor onboarding email: {}. Loi: {}",
+                    url, payload.get("email"), e.getMessage());
+        }
+    }
 }

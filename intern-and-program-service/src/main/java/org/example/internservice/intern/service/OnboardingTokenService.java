@@ -22,14 +22,19 @@ public class OnboardingTokenService {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateOnboardingToken(Long internId, String email, String fullName) {
+    public String generateOnboardingToken(Long targetId, String email, String fullName) {
+        return generateOnboardingToken(targetId, email, fullName, "INTERN");
+    }
+
+    public String generateOnboardingToken(Long targetId, String email, String fullName, String role) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
-                .subject(String.valueOf(internId))
+                .subject(String.valueOf(targetId))
                 .claim("email", email)
                 .claim("fullName", fullName)
+                .claim("role", role != null ? role.toUpperCase() : "INTERN")
                 .claim("type", "ONBOARDING_ACTIVATION")
                 .issuedAt(now)
                 .expiration(expiryDate)

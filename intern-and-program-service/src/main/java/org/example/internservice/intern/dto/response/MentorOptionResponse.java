@@ -22,4 +22,6 @@ public class MentorOptionResponse {
     private String departmentCode;
     private String status;
     private Long activeInternCount;
+    private Long interningCount;
+    private Long assignedPendingStartCount;
 }
