@@ -24,5 +24,21 @@ public interface InternProfileService {
     void updateEmailStatus(Long id, String status, String errorMessage);
 
     PageResponse<InternResponse> searchInterns(InternFilterRequest request, Pageable pageable);
+
+    InternResponse assignMentor(Long id, org.example.internservice.intern.dto.request.AssignMentorRequest request, String assignedBy);
+
+    InternResponse revokeMentor(Long id, org.example.internservice.intern.dto.request.RevokeMentorRequest request, String revokedBy);
+
+    java.util.List<org.example.internservice.intern.dto.response.MentorAssignmentResponse> getMentorHistory(Long id);
+
+    java.util.List<org.example.internservice.intern.dto.response.MentorOptionResponse> getAvailableMentors();
+
+    java.util.List<InternResponse> getInternsByMentorId(Long mentorId);
+    
+    InternResponse getMyProfileByUserId(Long userId);
+
+    org.example.internservice.intern.dto.response.MentorOptionResponse createMentor(org.example.internservice.intern.dto.request.CreateMentorRequest request);
+
+    java.util.Map<String, Object> resendMentorInvitation(Long mentorId);
 }
 

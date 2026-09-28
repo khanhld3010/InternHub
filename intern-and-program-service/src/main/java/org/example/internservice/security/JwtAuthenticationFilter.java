@@ -11,7 +11,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -41,6 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(jwt) && jwtTokenProvider.validateToken(jwt)) {
                 String username = jwtTokenProvider.getUsernameFromToken(jwt);
                 String role = jwtTokenProvider.getRoleFromToken(jwt);
+                Long userId = jwtTokenProvider.getUserIdFromToken(jwt);
 
                 List<GrantedAuthority> authorities = Collections.emptyList();
                 if (StringUtils.hasText(role)) {
@@ -49,7 +49,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authorities = Collections.singletonList(new SimpleGrantedAuthority(authorityName));
                 }
 
-                UserDetails userDetails = new User(username, "", authorities);
+                UserDetails userDetails = CustomUserDetails.builder()
+                        .userId(userId)
+                        .username(username)
+                        .role(role)
+                        .authorities(authorities)
+                        .build();
+
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,

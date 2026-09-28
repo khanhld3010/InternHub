@@ -40,4 +40,10 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
     boolean existsByProgramIdAndStatusIn(Long programId, java.util.Collection<org.example.internservice.intern.entity.enums.InternStatus> statuses);
 
     java.util.List<InternProfile> findByProgramId(Long programId);
+
+    long countByMentorIdAndStatus(Long mentorId, InternStatus status);
+
+    java.util.List<InternProfile> findByProgramIdAndStatusAndMentorIdIsNotNull(Long programId, InternStatus status);
+
+    java.util.List<InternProfile> findByMentorId(Long mentorId);
 }
