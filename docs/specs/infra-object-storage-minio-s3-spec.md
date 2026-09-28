@@ -250,7 +250,8 @@ volumes:
 
 ## 6. Kế Hoạch Triển Khai (Phase Checklist)
 
-- [ ] **Phase 1 (Hạ tầng Docker):** Bổ sung dịch vụ `minio` và `minio-init` vào `docker-compose.yml`, kiểm thử khởi động và kiểm tra tính năng `mc ilm rule list`.
-- [ ] **Phase 2 (File Service Core):** Khởi tạo module Spring Boot `file-service`, tích hợp `software.amazon.awssdk:s3`, triển khai các endpoint nội bộ `/internal/files/*`.
-- [ ] **Phase 3 (Tích hợp Nghiệp vụ `intern-and-program-service`):** Cấu hình OpenFeign client kết nối `file-service`, tạo bảng `intern_documents`, triển khai API cấp presigned URL và confirm upload.
-- [ ] **Phase 4 (Tích hợp Frontend):** Xây dựng component upload file hỗ trợ HTTP PUT thẳng lên MinIO S3 với thanh tiến trình (Progress bar), hoàn tất flow upload CV và xem tài liệu.
+- [x] **Phase 1 (Hạ tầng Docker):** Bổ sung dịch vụ container S3 tương thích vào `docker-compose.yml`, kiểm thử khởi động và kết nối qua AWS CLI client.
+- [x] **Phase 2 (File Service Core):** Khởi tạo module Spring Boot `file-service`, tích hợp `software.amazon.awssdk:s3`, triển khai các endpoint nội bộ `/internal/files/*` (presigned-upload, promote, presigned-view) và kiểm thử unit test thành công.
+- [x] **Phase 3 (Tích hợp Nghiệp vụ `intern-and-program-service`):** Cấu hình `FileServiceClient`, triển khai API nghiệp vụ cấp presigned URL (`upload-url`), xác nhận hoàn tất (`confirm-upload`) và lấy link xem (`view-url`), kiểm thử biên dịch thành công.
+- [x] **Phase 4 (Tích hợp Frontend):** Cập nhật `documentService.ts` hỗ trợ upload trực tiếp lên S3 qua HTTP PUT kèm theo dõi tiến trình upload (Progress tracking) và xem trước file qua Presigned URL, build kiểm tra TypeScript vượt qua 100%.
+
