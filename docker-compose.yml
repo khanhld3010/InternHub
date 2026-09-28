@@ -48,6 +48,7 @@ services:
       - "8761:8761"
     environment:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+      SERVER_PORT: 8761
     depends_on:
       config-server:
         condition: service_healthy

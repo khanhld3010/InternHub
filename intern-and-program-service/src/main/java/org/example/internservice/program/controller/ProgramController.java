@@ -81,7 +81,7 @@ public class ProgramController {
     }
 
     @Operation(summary = "Xem chi tiết chương trình thực tập (Chiếu DTO theo Role)")
-    @GetMapping("/programs/{id}")
+    @GetMapping("/programs/{id:[0-9]+}")
     public ResponseEntity<ApiResponse<?>> getProgramDetail(
             @PathVariable Long id,
             Authentication authentication
