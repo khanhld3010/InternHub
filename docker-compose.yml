@@ -167,6 +167,38 @@ services:
       start_period: 30s
 
   # -------------------------------------------------------------
+  # File Service (Object Storage Utility - infra/object-storage-minio-s3)
+  # -------------------------------------------------------------
+  file-service:
+    build: ./file-service
+    container_name: file-service
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-internhub_app_client}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-InternHubAppSecret2026Secure}
+      STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-internhub-documents}
+      STORAGE_INTERNAL_ENDPOINT: "http://internhub-s3-storage:9090"
+      STORAGE_PUBLIC_ENDPOINT: "http://localhost:9090"
+      EUREKA_URI: "http://discovery-server:8761/eureka/"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      s3-storage:
+        condition: service_healthy
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+
+  # -------------------------------------------------------------
   # S3 Object Storage Server (AWS S3 Compatible - infra/object-storage-minio-s3)
   # -------------------------------------------------------------
   s3-storage:
