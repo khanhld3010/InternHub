@@ -300,20 +300,33 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         InternDocument document = internDocumentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
 
-        org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest viewReq =
-                org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest.builder()
-                        .fileKey(document.getFilePath())
-                        .expiresInMinutes(30)
-                        .build();
+        // Kiểm tra nếu là file lưu trữ trên S3 (có prefix documents/ hoặc temp/)
+        String filePath = document.getFilePath();
+        if (filePath != null && (filePath.startsWith("documents/") || filePath.startsWith("temp/"))) {
+            org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest viewReq =
+                    org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest.builder()
+                            .fileKey(filePath)
+                            .expiresInMinutes(30)
+                            .build();
 
-        org.example.internservice.intern.client.FileServiceClient.PresignedViewResponse viewRes = fileServiceClient.createPresignedView(viewReq);
+            org.example.internservice.intern.client.FileServiceClient.PresignedViewResponse viewRes = fileServiceClient.createPresignedView(viewReq);
 
+            return org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse.builder()
+                    .documentId(document.getId())
+                    .fileName(document.getOriginalFileName())
+                    .presignedUrl(viewRes.getPresignedUrl())
+                    .expiresInSeconds(viewRes.getExpiresInSeconds())
+                    .build();
+        }
+
+        // Với file cũ lưu local, trả về null presignedUrl để client fallback tải an toàn qua controller
         return org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse.builder()
                 .documentId(document.getId())
                 .fileName(document.getOriginalFileName())
-                .presignedUrl(viewRes.getPresignedUrl())
-                .expiresInSeconds(viewRes.getExpiresInSeconds())
+                .presignedUrl(null)
+                .expiresInSeconds(0)
                 .build();
     }
 }
+
 
