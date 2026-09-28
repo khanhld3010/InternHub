@@ -98,10 +98,19 @@ public class AuthServiceImpl implements AuthService {
             throw new DuplicateResourceException("Số điện thoại đã được sử dụng");
         }
 
-        // 2. Tìm hoặc khởi tạo vai trò mặc định cho tài khoản đăng ký mới (Intern)
-        Role internRole = roleRepository.findByName("Intern")
-                .or(() -> roleRepository.findByName("ROLE_INTERN"))
-                .orElseGet(() -> roleRepository.save(Role.builder().name("Intern").build()));
+        // 2. Tìm hoặc khởi tạo vai trò cho tài khoản đăng ký mới (Mentor hoặc Intern)
+        String targetRoleName = "Intern";
+        if (request.getRole() != null && !request.getRole().isBlank()) {
+            if ("MENTOR".equalsIgnoreCase(request.getRole())) {
+                targetRoleName = "Mentor";
+            } else if ("INTERN".equalsIgnoreCase(request.getRole())) {
+                targetRoleName = "Intern";
+            }
+        }
+        final String roleNameToFind = targetRoleName;
+        Role assignedRole = roleRepository.findByName(roleNameToFind)
+                .or(() -> roleRepository.findByName("ROLE_" + roleNameToFind.toUpperCase()))
+                .orElseGet(() -> roleRepository.save(Role.builder().name(roleNameToFind).build()));
 
         // 3. Pha 1: Tách và lưu thông tin cá nhân vào bảng users
         User user = User.builder()
@@ -123,7 +132,7 @@ public class AuthServiceImpl implements AuthService {
                 .user(savedUser)
                 .username(username)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
-                .role(internRole)
+                .role(assignedRole)
                 .status("ACTIVE")
                 .build();
 
@@ -136,7 +145,7 @@ public class AuthServiceImpl implements AuthService {
                 .fullName(savedUser.getFullName())
                 .email(savedUser.getEmail())
                 .phoneNumber(savedUser.getPhoneNumber())
-                .role(internRole.getName())
+                .role(assignedRole.getName())
                 .status(savedAccount.getStatus())
                 .createdAt(savedAccount.getCreatedAt() != null ? savedAccount.getCreatedAt() : LocalDateTime.now())
                 .build();

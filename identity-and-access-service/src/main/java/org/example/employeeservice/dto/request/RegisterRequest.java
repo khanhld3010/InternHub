@@ -51,10 +51,10 @@ public class RegisterRequest {
     private String avatarUrl;
 
     @NotBlank(message = "Tên đăng nhập không được để trống")
-    @Size(min = 4, max = 50, message = "Tên đăng nhập phải có độ dài từ 4 đến 50 ký tự")
+    @Size(min = 4, max = 100, message = "Tên đăng nhập phải có độ dài từ 4 đến 100 ký tự")
     @Pattern(
-            regexp = "^[a-zA-Z0-9_]+$",
-            message = "Tên đăng nhập chỉ được chứa chữ cái, chữ số và dấu gạch dưới"
+            regexp = "^[a-zA-Z0-9_.@-]+$",
+            message = "Tên đăng nhập chỉ được chứa chữ cái, chữ số, dấu gạch dưới, gạch ngang, dấu chấm hoặc @"
     )
     private String username;
 
@@ -65,4 +65,6 @@ public class RegisterRequest {
             message = "Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 chữ số và 1 ký tự đặc biệt (@$!%*?&#)"
     )
     private String password;
+
+    private String role;
 }

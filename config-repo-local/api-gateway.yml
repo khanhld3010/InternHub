@@ -48,6 +48,11 @@ spring:
               predicates:
                 - Path=/api/departments, /api/departments/**
 
+            - id: onboarding-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/onboarding, /api/onboarding/**
+
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
               uri: lb://reporting-and-integration-service

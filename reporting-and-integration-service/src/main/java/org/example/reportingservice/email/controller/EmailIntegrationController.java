@@ -50,6 +50,32 @@ public class EmailIntegrationController {
         return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi email thành công", null));
     }
 
+    @PostMapping("/mentor-assignment")
+    @Operation(summary = "Tiếp nhận yêu cầu gửi email thông báo 3 chiều khi phân công/đổi/thu hồi Mentor (TM-16)")
+    public ResponseEntity<ApiResponse<Void>> sendMentorAssignmentEmail(
+            @Valid @RequestBody org.example.reportingservice.email.dto.request.SendMentorAssignmentEmailRequest request) {
+
+        log.info("Nhan yeu cau gui email mentor assignment cho ho so ID: {}, type: {}",
+                request.getInternProfileId(), request.getEventType());
+
+        emailDeliveryService.sendMentorAssignmentEmailsAsync(request);
+
+        return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi email mentor thành công", null));
+    }
+
+    @PostMapping("/mentor-onboarding")
+    @Operation(summary = "Tiếp nhận yêu cầu gửi email thư mời kích hoạt tài khoản cho Mentor (Story 29 / TM-29)")
+    public ResponseEntity<ApiResponse<Void>> sendMentorOnboardingEmail(
+            @Valid @RequestBody org.example.reportingservice.email.dto.request.SendMentorOnboardingEmailRequest request) {
+
+        log.info("Nhan yeu cau gui email thu moi Mentor cho ID: {}, email: {}",
+                request.getMentorProfileId(), request.getEmail());
+
+        emailDeliveryService.sendMentorOnboardingEmailAsync(request);
+
+        return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi thư mời Mentor thành công", null));
+    }
+
     @GetMapping("/status/{internProfileId}")
     @Operation(summary = "Lấy trạng thái email gần nhất của hồ sơ thực tập sinh")
     public ResponseEntity<ApiResponse<EmailStatusResponse>> getLatestEmailStatus(

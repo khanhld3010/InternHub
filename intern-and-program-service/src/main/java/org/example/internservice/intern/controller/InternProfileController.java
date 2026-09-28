@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -127,6 +128,101 @@ public class InternProfileController {
         log.info("Nhan request tim kiem ho so thuc tap sinh");
         PageResponse<InternResponse> response = internProfileService.searchInterns(request, pageable);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách hồ sơ thực tập sinh thành công", response));
+    }
+
+    @Operation(summary = "Lấy danh sách Mentor khả dụng để phân công và theo dõi cân bằng tải (Story 31)")
+    @GetMapping("/mentors")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.List<org.example.internservice.intern.dto.response.MentorOptionResponse>>> getAvailableMentors() {
+        log.info("API: Lấy danh sách Mentor khả dụng");
+        java.util.List<org.example.internservice.intern.dto.response.MentorOptionResponse> response = internProfileService.getAvailableMentors();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách Mentor thành công", response));
+    }
+
+    @Operation(summary = "Thêm mới Mentor và gửi thư mời kích hoạt tài khoản (Story 29 / TM-29)")
+    @Auditable(action = AuditAction.CREATE_INTERN, module = AuditModule.INTERN, description = "Thêm mới người hướng dẫn kỹ thuật")
+    @PostMapping("/mentors")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<org.example.internservice.intern.dto.response.MentorOptionResponse>> createMentor(
+            @Valid @RequestBody org.example.internservice.intern.dto.request.CreateMentorRequest request
+    ) {
+        log.info("API: Thêm mới Mentor: email={}, fullName={}", request.getEmail(), request.getFullName());
+        org.example.internservice.intern.dto.response.MentorOptionResponse response = internProfileService.createMentor(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Thêm mới Mentor và gửi thư mời kích hoạt thành công", response));
+    }
+
+    @Operation(summary = "Gửi lại email thư mời kích hoạt cho Mentor kèm cooldown chống spam (Story 29 / TM-29)")
+    @PostMapping("/mentors/{id}/resend-invitation")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> resendMentorInvitation(@PathVariable("id") Long id) {
+        log.info("API: Gửi lại thư mời kích hoạt cho Mentor ID: {}", id);
+        java.util.Map<String, Object> response = internProfileService.resendMentorInvitation(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Đã gửi lại email thư mời kích hoạt cho Mentor", response));
+    }
+
+    @Operation(summary = "Lấy danh sách thực tập sinh do Mentor phụ trách để cân bằng tải (Story 31)")
+    @GetMapping("/mentors/{mentorId}/interns")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<java.util.List<InternResponse>>> getInternsByMentorId(@PathVariable("mentorId") Long mentorId) {
+        log.info("API: Lấy danh sách TTS thuộc Mentor ID: {}", mentorId);
+        java.util.List<InternResponse> response = internProfileService.getInternsByMentorId(mentorId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách thực tập sinh của Mentor thành công", response));
+    }
+
+    @Operation(summary = "Phân công hoặc đổi Mentor cho thực tập sinh (TM-16)")
+    @Auditable(action = AuditAction.UPDATE_INTERN, module = AuditModule.INTERN, description = "Phân công hoặc thay đổi người hướng dẫn thực tập")
+    @PostMapping("/{id}/assign-mentor")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InternResponse>> assignMentor(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody org.example.internservice.intern.dto.request.AssignMentorRequest request,
+            Authentication authentication
+    ) {
+        String username = (authentication != null) ? authentication.getName() : "system";
+        log.info("API: Phân công Mentor cho TTS ID: {} bởi user: {}", id, username);
+        InternResponse response = internProfileService.assignMentor(id, request, username);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Phân công Mentor thành công", response));
+    }
+
+    @Operation(summary = "Thu hồi người hướng dẫn thực tập (TM-16)")
+    @Auditable(action = AuditAction.UPDATE_INTERN, module = AuditModule.INTERN, description = "Thu hồi người hướng dẫn thực tập")
+    @DeleteMapping("/{id}/mentor")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InternResponse>> revokeMentor(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody org.example.internservice.intern.dto.request.RevokeMentorRequest request,
+            Authentication authentication
+    ) {
+        String username = (authentication != null) ? authentication.getName() : "system";
+        log.info("API: Thu hồi Mentor của TTS ID: {} bởi user: {}", id, username);
+        InternResponse response = internProfileService.revokeMentor(id, request, username);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Thu hồi phân công Mentor thành công", response));
+    }
+
+    @Operation(summary = "Xem lịch sử phân công Mentor của thực tập sinh (TM-16)")
+    @GetMapping("/{id}/mentor-history")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<java.util.List<org.example.internservice.intern.dto.response.MentorAssignmentResponse>>> getMentorHistory(
+            @PathVariable("id") Long id
+    ) {
+        log.info("API: Xem lịch sử phân công Mentor của TTS ID: {}", id);
+        java.util.List<org.example.internservice.intern.dto.response.MentorAssignmentResponse> response = internProfileService.getMentorHistory(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy lịch sử phân công Mentor thành công", response));
+    }
+
+    @Operation(summary = "Lấy thông tin hồ sơ của thực tập sinh đang đăng nhập")
+    @GetMapping("/my-profile")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<InternResponse>> getMyProfile(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof org.example.internservice.security.CustomUserDetails userDetails)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error(HttpStatus.UNAUTHORIZED.value(), "Yêu cầu đăng nhập"));
+        }
+        Long userId = userDetails.getUserId();
+        log.info("API getMyProfile được gọi bởi userId: {}, username: {}", userId, userDetails.getUsername());
+        InternResponse response = internProfileService.getMyProfileByUserId(userId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy thông tin hồ sơ thành công", response));
     }
 }
 

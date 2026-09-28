@@ -72,6 +72,9 @@ public class DataInitializer implements CommandLineRunner {
         createAccountIfNotExist("admin", "123456", 6, adminRole);
         createAccountIfNotExist("hr", "123456", 2, hrRole);
         createAccountIfNotExist("mentor", "123456", 3, mentorRole);
+        createAccountIfNotExist("mentor_dev", "123456", 9, mentorRole);
+        createAccountIfNotExist("mentor_qa", "123456", 10, mentorRole);
+        createAccountIfNotExist("mentor_sec", "123456", 11, mentorRole);
         createAccountIfNotExist("intern", "123456", 4, internRole);
 
         printSummary();
@@ -108,6 +111,9 @@ public class DataInitializer implements CommandLineRunner {
             insertUserIfNotExist(4, "Phạm Đức Minh", "minh.pham@gmail.com", "0934445566", "2002-08-25", "MALE", "Hà Nội", "https://api.dicebear.com/7.x/avataaars/svg?seed=Minh");
             insertUserIfNotExist(5, "Hoàng Thị Mai", "mai.hoang@gmail.com", "0945556677", "2003-12-05", "FEMALE", "Cần Thơ", "https://api.dicebear.com/7.x/avataaars/svg?seed=Mai");
             insertUserIfNotExist(6, "Lưu Đức Khánh", "luuduckhanh@gmail.com", "0969891732", "2003-10-30", "MALE", "Hà Nội", "https://api.dicebear.com/7.x/avataaars/svg?seed=khanh");
+            insertUserIfNotExist(9, "Trần Minh Quang", "quang.dev@internhub.com", "0921112233", "1991-04-15", "MALE", "Hà Nội", "https://api.dicebear.com/7.x/avataaars/svg?seed=Quang");
+            insertUserIfNotExist(10, "Vũ Thị Thu Hà", "ha.qa@internhub.com", "0922223344", "1993-08-20", "FEMALE", "Hà Nội", "https://api.dicebear.com/7.x/avataaars/svg?seed=Ha");
+            insertUserIfNotExist(11, "Đặng Quốc Bảo", "bao.sec@internhub.com", "0923335566", "1990-11-05", "MALE", "Hà Nội", "https://api.dicebear.com/7.x/avataaars/svg?seed=Bao");
 
         } catch (Exception e) {
             log.warn("Không thể kiểm tra hoặc khởi tạo bảng users qua JdbcTemplate: {}", e.getMessage());

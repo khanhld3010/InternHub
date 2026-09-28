@@ -16,11 +16,20 @@ public class InternProfileSpecification {
     }
 
     public static Specification<InternProfile> getSpecification(InternFilterRequest request) {
+        return getSpecification(request, null);
+    }
+
+    public static Specification<InternProfile> getSpecification(InternFilterRequest request, Long enforceMentorId) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+            // Ràng buộc bảo mật tối thượng: Nếu có enforceMentorId thì bắt buộc phải khớp mentorId
+            if (enforceMentorId != null) {
+                predicates.add(criteriaBuilder.equal(root.get("mentorId"), enforceMentorId));
+            }
+
             if (request == null) {
-                return criteriaBuilder.conjunction();
+                return predicates.isEmpty() ? criteriaBuilder.conjunction() : criteriaBuilder.and(predicates.toArray(new Predicate[0]));
             }
 
             // 1. Keyword search (fullName, email, phone, internCode) with OR

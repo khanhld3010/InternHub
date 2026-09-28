@@ -38,6 +38,9 @@ public class ProgramLifecycleJob {
             program.setStatus(ProgramStatus.ONGOING);
             programRepository.save(program);
             log.info("Chương trình {} ({}) tự động chuyển OPEN -> ONGOING vào ngày {}", program.getName(), program.getProgramCode(), today);
+            
+            // TM-16: Cơ chế điều kiện kép: Quét các TTS đã có Mentor sang INTERNING
+            autoTransitionInternsToInterning(program.getId());
         }
 
         // 2. PLANNING -> OPEN -> ONGOING (nếu HR quên mở tuyển nhưng đã tới ngày bắt đầu và có TTS)
@@ -48,6 +51,9 @@ public class ProgramLifecycleJob {
                 program.setStatus(ProgramStatus.ONGOING);
                 programRepository.save(program);
                 log.info("Chương trình {} ({}) tự động chuỗi PLANNING -> OPEN -> ONGOING vì đã có TTS tiếp nhận", program.getName(), program.getProgramCode());
+                
+                // TM-16: Cơ chế điều kiện kép: Quét các TTS đã có Mentor sang INTERNING
+                autoTransitionInternsToInterning(program.getId());
             }
         }
 
@@ -75,5 +81,16 @@ public class ProgramLifecycleJob {
         }
 
         log.info("Hoàn thành chu kỳ quét vòng đời chương trình thực tập.");
+    }
+
+    private void autoTransitionInternsToInterning(Long programId) {
+        List<org.example.internservice.intern.entity.InternProfile> eligibleInterns =
+                internProfileRepository.findByProgramIdAndStatusAndMentorIdIsNotNull(programId, InternStatus.APPROVED);
+        for (org.example.internservice.intern.entity.InternProfile intern : eligibleInterns) {
+            intern.setStatus(InternStatus.INTERNING);
+            internProfileRepository.save(intern);
+            log.info("Cron Job: TTS {} ({}) tự động chuyển sang INTERNING do Program đã ONGOING và đã có Mentor",
+                    intern.getFullName(), intern.getInternCode());
+        }
     }
 }
