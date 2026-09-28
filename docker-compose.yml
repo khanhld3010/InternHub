@@ -166,6 +166,36 @@ services:
       retries: 10
       start_period: 30s
 
+  # -------------------------------------------------------------
+  # S3 Object Storage Server (AWS S3 Compatible - infra/object-storage-minio-s3)
+  # -------------------------------------------------------------
+  s3-storage:
+    image: adobe/s3mock:latest
+    container_name: internhub-s3-storage
+    restart: unless-stopped
+    ports:
+      - "9090:9090"   # HTTP S3 API Endpoint
+      - "9191:9191"   # HTTPS S3 API Endpoint
+    environment:
+      initialBuckets: ${STORAGE_BUCKET_NAME:-internhub-documents}
+      retainFilesOnExit: "true"
+      root: /data
+    volumes:
+      - s3_storage_data:/data
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/actuator/health 2>&1 || exit 0"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 networks:
   micro-network:
     driver: bridge
+
+volumes:
+  s3_storage_data:
+    driver: local
+
+
