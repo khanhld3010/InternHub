@@ -227,6 +227,17 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<ProgramSummaryResponse> getOpenPrograms() {
+        log.info("Lấy danh sách các chương trình thực tập đang mở tuyển cho ứng viên");
+        List<ProgramStatus> openStatuses = List.of(ProgramStatus.PLANNING, ProgramStatus.OPEN);
+        List<InternshipProgram> openPrograms = programRepository.findOpenProgramsWithDepartment(openStatuses);
+        return openPrograms.stream()
+                .map(ProgramSummaryResponse::fromEntity)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public ProgramDetailResponse changeStatus(Long id, ChangeProgramStatusRequest request) {
         InternshipProgram program = programRepository.findById(id)

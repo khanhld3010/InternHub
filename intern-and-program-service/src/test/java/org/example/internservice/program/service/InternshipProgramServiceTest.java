@@ -1,16 +1,12 @@
 package org.example.internservice.program.service;
 
-import org.example.internservice.common.dto.response.PageResponse;
 import org.example.internservice.exception.BadRequestException;
-import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.program.dto.request.ChangeProgramStatusRequest;
 import org.example.internservice.program.dto.request.CreateProgramRequest;
-import org.example.internservice.program.dto.request.ProgramFilterRequest;
 import org.example.internservice.program.dto.request.UpdateProgramRequest;
-import org.example.internservice.program.dto.response.DepartmentResponse;
 import org.example.internservice.program.dto.response.ProgramDetailResponse;
 import org.example.internservice.program.dto.response.ProgramSummaryResponse;
 import org.example.internservice.program.entity.Department;
@@ -28,11 +24,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -42,7 +33,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -253,5 +244,21 @@ class InternshipProgramServiceTest {
         programService.deleteProgram(100L);
 
         verify(programRepository).delete(sampleProgram);
+    }
+
+    @Test
+    @DisplayName("TM-10: Lấy danh sách các chương trình đang mở tuyển (getOpenPrograms)")
+    void getOpenPrograms_Success() {
+        when(programRepository.findOpenProgramsWithDepartment(anyList()))
+                .thenReturn(List.of(sampleProgram));
+
+        List<ProgramSummaryResponse> result = programService.getOpenPrograms();
+
+        assertThat(result).isNotEmpty().hasSize(1);
+        ProgramSummaryResponse summary = result.get(0);
+        assertThat(summary.getProgramCode()).isEqualTo(sampleProgram.getProgramCode());
+        assertThat(summary.getName()).isEqualTo(sampleProgram.getName());
+        assertThat(summary.getDepartmentName()).isEqualTo("Phát triển phần mềm");
+        assertThat(summary.getIsRecruitmentOpen()).isTrue();
     }
 }

@@ -26,6 +26,8 @@ public interface InternshipProgramService {
 
     ProgramSummaryResponse getProgramSummaryById(Long id);
 
+    List<ProgramSummaryResponse> getOpenPrograms();
+
     ProgramDetailResponse changeStatus(Long id, ChangeProgramStatusRequest request);
 
     ProgramDetailResponse toggleRecruitment(Long id);

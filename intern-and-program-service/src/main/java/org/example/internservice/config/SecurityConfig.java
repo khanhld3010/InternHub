@@ -44,6 +44,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PATCH, "/api/interns/*/email-status").permitAll()
                 // Public endpoint cho onboarding activation (TM-12)
                 .requestMatchers("/api/onboarding/**").permitAll()
+                // Public endpoints cho chương trình thực tập đang mở tuyển (TM-10)
+                .requestMatchers(HttpMethod.GET, "/api/programs/open").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/programs/{id:[0-9]+}").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,7 +19,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "intern_profiles")
+@Table(name = "intern_profiles", indexes = {
+        @Index(name = "idx_intern_user_program", columnList = "user_id, program_id"),
+        @Index(name = "idx_intern_email_program", columnList = "email, program_id"),
+        @Index(name = "idx_intern_code", columnList = "intern_code"),
+        @Index(name = "idx_intern_status", columnList = "status")
+})
 @Getter
 @Setter
 @Builder
@@ -35,10 +41,10 @@ public class InternProfile extends BaseEntity {
     @Column(name = "full_name", nullable = false, length = 100)
     private String fullName;
 
-    @Column(name = "email", unique = true, nullable = false, length = 100)
+    @Column(name = "email", nullable = false, length = 100)
     private String email;
 
-    @Column(name = "phone", unique = true, nullable = false, length = 20)
+    @Column(name = "phone", nullable = false, length = 20)
     private String phone;
 
     @Column(name = "date_of_birth")

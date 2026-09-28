@@ -35,4 +35,7 @@ public interface InternshipProgramRepository extends JpaRepository<InternshipPro
 
     @Query("SELECT p FROM InternshipProgram p WHERE p.status = 'ONGOING' AND :today > p.endDate")
     List<InternshipProgram> findOngoingProgramsPastEndDate(@Param("today") LocalDate today);
+
+    @Query("SELECT p FROM InternshipProgram p JOIN FETCH p.department WHERE p.isRecruitmentOpen = true AND p.status IN :statuses ORDER BY p.startDate ASC")
+    List<InternshipProgram> findOpenProgramsWithDepartment(@Param("statuses") List<org.example.internservice.program.entity.enums.ProgramStatus> statuses);
 }

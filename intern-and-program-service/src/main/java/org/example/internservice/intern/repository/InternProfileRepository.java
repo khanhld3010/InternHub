@@ -25,7 +25,15 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
 
     boolean existsByEmailAndStatusIn(String email, List<InternStatus> statuses);
 
+    boolean existsByUserIdAndProgramIdAndStatusIn(Long userId, Long programId, List<InternStatus> statuses);
+
+    boolean existsByEmailAndProgramIdAndStatusIn(String email, Long programId, List<InternStatus> statuses);
+
+    boolean existsByPhoneAndProgramIdAndStatusIn(String phone, Long programId, List<InternStatus> statuses);
+
     Optional<InternProfile> findByUserId(Long userId);
+
+    List<InternProfile> findAllByUserId(Long userId);
 
     Optional<InternProfile> findByInternCode(String internCode);
 
