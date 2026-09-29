@@ -15,6 +15,7 @@
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **v1.0** | 2026-09-25 | AI Agent (Antigravity) | `TM-14` | Tạo mới | Thiết kế đặc tả chuẩn 14 phần cho tính năng xác nhận / từ chối hợp đồng thực tập dành cho vai trò Thực tập sinh (INTERN). |
 | **v1.1** | 2026-09-29 | AI Agent (Antigravity) | `TM-14` | Triển khai mã nguồn | Triển khai hoàn chỉnh toàn bộ 5 REST endpoints, Entity/DTO/Repo/Service, bảo mật chống IDOR, đồng bộ State Machine APPROVED -> INTERNING, ghi nhận Audit Action, và 20 unit test cases pass 100%. |
+| **v1.2** | 2026-09-29 | AI Agent (Antigravity) | `TM-14` | Cập nhật logic & xử lý lỗi 404 | Bổ sung trạng thái ACTIVE vào ContractStatus, tối ưu truy vấn tìm hợp đồng theo userId/profileId/internCode, hoàn thiện lọc getMyActiveContract, validate rejectionReason >= 10 ký tự, và thêm bộ xử lý NoResourceFoundException trả về HTTP 404 trong GlobalExceptionHandler. |
 
 ---
 
