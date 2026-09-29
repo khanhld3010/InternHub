@@ -136,7 +136,9 @@ public class InternContractServiceImpl implements InternContractService {
             throw new ResourceNotFoundException("Không tìm thấy hợp đồng nào của bạn");
         }
         return contracts.stream()
-                .filter(c -> c.getStatus() == ContractStatus.PENDING_SIGNATURE)
+                .filter(c -> c.getStatus() == ContractStatus.PENDING_SIGNATURE
+                        || c.getStatus() == ContractStatus.ACTIVE
+                        || c.getStatus() == ContractStatus.SIGNED)
                 .findFirst()
                 .orElse(contracts.get(0));
     }
@@ -187,11 +189,9 @@ public class InternContractServiceImpl implements InternContractService {
         InternContract savedContract = internContractRepository.save(contract);
 
         InternProfile profile = contract.getInternProfile();
-        if (profile.getStatus() == InternStatus.APPROVED) {
-            log.info("Chuyển trạng thái intern [{}] từ APPROVED sang INTERNING sau khi ký hợp đồng", profile.getInternCode());
-            profile.setStatus(InternStatus.INTERNING);
-            internProfileRepository.save(profile);
-        }
+        log.info("Chuyển trạng thái intern [{}] từ [{}] sang INTERNING sau khi ký hợp đồng", profile.getInternCode(), profile.getStatus());
+        profile.setStatus(InternStatus.INTERNING);
+        internProfileRepository.save(profile);
 
         return mapToContractResponse(savedContract, profile);
     }
@@ -205,6 +205,9 @@ public class InternContractServiceImpl implements InternContractService {
         }
         if (request == null || !StringUtils.hasText(request.getRejectionReason())) {
             throw new BadRequestException("Lý do từ chối hợp đồng không được để trống");
+        }
+        if (request.getRejectionReason().trim().length() < 10) {
+            throw new BadRequestException("Lý do từ chối hợp đồng phải từ 10 ký tự trở lên");
         }
 
         InternContract contract = internContractRepository.findByIdWithProfile(contractId)
@@ -240,7 +243,9 @@ public class InternContractServiceImpl implements InternContractService {
 
         InternProfile profile = contract.getInternProfile();
         boolean isOwner = (profile.getUserId() != null && profile.getUserId().equals(userDetails.getUserId()))
-                || (profile.getEmail() != null && profile.getEmail().equalsIgnoreCase(userDetails.getUsername()));
+                || (profile.getId() != null && profile.getId().equals(userDetails.getUserId()))
+                || (profile.getEmail() != null && profile.getEmail().equalsIgnoreCase(userDetails.getUsername()))
+                || (profile.getInternCode() != null && profile.getInternCode().equalsIgnoreCase(userDetails.getUsername()));
         if (!isOwner) {
             log.warn("IDOR Blocked: User [{}] cố ý truy cập trái phép hợp đồng ID [{}] của intern [{}]",
                     userDetails.getUsername(), contract.getId(), profile.getInternCode());

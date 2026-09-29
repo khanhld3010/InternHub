@@ -618,4 +618,45 @@ class InternContractServiceTest {
         assertNotNull(response);
         assertEquals(1L, response.getId());
     }
+
+    @Test
+    @DisplayName("UT-BE-21: Lấy hợp đồng active gần nhất -> Trả về hợp đồng PENDING_SIGNATURE hoặc ACTIVE/SIGNED")
+    void getMyActiveContract_shouldReturnPendingOrActiveContract() {
+        InternContract contract = InternContract.builder()
+                .internProfile(mockApprovedIntern)
+                .contractNumber("HDTT-202609-0001")
+                .contractTitle("Hợp đồng thực tập")
+                .startDate(LocalDate.now())
+                .endDate(LocalDate.now().plusMonths(3))
+                .status(ContractStatus.ACTIVE)
+                .originalFileName("contract.pdf")
+                .fileName("uuid.pdf")
+                .filePath("path")
+                .fileSize(100L)
+                .contentType("application/pdf")
+                .uploadedBy("hr")
+                .build();
+        contract.setId(1L);
+
+        when(internContractRepository.findAllByUserIdOrEmailWithProfile(100L, "intern.a@example.com"))
+                .thenReturn(List.of(contract));
+
+        ContractResponse response = internContractService.getMyActiveContract(internUser);
+
+        assertNotNull(response);
+        assertEquals(1L, response.getId());
+        assertEquals(ContractStatus.ACTIVE, response.getStatus());
+    }
+
+    @Test
+    @DisplayName("UT-BE-22: Từ chối ký hợp đồng với lý do dưới 10 ký tự -> Ném BadRequestException")
+    void rejectContract_reasonLessThan10Chars_shouldThrowBadRequestException() {
+        RejectContractRequest request = RejectContractRequest.builder()
+                .rejectionReason("Ngắn quá")
+                .build();
+
+        assertThrows(BadRequestException.class, () ->
+                internContractService.rejectContract(1L, request, internUser)
+        );
+    }
 }
