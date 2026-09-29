@@ -1,10 +1,14 @@
 package org.example.employeeservice.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.employeeservice.dto.request.ActivateAccountRequest;
 import org.example.employeeservice.dto.request.LoginRequest;
 import org.example.employeeservice.dto.request.RegisterRequest;
+import org.example.employeeservice.dto.request.ResendActivationRequest;
 import org.example.employeeservice.dto.response.ApiResponse;
 import org.example.employeeservice.dto.response.LoginResponse;
 import org.example.employeeservice.dto.response.RegisterResponse;
@@ -12,8 +16,6 @@ import org.example.employeeservice.service.AuthService;
 import org.example.employeeservice.system.audit.annotation.Auditable;
 import org.example.employeeservice.system.audit.entity.AuditAction;
 import org.example.employeeservice.system.audit.entity.AuditModule;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -26,7 +28,7 @@ import java.util.Map;
 @RestController
 @RequestMapping({"/api/employees/auth", "/api/auth"})
 @RequiredArgsConstructor
-@Tag(name = "Authentication Controller", description = "Quản lý đăng nhập, đăng ký tài khoản và thông tin phiên người dùng")
+@Tag(name = "Authentication Controller", description = "Quản lý đăng nhập, đăng ký tài khoản, kích hoạt email và thông tin phiên người dùng")
 public class AuthController {
 
     private final AuthService authService;
@@ -47,7 +49,25 @@ public class AuthController {
         log.info("Nhận yêu cầu đăng ký tài khoản từ username: {}, email: {}", request.getUsername(), request.getEmail());
         RegisterResponse response = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Đăng ký tài khoản thành công", response));
+                .body(ApiResponse.success("Đăng ký tài khoản thành công! Vui lòng kiểm tra email để nhận mã kích hoạt.", response));
+    }
+
+    @Operation(summary = "Xác thực mã OTP kích hoạt tài khoản (TM-10 v1.4)")
+    @Auditable(action = AuditAction.ACTIVATE_SUCCESS, module = AuditModule.AUTH, description = "Kích hoạt tài khoản người dùng qua mã OTP")
+    @PostMapping("/activate")
+    public ResponseEntity<ApiResponse<Void>> activateAccount(@Valid @RequestBody ActivateAccountRequest request) {
+        log.info("Nhận yêu cầu kích hoạt tài khoản cho: {}", request.getIdentifier());
+        authService.activateAccount(request);
+        return ResponseEntity.ok(ApiResponse.success("Kích hoạt tài khoản thành công! Bạn có thể đăng nhập ngay bây giờ.", null));
+    }
+
+    @Operation(summary = "Gửi lại mã OTP kích hoạt tài khoản (TM-10 v1.4)")
+    @Auditable(action = AuditAction.RESEND_ACTIVATION, module = AuditModule.AUTH, description = "Yêu cầu gửi lại mã kích hoạt tài khoản")
+    @PostMapping("/resend-activation")
+    public ResponseEntity<ApiResponse<Void>> resendActivation(@Valid @RequestBody ResendActivationRequest request) {
+        log.info("Nhận yêu cầu gửi lại mã kích hoạt cho: {}", request.getIdentifier());
+        authService.resendActivation(request);
+        return ResponseEntity.ok(ApiResponse.success("Mã kích hoạt mới đã được gửi vào hòm thư email của bạn.", null));
     }
 
     @Operation(summary = "Lấy thông tin tài khoản đang đăng nhập")

@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.reportingservice.common.dto.response.ApiResponse;
+import org.example.reportingservice.email.dto.request.SendAccountActivationEmailRequest;
 import org.example.reportingservice.email.dto.request.SendInternDecisionEmailRequest;
 import org.example.reportingservice.email.dto.response.EmailStatusResponse;
 import org.example.reportingservice.email.entity.EmailLog;
@@ -98,5 +99,25 @@ public class EmailIntegrationController {
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success(200, "Lấy trạng thái email thành công", response));
+    }
+
+    @PostMapping("/account-activation")
+    @Operation(summary = "Tiếp nhận yêu cầu gửi email xác thực kích hoạt tài khoản đăng ký mới (TM-10 v1.4)")
+    public ResponseEntity<ApiResponse<Void>> sendAccountActivationEmail(
+            @Valid @RequestBody SendAccountActivationEmailRequest request) {
+
+        log.info("Nhận yêu cầu gửi email kích hoạt tài khoản cho: {}", request.getEmail());
+
+        if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
+            Optional<EmailLog> existing = emailLogRepository.findByIdempotencyKey(request.getIdempotencyKey());
+            if (existing.isPresent()) {
+                log.info("Idempotency key '{}' đã tồn tại. Bỏ qua gửi lại.", request.getIdempotencyKey());
+                return ResponseEntity.ok(ApiResponse.success(200, "Yêu cầu đã được tiếp nhận trước đó", null));
+            }
+        }
+
+        emailDeliveryService.sendAccountActivationEmailAsync(request);
+
+        return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi email kích hoạt thành công", null));
     }
 }

@@ -328,6 +328,44 @@ public class EmailTemplateBuilder {
         );
     }
 
+    /**
+     * TM-10 v1.4: Template email gửi mã OTP kích hoạt tài khoản đăng ký mới.
+     */
+    public String buildAccountActivationEmail(String fullName, String activationKey, Integer expiresInMinutes) {
+        int minutes = (expiresInMinutes != null && expiresInMinutes > 0) ? expiresInMinutes : 15;
+        String body =
+                "<h1 style=\"margin:0 0 16px 0; font-size:22px; line-height:30px; font-weight:800; color:#12141C;\">Xác thực tài khoản InternHub</h1>" +
+                "<p style=\"margin:0 0 16px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                "Xin chào <strong style=\"color:#12141C;\">" + escapeHtml(fullName) + "</strong>," +
+                "</p>" +
+                "<p style=\"margin:0 0 20px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                "Cảm ơn bạn đã đăng ký tài khoản trên Cổng thông tin Thực tập sinh <strong style=\"color:#12141C;\">InternHub</strong>. " +
+                "Vui lòng sử dụng mã xác thực gồm 6 chữ số dưới đây để kích hoạt tài khoản của bạn:" +
+                "</p>" +
+                "<div style=\"text-align:center; margin:28px 0;\">" +
+                "  <div style=\"display:inline-block; background-color:#EEF2FF; border:2px dashed #4F46E5; border-radius:12px; padding:18px 40px;\">" +
+                "    <span style=\"font-size:32px; font-weight:800; color:#4F46E5; letter-spacing:8px; font-family:monospace;\">" + escapeHtml(activationKey) + "</span>" +
+                "  </div>" +
+                "</div>" +
+                "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#FFF1F2; border:1px solid #FFE4E6; border-radius:8px; margin:20px 0;\">" +
+                "<tr><td style=\"padding:14px 18px;\">" +
+                "  <p style=\"margin:0; font-size:13px; line-height:20px; color:#E11D48; font-weight:600;\">" +
+                "    ⏰ Mã kích hoạt có hiệu lực trong vòng <strong>" + minutes + " phút</strong>. " +
+                "    Sau thời gian này, bạn sẽ cần yêu cầu gửi lại mã mới." +
+                "  </p>" +
+                "</td></tr></table>" +
+                "<p style=\"margin:16px 0 0 0; font-size:13px; line-height:20px; color:#94A3B8;\">" +
+                "Nếu bạn không thực hiện yêu cầu đăng ký này, vui lòng bỏ qua email hoặc liên hệ với bộ phận hỗ trợ của chúng tôi.<br>" +
+                "<strong style=\"color:#5B6072;\">Ban Quản Trị Hệ Thống " + escapeHtml(companyName) + "</strong>" +
+                "</p>";
+
+        return wrapEmail(
+                "Mã kích hoạt tài khoản InternHub của bạn: " + activationKey,
+                "XÁC THỰC TÀI KHOẢN", "#4F46E5", "#EEF2FF",
+                body
+        );
+    }
+
     private String escapeHtml(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;")
