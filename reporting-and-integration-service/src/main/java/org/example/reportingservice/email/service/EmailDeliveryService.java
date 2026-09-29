@@ -4,6 +4,7 @@ import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.reportingservice.email.client.InternServiceCallbackClient;
+import org.example.reportingservice.email.dto.request.SendAccountActivationEmailRequest;
 import org.example.reportingservice.email.dto.request.SendInternDecisionEmailRequest;
 import org.example.reportingservice.email.entity.EmailLog;
 import org.example.reportingservice.email.entity.EmailStatus;
@@ -203,6 +204,29 @@ public class EmailDeliveryService {
                 "MENTOR_ONBOARDING_INVITATION",
                 htmlContent,
                 request.getMentorProfileId()
+        );
+    }
+
+    /**
+     * TM-10 v1.4: Gửi email chứa mã OTP kích hoạt tài khoản đăng ký mới.
+     */
+    @Async
+    public void sendAccountActivationEmailAsync(SendAccountActivationEmailRequest request) {
+        log.info("Bắt đầu gửi email kích hoạt tài khoản async cho email: {}", request.getEmail());
+        String subject = "[InternHub] Mã xác thực kích hoạt tài khoản của bạn";
+        String htmlContent = emailTemplateBuilder.buildAccountActivationEmail(
+                request.getFullName(),
+                request.getActivationKey(),
+                request.getExpiresInMinutes()
+        );
+
+        sendSingleEmail(
+                request.getEmail(),
+                request.getFullName(),
+                subject,
+                "ACCOUNT_ACTIVATION",
+                htmlContent,
+                null
         );
     }
 }

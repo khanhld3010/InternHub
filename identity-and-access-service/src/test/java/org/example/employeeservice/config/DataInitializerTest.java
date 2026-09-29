@@ -40,7 +40,7 @@ class DataInitializerTest {
         assertTrue(roleStore.containsKey("Mentor"));
         assertTrue(roleStore.containsKey("Intern"));
 
-        assertEquals(4, savedAccounts.size(), "Cần khởi tạo đủ 4 tài khoản mẫu");
+        assertEquals(7, savedAccounts.size(), "Cần khởi tạo đủ 7 tài khoản mẫu");
         assertTrue(savedAccounts.stream().anyMatch(a -> "admin".equals(a.getUsername()) && "Admin".equals(a.getRole().getName()) && Integer.valueOf(6).equals(a.getUserId())));
         assertTrue(savedAccounts.stream().anyMatch(a -> "hr".equals(a.getUsername()) && "HR".equals(a.getRole().getName()) && Integer.valueOf(2).equals(a.getUserId())));
         assertTrue(savedAccounts.stream().anyMatch(a -> "mentor".equals(a.getUsername()) && "Mentor".equals(a.getRole().getName()) && Integer.valueOf(3).equals(a.getUserId())));
@@ -55,7 +55,7 @@ class DataInitializerTest {
         // Lần chạy 2: Chạy lại khi dữ liệu đã có -> Không được tạo trùng lặp
         initializer.run();
         assertEquals(4, roleStore.size(), "Không tạo trùng lặp role khi chạy lại");
-        assertEquals(4, savedAccounts.size(), "Không tạo trùng lặp account khi chạy lại");
+        assertEquals(7, savedAccounts.size(), "Không tạo trùng lặp account khi chạy lại");
     }
 
     @Test
@@ -91,7 +91,7 @@ class DataInitializerTest {
         initializer.run();
 
         assertEquals(4, roleStore.size(), "Không sinh thêm role mới ngoài 4 role ban đầu");
-        assertEquals(4, savedAccounts.size(), "Bổ sung đủ 3 tài khoản còn thiếu (hr, mentor, intern) và giữ nguyên admin");
+        assertEquals(7, savedAccounts.size(), "Bổ sung đủ các tài khoản còn thiếu và giữ nguyên admin");
         assertTrue(savedAccounts.stream().anyMatch(a -> "hr".equals(a.getUsername())));
         assertTrue(savedAccounts.stream().anyMatch(a -> "mentor".equals(a.getUsername())));
         assertTrue(savedAccounts.stream().anyMatch(a -> "intern".equals(a.getUsername())));
