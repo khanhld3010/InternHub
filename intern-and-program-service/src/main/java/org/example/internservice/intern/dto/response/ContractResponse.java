@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.example.internservice.intern.entity.enums.ContractStatus;
+import org.example.internservice.intern.entity.enums.InternStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -30,7 +31,11 @@ public class ContractResponse {
     private String contentType;
     private String uploadedBy;
     private LocalDateTime signedAt;
+    private String signerFullName;
+    private String internConfirmationNote;
+    private String rejectionReason;
     private String notes;
+    private InternStatus internProfileStatus;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

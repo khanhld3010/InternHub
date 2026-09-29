@@ -6,6 +6,8 @@ import org.example.internservice.common.storage.FileStorageService;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.exception.ResourceNotFoundException;
+import org.example.internservice.intern.dto.request.ConfirmContractRequest;
+import org.example.internservice.intern.dto.request.RejectContractRequest;
 import org.example.internservice.intern.dto.request.UploadContractRequest;
 import org.example.internservice.intern.dto.response.ContractResponse;
 import org.example.internservice.intern.dto.response.DocumentDownloadDto;
@@ -16,13 +18,16 @@ import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternContractRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.service.InternContractService;
+import org.example.internservice.security.CustomUserDetails;
 import org.springframework.core.io.Resource;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
@@ -51,7 +56,6 @@ public class InternContractServiceImpl implements InternContractService {
     @Transactional
     public ContractResponse uploadContract(String internCode, MultipartFile file, UploadContractRequest request, String uploadedBy) {
         log.info("Bắt đầu xử lý tải lên hợp đồng: internCode={}, uploadedBy={}", internCode, uploadedBy);
-
         validateFile(file);
         validateContractRequest(request);
 
@@ -89,14 +93,11 @@ public class InternContractServiceImpl implements InternContractService {
         if (!StringUtils.hasText(internCode)) {
             throw new BadRequestException("Mã thực tập sinh không được để trống");
         }
-
         InternProfile profile = internProfileRepository.findByInternCode(internCode.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
 
         List<InternContract> contracts = internContractRepository.findByInternCodeWithProfile(profile.getInternCode());
-        return contracts.stream()
-                .map(c -> mapToContractResponse(c, profile))
-                .toList();
+        return contracts.stream().map(c -> mapToContractResponse(c, profile)).toList();
     }
 
     @Override
@@ -105,12 +106,10 @@ public class InternContractServiceImpl implements InternContractService {
         if (contractId == null || contractId <= 0) {
             throw new BadRequestException("ID hợp đồng không hợp lệ");
         }
-
         InternContract contract = internContractRepository.findByIdWithProfile(contractId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
 
         Resource resource = fileStorageService.loadFileAsResource(contract.getFilePath());
-
         return DocumentDownloadDto.builder()
                 .resource(resource)
                 .originalFileName(contract.getOriginalFileName())
@@ -119,23 +118,149 @@ public class InternContractServiceImpl implements InternContractService {
                 .build();
     }
 
+    @Override
+    public List<ContractResponse> getMyContracts(CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            throw new AccessDeniedException("Yêu cầu đăng nhập");
+        }
+        log.info("Lấy danh sách hợp đồng cho user: userId={}, username={}", userDetails.getUserId(), userDetails.getUsername());
+        List<InternContract> contracts = internContractRepository.findAllByUserIdOrEmailWithProfile(
+                userDetails.getUserId(), userDetails.getUsername());
+        return contracts.stream().map(c -> mapToContractResponse(c, c.getInternProfile())).toList();
+    }
+
+    @Override
+    public ContractResponse getMyActiveContract(CustomUserDetails userDetails) {
+        List<ContractResponse> contracts = getMyContracts(userDetails);
+        if (contracts.isEmpty()) {
+            throw new ResourceNotFoundException("Không tìm thấy hợp đồng nào của bạn");
+        }
+        return contracts.stream()
+                .filter(c -> c.getStatus() == ContractStatus.PENDING_SIGNATURE)
+                .findFirst()
+                .orElse(contracts.get(0));
+    }
+
+    @Override
+    public ContractResponse getContractById(Long contractId, CustomUserDetails userDetails) {
+        log.info("Lấy chi tiết hợp đồng ID: {}", contractId);
+        if (contractId == null || contractId <= 0) {
+            throw new BadRequestException("ID hợp đồng không hợp lệ");
+        }
+        InternContract contract = internContractRepository.findByIdWithProfile(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
+
+        verifyContractOwnership(contract, userDetails);
+        return mapToContractResponse(contract, contract.getInternProfile());
+    }
+
+    @Override
+    @Transactional
+    public ContractResponse confirmContract(Long contractId, ConfirmContractRequest request, CustomUserDetails userDetails) {
+        log.info("Xác nhận ký hợp đồng ID: {} bởi user: {}", contractId, userDetails != null ? userDetails.getUsername() : "null");
+        if (contractId == null || contractId <= 0) {
+            throw new BadRequestException("ID hợp đồng không hợp lệ");
+        }
+        if (request == null || !Boolean.TRUE.equals(request.getAgreeTerms())) {
+            throw new BadRequestException("Bạn phải đồng ý với các điều khoản hợp đồng để tiếp tục");
+        }
+
+        InternContract contract = internContractRepository.findByIdWithProfile(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
+
+        verifyContractOwnership(contract, userDetails);
+
+        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE) {
+            throw new BadRequestException("Hợp đồng này không ở trạng thái chờ ký (Trạng thái hiện tại: " + contract.getStatus() + ")");
+        }
+
+        if (LocalDate.now().isAfter(contract.getEndDate())) {
+            contract.setStatus(ContractStatus.EXPIRED);
+            internContractRepository.save(contract);
+            throw new BadRequestException("Hợp đồng này đã hết hạn hiệu lực vào ngày " + contract.getEndDate() + ". Vui lòng liên hệ HR để nhận hợp đồng mới.");
+        }
+
+        contract.setStatus(ContractStatus.SIGNED);
+        contract.setSignedAt(LocalDateTime.now());
+        contract.setSignerFullName(request.getSignerFullName().trim());
+        contract.setInternConfirmationNote(request.getConfirmationNote());
+        InternContract savedContract = internContractRepository.save(contract);
+
+        InternProfile profile = contract.getInternProfile();
+        if (profile.getStatus() == InternStatus.APPROVED) {
+            log.info("Chuyển trạng thái intern [{}] từ APPROVED sang INTERNING sau khi ký hợp đồng", profile.getInternCode());
+            profile.setStatus(InternStatus.INTERNING);
+            internProfileRepository.save(profile);
+        }
+
+        return mapToContractResponse(savedContract, profile);
+    }
+
+    @Override
+    @Transactional
+    public ContractResponse rejectContract(Long contractId, RejectContractRequest request, CustomUserDetails userDetails) {
+        log.info("Từ chối hợp đồng ID: {} bởi user: {}", contractId, userDetails != null ? userDetails.getUsername() : "null");
+        if (contractId == null || contractId <= 0) {
+            throw new BadRequestException("ID hợp đồng không hợp lệ");
+        }
+        if (request == null || !StringUtils.hasText(request.getRejectionReason())) {
+            throw new BadRequestException("Lý do từ chối hợp đồng không được để trống");
+        }
+
+        InternContract contract = internContractRepository.findByIdWithProfile(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
+
+        verifyContractOwnership(contract, userDetails);
+
+        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE) {
+            throw new BadRequestException("Hợp đồng này không ở trạng thái chờ ký (Trạng thái hiện tại: " + contract.getStatus() + ")");
+        }
+
+        contract.setStatus(ContractStatus.REJECTED_BY_INTERN);
+        contract.setRejectionReason(request.getRejectionReason().trim());
+        InternContract savedContract = internContractRepository.save(contract);
+
+        return mapToContractResponse(savedContract, contract.getInternProfile());
+    }
+
+    private void verifyContractOwnership(InternContract contract, CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            throw new AccessDeniedException("Yêu cầu đăng nhập");
+        }
+        boolean isPrivileged = userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_HR")
+                        || a.getAuthority().equalsIgnoreCase("HR")
+                        || a.getAuthority().equalsIgnoreCase("ROLE_ADMIN")
+                        || a.getAuthority().equalsIgnoreCase("ADMIN")
+                        || a.getAuthority().equalsIgnoreCase("ROLE_MENTOR")
+                        || a.getAuthority().equalsIgnoreCase("MENTOR"));
+        if (isPrivileged) {
+            return;
+        }
+
+        InternProfile profile = contract.getInternProfile();
+        boolean isOwner = (profile.getUserId() != null && profile.getUserId().equals(userDetails.getUserId()))
+                || (profile.getEmail() != null && profile.getEmail().equalsIgnoreCase(userDetails.getUsername()));
+        if (!isOwner) {
+            log.warn("IDOR Blocked: User [{}] cố ý truy cập trái phép hợp đồng ID [{}] của intern [{}]",
+                    userDetails.getUsername(), contract.getId(), profile.getInternCode());
+            throw new AccessDeniedException("Bạn không có quyền thao tác trên hợp đồng này");
+        }
+    }
+
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Tệp tin hợp đồng không được để trống");
         }
-
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new BadRequestException("Dung lượng tệp tin vượt quá giới hạn cho phép (tối đa 10MB)");
         }
-
         String rawOriginalFilename = Objects.requireNonNullElse(file.getOriginalFilename(), "");
         String extension = StringUtils.getFilenameExtension(rawOriginalFilename);
         String fileExtension = StringUtils.hasText(extension) ? "." + extension.toLowerCase() : "";
-
         if (!ALLOWED_EXTENSIONS.contains(fileExtension)) {
             throw new BadRequestException("Định dạng tệp tin không hợp lệ. Chỉ chấp nhận các định dạng: .pdf, .docx, .doc");
         }
-
         String contentType = file.getContentType();
         if (StringUtils.hasText(contentType) && !ALLOWED_MIME_TYPES.contains(contentType.toLowerCase())) {
             log.warn("MIME type không thuộc whitelist: {}", contentType);
@@ -147,11 +272,9 @@ public class InternContractServiceImpl implements InternContractService {
         if (request == null) {
             throw new BadRequestException("Dữ liệu thông tin hợp đồng không được để trống");
         }
-
         if (request.getStartDate() == null || request.getEndDate() == null) {
             throw new BadRequestException("Ngày bắt đầu và ngày kết thúc hợp đồng không được để trống");
         }
-
         if (request.getEndDate().isBefore(request.getStartDate()) || request.getEndDate().isEqual(request.getStartDate())) {
             throw new BadRequestException("Ngày kết thúc hợp đồng phải sau ngày bắt đầu");
         }
@@ -161,7 +284,6 @@ public class InternContractServiceImpl implements InternContractService {
         if (!StringUtils.hasText(internCode)) {
             throw new BadRequestException("Mã thực tập sinh không được để trống");
         }
-
         InternProfile internProfile = internProfileRepository.findByInternCode(internCode.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
 
@@ -169,7 +291,6 @@ public class InternContractServiceImpl implements InternContractService {
             log.warn("Từ chối tải hợp đồng: internCode={}, status={}", internCode, internProfile.getStatus());
             throw new BadRequestException("Chỉ có thể tải lên hợp đồng cho thực tập sinh đã được phê duyệt tiếp nhận (APPROVED) hoặc đang thực tập (INTERNING). Trạng thái hiện tại: " + internProfile.getStatus());
         }
-
         return internProfile;
     }
 
@@ -184,7 +305,6 @@ public class InternContractServiceImpl implements InternContractService {
 
         String prefix = "HDTT-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM")) + "-";
         List<String> existingNumbers = internContractRepository.findContractNumbersByPrefix(prefix + "%");
-
         int nextSeq = 1;
         if (!existingNumbers.isEmpty()) {
             String latestNumber = existingNumbers.get(0);
@@ -233,7 +353,11 @@ public class InternContractServiceImpl implements InternContractService {
                 .contentType(contract.getContentType())
                 .uploadedBy(contract.getUploadedBy())
                 .signedAt(contract.getSignedAt())
+                .signerFullName(contract.getSignerFullName())
+                .internConfirmationNote(contract.getInternConfirmationNote())
+                .rejectionReason(contract.getRejectionReason())
                 .notes(contract.getNotes())
+                .internProfileStatus(profile.getStatus())
                 .createdAt(contract.getCreatedAt())
                 .updatedAt(contract.getUpdatedAt())
                 .build();

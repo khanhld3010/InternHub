@@ -24,4 +24,7 @@ public interface InternContractRepository extends JpaRepository<InternContract, 
 
     @Query("SELECT c.contractNumber FROM InternContract c WHERE c.contractNumber LIKE :prefixPattern ORDER BY c.contractNumber DESC")
     List<String> findContractNumbersByPrefix(@Param("prefixPattern") String prefixPattern);
+
+    @Query("SELECT c FROM InternContract c JOIN FETCH c.internProfile p WHERE (:userId IS NOT NULL AND p.userId = :userId) OR (:email IS NOT NULL AND p.email = :email) ORDER BY c.createdAt DESC")
+    List<InternContract> findAllByUserIdOrEmailWithProfile(@Param("userId") Long userId, @Param("email") String email);
 }

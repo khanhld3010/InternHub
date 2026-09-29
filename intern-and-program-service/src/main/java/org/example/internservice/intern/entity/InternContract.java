@@ -79,6 +79,15 @@ public class InternContract extends BaseEntity {
     @Column(name = "signed_at")
     private LocalDateTime signedAt;
 
+    @Column(name = "signer_full_name", length = 100)
+    private String signerFullName;
+
+    @Column(name = "intern_confirmation_note", columnDefinition = "TEXT")
+    private String internConfirmationNote;
+
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 }
