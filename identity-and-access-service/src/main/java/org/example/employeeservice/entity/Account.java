@@ -39,6 +39,13 @@ public class Account {
     @Builder.Default
     private String status = "ACTIVE";
 
+    @Column(name = "auth_provider", length = 20)
+    @Builder.Default
+    private String authProvider = "LOCAL";
+
+    @Column(name = "provider_id", length = 100)
+    private String providerId;
+
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
 

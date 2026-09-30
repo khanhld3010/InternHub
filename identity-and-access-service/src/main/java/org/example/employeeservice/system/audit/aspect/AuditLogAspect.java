@@ -7,7 +7,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.example.employeeservice.dto.request.ActivateAccountRequest;
+import org.example.employeeservice.dto.request.LoginRequest;
+import org.example.employeeservice.dto.request.RegisterRequest;
+import org.example.employeeservice.dto.request.ResendActivationRequest;
+import org.example.employeeservice.oauth2.dto.request.GoogleLoginRequest;
 import org.example.employeeservice.system.audit.annotation.Auditable;
+import org.example.employeeservice.system.audit.entity.AuditAction;
 import org.example.employeeservice.system.audit.entity.AuditStatus;
 import org.example.employeeservice.system.audit.event.AuditLogEvent;
 import org.example.employeeservice.system.audit.util.DataMaskingUtils;
@@ -90,9 +96,18 @@ public class AuditLogAspect {
             userRole = "ANONYMOUS";
         }
 
+        AuditAction action = auditable.action();
+        if (status == AuditStatus.FAILED) {
+            if (action == AuditAction.LOGIN_SUCCESS) {
+                action = AuditAction.LOGIN_FAILED;
+            } else if (action == AuditAction.ACTIVATE_SUCCESS) {
+                action = AuditAction.ACTIVATE_FAILED;
+            }
+        }
+
         String description = auditable.description();
         if (description == null || description.trim().isEmpty()) {
-            description = String.format("Thực thi %s trong phân hệ %s", auditable.action(), auditable.module());
+            description = String.format("Thực thi %s trong phân hệ %s", action, auditable.module());
         }
 
         String payload = extractAndMaskPayload(joinPoint.getArgs());
@@ -100,7 +115,7 @@ public class AuditLogAspect {
         AuditLogEvent event = AuditLogEvent.builder()
                 .username(username)
                 .userRole(userRole)
-                .action(auditable.action())
+                .action(action)
                 .module(auditable.module())
                 .description(description)
                 .endpoint(endpoint)
@@ -128,10 +143,31 @@ public class AuditLogAspect {
     private String extractUsernameFromArgs(Object[] args, String defaultUsername) {
         if (args == null) return defaultUsername;
         for (Object arg : args) {
-            if (arg instanceof Map) {
+            if (arg instanceof LoginRequest loginReq) {
+                if (loginReq.getUsername() != null && !loginReq.getUsername().isBlank()) {
+                    return loginReq.getUsername().trim();
+                }
+            } else if (arg instanceof RegisterRequest regReq) {
+                if (regReq.getUsername() != null && !regReq.getUsername().isBlank()) {
+                    return regReq.getUsername().trim();
+                }
+            } else if (arg instanceof ActivateAccountRequest actReq) {
+                if (actReq.getIdentifier() != null && !actReq.getIdentifier().isBlank()) {
+                    return actReq.getIdentifier().trim();
+                }
+            } else if (arg instanceof ResendActivationRequest resendReq) {
+                if (resendReq.getIdentifier() != null && !resendReq.getIdentifier().isBlank()) {
+                    return resendReq.getIdentifier().trim();
+                }
+            } else if (arg instanceof GoogleLoginRequest) {
+                return "GOOGLE_USER";
+            } else if (arg instanceof Map) {
                 Map<?, ?> map = (Map<?, ?>) arg;
                 if (map.containsKey("username")) {
                     return String.valueOf(map.get("username"));
+                }
+                if (map.containsKey("identifier")) {
+                    return String.valueOf(map.get("identifier"));
                 }
             }
         }

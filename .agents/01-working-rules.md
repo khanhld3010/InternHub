@@ -98,6 +98,10 @@ Tài liệu này định nghĩa nguyên tắc tối cao và quy trình làm vi�
       + **Bắt buộc ghi nhận một dòng giải trình** vào bảng **Nhật Ký Thay Đổi & Giải Trình Kỹ Thuật (Revision History)** ở đầu file Spec, chỉ rõ: *Phiên bản*, *Ngày*, *Người/Agent thực hiện*, *Mã task Jira `TM`*, *Nội dung thay đổi*, và *Lý do kỹ thuật/nghiệp vụ (Rationale)* vì sao cần sửa đổi.
     - **Quy tắc Đồng bộ nguyên tử (Atomic Spec-Code Sync)**: Tuyệt đối không hoàn tất hoặc phê duyệt bất kỳ thay đổi logic nào nếu mã nguồn và tài liệu Spec chưa được đồng bộ cùng nhau trong cùng một task. Ngoại lệ duy nhất: chỉ miễn trừ cập nhật Spec đối với tác vụ vi mô L1 (sửa lỗi chính tả log/comment, format code dưới 10 dòng) và vẫn phải ghi rõ lý do trong git commit message.
 
+17. **NGHIÊM CẤM HOÀN TOÀN HÀNH VI ĐỌC, SỬA, PHÂN TÍCH FILE `.env` (STRICT ZERO-ACCESS TO `.env`)**:
+    - **Vùng cấm tuyệt đối**: File `.env` của người dùng là khu vực bảo mật tối mật chứa credentials, secret keys và cấu hình môi trường nhạy cảm. Nghiêm cấm hoàn toàn các hành vi đọc (read/view/cat), chỉnh sửa (edit/write), hoặc phân tích (analyze/grep/parse) từ AI Agent hay bất kỳ tiến trình tự động nào của hệ thống.
+    - **Quy trình phối hợp**: Nếu cần bất kỳ thông tin, cấu hình, biến môi trường hay giá trị nào liên quan đến file `.env`, Agent **BẮT BUỘC PHẢI THÔNG BÁO VÀ NHỜ NGƯỜI DÙNG KIỂM TRA GIÚP**. Người dùng sẽ chủ động kiểm tra và cung cấp thông tin cần thiết. Tuyệt đối không tự ý can thiệp.
+
 ---
 
 ## 2. Giao Thức 4 Bước Bắt Buộc (Mandatory 4-Step Workflow)

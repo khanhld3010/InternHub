@@ -7,8 +7,10 @@ import java.util.Optional;
 
 import org.example.employeeservice.client.IntegrationEmailClient;
 import org.example.employeeservice.dto.request.ActivateAccountRequest;
+import org.example.employeeservice.dto.request.LoginRequest;
 import org.example.employeeservice.dto.request.RegisterRequest;
 import org.example.employeeservice.dto.request.ResendActivationRequest;
+import org.example.employeeservice.dto.response.LoginResponse;
 import org.example.employeeservice.dto.response.RegisterResponse;
 import org.example.employeeservice.entity.Account;
 import org.example.employeeservice.entity.AccountActivationToken;
@@ -17,6 +19,7 @@ import org.example.employeeservice.entity.User;
 import org.example.employeeservice.entity.enums.Gender;
 import org.example.employeeservice.exception.BadRequestException;
 import org.example.employeeservice.exception.DuplicateResourceException;
+import org.example.employeeservice.exception.UnauthorizedException;
 import org.example.employeeservice.repository.AccountActivationTokenRepository;
 import org.example.employeeservice.repository.AccountRepository;
 import org.example.employeeservice.repository.RoleRepository;
@@ -391,5 +394,166 @@ class AuthServiceTest {
 
         assertTrue(exception.getMessage().contains("Vui lòng đợi"));
         verify(integrationEmailClient, never()).sendActivationEmail(anyString(), anyString(), anyString(), anyInt());
+    }
+
+    @Test
+    @DisplayName("Đăng nhập thành công bằng username: trả về JWT token và thông tin người dùng")
+    void givenValidUsernameAndPassword_whenLogin_thenReturnLoginResponse() {
+        // Arrange
+        User user = User.builder()
+                .id(15)
+                .fullName("Nguyễn Văn A")
+                .email("nguyenvana@gmail.com")
+                .build();
+
+        Account account = Account.builder()
+                .id(10)
+                .userId(15)
+                .username("nguyenvana")
+                .passwordHash("$2a$10$hashedPassword")
+                .status("ACTIVE")
+                .role(internRole)
+                .user(user)
+                .build();
+
+        when(accountRepository.findByUsername("nguyenvana")).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("Password123@", "$2a$10$hashedPassword")).thenReturn(true);
+        when(jwtTokenProvider.generateToken(account)).thenReturn("mocked.jwt.token");
+        when(jwtTokenProvider.getExpirationInSeconds()).thenReturn(86400L);
+        when(accountRepository.save(any(Account.class))).thenReturn(account);
+
+        LoginRequest request = LoginRequest.builder()
+                .username("nguyenvana")
+                .password("Password123@")
+                .build();
+
+        // Act
+        LoginResponse response = authService.login(request);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals("mocked.jwt.token", response.getAccessToken());
+        assertEquals("nguyenvana", response.getUsername());
+        assertEquals("Nguyễn Văn A", response.getFullName());
+        assertEquals("nguyenvana@gmail.com", response.getEmail());
+        assertEquals("Intern", response.getRole());
+        assertEquals(15, response.getUserId());
+        verify(accountRepository, times(1)).save(account);
+    }
+
+    @Test
+    @DisplayName("Đăng nhập thành công bằng email: tự động tra cứu user và trả về JWT token")
+    void givenValidEmailAndPassword_whenLogin_thenReturnLoginResponse() {
+        // Arrange
+        User user = User.builder()
+                .id(15)
+                .fullName("Nguyễn Văn A")
+                .email("nguyenvana@gmail.com")
+                .build();
+
+        Account account = Account.builder()
+                .id(10)
+                .userId(15)
+                .username("nguyenvana")
+                .passwordHash("$2a$10$hashedPassword")
+                .status("ACTIVE")
+                .role(internRole)
+                .user(user)
+                .build();
+
+        when(userRepository.findByEmail("nguyenvana@gmail.com")).thenReturn(Optional.of(user));
+        when(accountRepository.findByUserId(15)).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("Password123@", "$2a$10$hashedPassword")).thenReturn(true);
+        when(jwtTokenProvider.generateToken(account)).thenReturn("mocked.jwt.token");
+        when(jwtTokenProvider.getExpirationInSeconds()).thenReturn(86400L);
+        when(accountRepository.save(any(Account.class))).thenReturn(account);
+
+        LoginRequest request = LoginRequest.builder()
+                .username("nguyenvana@gmail.com")
+                .password("Password123@")
+                .build();
+
+        // Act
+        LoginResponse response = authService.login(request);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals("mocked.jwt.token", response.getAccessToken());
+        assertEquals("nguyenvana", response.getUsername());
+        assertEquals("Nguyễn Văn A", response.getFullName());
+        assertEquals("nguyenvana@gmail.com", response.getEmail());
+    }
+
+    @Test
+    @DisplayName("Đăng nhập thất bại: Tài khoản không tồn tại ném UnauthorizedException")
+    void givenNonExistentUser_whenLogin_thenThrowUnauthorizedException() {
+        when(accountRepository.findByUsername("unknown_user")).thenReturn(Optional.empty());
+
+        LoginRequest request = LoginRequest.builder()
+                .username("unknown_user")
+                .password("Password123@")
+                .build();
+
+        UnauthorizedException exception = assertThrows(
+                UnauthorizedException.class,
+                () -> authService.login(request)
+        );
+
+        assertEquals("Tên đăng nhập hoặc mật khẩu không chính xác", exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("Đăng nhập thất bại: Sai mật khẩu ném UnauthorizedException")
+    void givenWrongPassword_whenLogin_thenThrowUnauthorizedException() {
+        Account account = Account.builder()
+                .id(10)
+                .userId(15)
+                .username("nguyenvana")
+                .passwordHash("$2a$10$hashedPassword")
+                .status("ACTIVE")
+                .build();
+
+        when(accountRepository.findByUsername("nguyenvana")).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("WrongPass123", "$2a$10$hashedPassword")).thenReturn(false);
+
+        LoginRequest request = LoginRequest.builder()
+                .username("nguyenvana")
+                .password("WrongPass123")
+                .build();
+
+        UnauthorizedException exception = assertThrows(
+                UnauthorizedException.class,
+                () -> authService.login(request)
+        );
+
+        assertEquals("Tên đăng nhập hoặc mật khẩu không chính xác", exception.getMessage());
+        verify(jwtTokenProvider, never()).generateToken(any());
+    }
+
+    @Test
+    @DisplayName("Đăng nhập thất bại: Tài khoản PENDING_ACTIVATION ném UnauthorizedException")
+    void givenInactiveAccount_whenLogin_thenThrowUnauthorizedException() {
+        Account account = Account.builder()
+                .id(10)
+                .userId(15)
+                .username("nguyenvana")
+                .passwordHash("$2a$10$hashedPassword")
+                .status("PENDING_ACTIVATION")
+                .build();
+
+        when(accountRepository.findByUsername("nguyenvana")).thenReturn(Optional.of(account));
+
+        LoginRequest request = LoginRequest.builder()
+                .username("nguyenvana")
+                .password("Password123@")
+                .build();
+
+        UnauthorizedException exception = assertThrows(
+                UnauthorizedException.class,
+                () -> authService.login(request)
+        );
+
+        assertTrue(exception.getMessage().contains("chưa được kích hoạt"));
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
     }
 }
