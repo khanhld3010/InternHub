@@ -1,0 +1,33 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: file-service
+  cloud:
+    config:
+      enabled: false
+
+storage:
+  s3:
+    access-key: ${STORAGE_ACCESS_KEY:internhub_app_client}
+    secret-key: ${STORAGE_SECRET_KEY:InternHubAppSecret2026Secure}
+    bucket-name: ${STORAGE_BUCKET_NAME:internhub-documents}
+    region: ${STORAGE_REGION:us-east-1}
+    internal-endpoint: ${STORAGE_INTERNAL_ENDPOINT:http://localhost:9090}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:http://localhost:9090}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

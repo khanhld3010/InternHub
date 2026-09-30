@@ -39,7 +39,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/interns").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/employees/interns").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/interns/*/documents").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/interns/*/documents/upload-url").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/interns/*/documents/confirm-upload").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/employees/interns/*/documents").permitAll()
+
                 // Internal callback cho reporting-and-integration-service
                 .requestMatchers(HttpMethod.PATCH, "/api/interns/*/email-status").permitAll()
                 // Public endpoint cho onboarding activation (TM-12)

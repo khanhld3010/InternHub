@@ -101,4 +101,39 @@ public class InternDocumentController {
         DocumentResponse response = internDocumentService.reviewDocument(documentId, request);
         return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật trạng thái xét duyệt tài liệu thành công", response));
     }
+
+    @Operation(summary = "Xin cấp Presigned URL upload trực tiếp lên S3/MinIO (Không qua backend)")
+    @PostMapping("/{internCode}/documents/upload-url")
+    public ResponseEntity<ApiResponse<org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse>> requestUploadUrl(
+            @PathVariable("internCode") String internCode,
+            @Valid @RequestBody org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlRequest request
+    ) {
+        log.info("API Xin presigned upload URL: internCode={}, fileName={}", internCode, request.getFileName());
+        var response = internDocumentService.createPresignedUploadUrl(internCode, request);
+        return ResponseEntity.ok(ApiResponse.success(200, "Sinh URL upload thành công", response));
+    }
+
+    @Operation(summary = "Xác nhận đã upload thành công lên S3 để backend ghi nhận vào hệ thống")
+    @PostMapping("/{internCode}/documents/confirm-upload")
+    public ResponseEntity<ApiResponse<DocumentResponse>> confirmUpload(
+            @PathVariable("internCode") String internCode,
+            @Valid @RequestBody org.example.internservice.intern.dto.request.StorageBusinessDtos.ConfirmUploadRequest request
+    ) {
+        log.info("API Xác nhận upload hoàn tất: internCode={}, tempKey={}", internCode, request.getTempKey());
+        DocumentResponse response = internDocumentService.confirmUpload(internCode, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(201, "Xác nhận và lưu trữ tài liệu thành công", response));
+    }
+
+    @Operation(summary = "Lấy Presigned URL xem/tải tài liệu an toàn từ S3/MinIO")
+    @GetMapping("/documents/{documentId}/view-url")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR', 'INTERN')")
+    public ResponseEntity<ApiResponse<org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse>> getViewDocumentUrl(
+            @PathVariable("documentId") Long documentId
+    ) {
+        log.info("API Lấy link xem tài liệu S3: documentId={}", documentId);
+        var response = internDocumentService.getDocumentViewUrl(documentId);
+        return ResponseEntity.ok(ApiResponse.success(200, "Lấy URL xem tài liệu thành công", response));
+    }
 }
+
