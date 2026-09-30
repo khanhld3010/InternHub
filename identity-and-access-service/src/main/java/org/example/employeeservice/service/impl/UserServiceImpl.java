@@ -74,6 +74,98 @@ public class UserServiceImpl implements UserService {
         return mapToResponse(user);
     }
 
+    @Override
+    public UserResponse getCurrentUserProfile(String username) {
+        log.info("Lấy thông tin tài khoản đang đăng nhập: {}", username);
+        Account account = accountRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với username: " + username));
+
+        User user = account.getUser();
+        if (user == null && account.getUserId() != null) {
+            user = userRepository.findById(account.getUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ người dùng tương ứng với username: " + username));
+        }
+
+        if (user == null) {
+            throw new ResourceNotFoundException("Hồ sơ người dùng không tồn tại");
+        }
+
+        user.setAccount(account);
+        return mapToResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateOwnProfile(String username, org.example.employeeservice.dto.request.UpdateProfileRequest request) {
+        log.info("Xử lý cập nhật hồ sơ cá nhân cho user: {}", username);
+        Account account = accountRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với username: " + username));
+
+        User user = account.getUser();
+        if (user == null && account.getUserId() != null) {
+            user = userRepository.findById(account.getUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ người dùng tương ứng với username: " + username));
+        }
+
+        if (user == null) {
+            throw new ResourceNotFoundException("Hồ sơ người dùng không tồn tại");
+        }
+
+        // =========================================================================
+        // NHÓM A — Khóa sau khi tài khoản kích hoạt (Fraud/Legal-Sensitive, CHUNG 4 role)
+        //fullName, dateOfBirth gắn trực tiếp với giấy tờ pháp lý (CMND/CCCD, bằng cấp, hợp đồng)
+        // Chặn tuyệt đối ở tầng Backend, KHÔNG dựa vào việc disable field trên Frontend!
+        // =========================================================================
+        if (request.getFullName() != null && !request.getFullName().trim().isEmpty()) {
+            String incomingFullName = request.getFullName().trim();
+            if (user.getFullName() != null && !incomingFullName.equalsIgnoreCase(user.getFullName().trim())) {
+                log.warn("User {} cố gắng tự thay đổi họ và tên từ '{}' sang '{}'", username, user.getFullName(), incomingFullName);
+                throw new org.example.employeeservice.exception.ForbiddenException(
+                        "Không thể tự thay đổi họ tên. Vui lòng liên hệ Ban Nhân sự."
+                );
+            }
+        }
+
+        if (request.getDateOfBirth() != null) {
+            if (user.getDateOfBirth() != null && !request.getDateOfBirth().equals(user.getDateOfBirth())) {
+                log.warn("User {} cố gắng tự thay đổi ngày sinh từ '{}' sang '{}'", username, user.getDateOfBirth(), request.getDateOfBirth());
+                throw new org.example.employeeservice.exception.ForbiddenException(
+                        "Không thể tự thay đổi ngày sinh. Vui lòng liên hệ Ban Nhân sự."
+                );
+            }
+        }
+
+        // =========================================================================
+        // NHÓM B — Tự do chỉnh sửa (Self-Service, CHUNG cả 4 role)
+        // phoneNumber, address, bio, gender
+        // =========================================================================
+        String newPhone = (request.getPhoneNumber() != null && !request.getPhoneNumber().trim().isEmpty())
+                ? request.getPhoneNumber().trim()
+                : (request.getPhone() != null && !request.getPhone().trim().isEmpty() ? request.getPhone().trim() : null);
+
+        if (newPhone != null) {
+            user.setPhoneNumber(newPhone);
+        }
+
+        if (request.getAddress() != null) {
+            user.setAddress(request.getAddress().trim());
+        }
+
+        if (request.getBio() != null) {
+            user.setBio(request.getBio().trim());
+        }
+
+        if (request.getGender() != null) {
+            user.setGender(request.getGender());
+        }
+
+        User updatedUser = userRepository.save(user);
+        updatedUser.setAccount(account);
+        log.info("Cập nhật thông tin cá nhân thành công cho user: {}", username);
+
+        return mapToResponse(updatedUser);
+    }
+
     private UserResponse mapToResponse(User user) {
         Account account = user.getAccount();
         if (account == null && user.getId() != null) {
@@ -96,6 +188,7 @@ public class UserServiceImpl implements UserService {
                 .dateOfBirth(user.getDateOfBirth())
                 .gender(user.getGender())
                 .address(user.getAddress())
+                .bio(user.getBio())
                 .avatarUrl(user.getAvatarUrl())
                 .department("Phòng Kỹ Thuật")
                 .position(roleName)
