@@ -22,6 +22,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.example.internservice.intern.repository.MentorProfileRepository;
+import org.springframework.context.ApplicationEventPublisher;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +46,12 @@ class InternProfileMentorTest {
 
     @Mock
     private IdentityServiceClient identityServiceClient;
+
+    @Mock
+    private MentorProfileRepository mentorProfileRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private InternProfileServiceImpl internProfileService;

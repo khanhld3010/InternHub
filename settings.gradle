@@ -6,3 +6,5 @@ include 'api-gateway'
 include 'identity-and-access-service'
 include 'intern-and-program-service'
 include 'reporting-and-integration-service'
+include 'file-service'
+

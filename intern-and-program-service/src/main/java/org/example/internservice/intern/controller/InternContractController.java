@@ -6,10 +6,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.dto.response.ApiResponse;
+import org.example.internservice.intern.dto.request.ConfirmContractRequest;
+import org.example.internservice.intern.dto.request.RejectContractRequest;
 import org.example.internservice.intern.dto.request.UploadContractRequest;
 import org.example.internservice.intern.dto.response.ContractResponse;
 import org.example.internservice.intern.dto.response.DocumentDownloadDto;
 import org.example.internservice.intern.service.InternContractService;
+import org.example.internservice.security.CustomUserDetails;
 import org.example.internservice.system.audit.annotation.Auditable;
 import org.example.internservice.system.audit.entity.AuditAction;
 import org.example.internservice.system.audit.entity.AuditModule;
@@ -24,6 +27,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,7 +41,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/interns")
 @RequiredArgsConstructor
-@Tag(name = "Intern Contract Controller", description = "Quản lý hợp đồng thực tập (Tải lên, tra cứu, tải về)")
+@Tag(name = "Intern Contract Controller", description = "Quản lý hợp đồng thực tập (Tải lên, tra cứu, xác nhận ký, từ chối, tải về)")
 public class InternContractController {
 
     private final InternContractService internContractService;
@@ -54,7 +58,6 @@ public class InternContractController {
     ) {
         String uploadedBy = (authentication != null) ? authentication.getName() : "HR";
         log.info("API Upload hợp đồng: internCode={}, title={}, uploadedBy={}", internCode, request.getContractTitle(), uploadedBy);
-
         ContractResponse response = internContractService.uploadContract(internCode, file, request, uploadedBy);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(201, "Tải lên hợp đồng thực tập thành công", response));
@@ -69,6 +72,69 @@ public class InternContractController {
         log.info("API Lấy danh sách hợp đồng: internCode={}", internCode);
         List<ContractResponse> contracts = internContractService.getContractsByInternCode(internCode);
         return ResponseEntity.ok(ApiResponse.success(200, "Lấy danh sách hợp đồng thành công", contracts));
+    }
+
+    @Operation(summary = "Lấy danh sách hợp đồng cá nhân của thực tập sinh đang đăng nhập")
+    @GetMapping("/contracts/my-contracts")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<ApiResponse<List<ContractResponse>>> getMyContracts(Authentication authentication) {
+        CustomUserDetails userDetails = extractUserDetails(authentication);
+        log.info("API Lấy danh sách hợp đồng cá nhân: user={}", userDetails != null ? userDetails.getUsername() : "null");
+        List<ContractResponse> contracts = internContractService.getMyContracts(userDetails);
+        return ResponseEntity.ok(ApiResponse.success(200, "Lấy danh sách hợp đồng cá nhân thành công", contracts));
+    }
+
+    @Operation(summary = "Lấy hợp đồng đang chờ ký hoặc hiệu lực gần nhất của thực tập sinh đang đăng nhập")
+    @GetMapping("/contracts/my-contracts/active")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<ApiResponse<ContractResponse>> getMyActiveContract(Authentication authentication) {
+        CustomUserDetails userDetails = extractUserDetails(authentication);
+        log.info("API Lấy hợp đồng active gần nhất: user={}", userDetails != null ? userDetails.getUsername() : "null");
+        ContractResponse response = internContractService.getMyActiveContract(userDetails);
+        return ResponseEntity.ok(ApiResponse.success(200, "Lấy hợp đồng hiệu lực gần nhất thành công", response));
+    }
+
+    @Operation(summary = "Xem chi tiết hợp đồng thực tập theo ID")
+    @GetMapping("/contracts/{contractId}")
+    @PreAuthorize("hasAnyRole('INTERN', 'HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<ContractResponse>> getContractById(
+            @PathVariable("contractId") Long contractId,
+            Authentication authentication
+    ) {
+        CustomUserDetails userDetails = extractUserDetails(authentication);
+        log.info("API Xem chi tiết hợp đồng ID: {}, user={}", contractId, userDetails != null ? userDetails.getUsername() : "null");
+        ContractResponse response = internContractService.getContractById(contractId, userDetails);
+        return ResponseEntity.ok(ApiResponse.success(200, "Lấy chi tiết hợp đồng thành công", response));
+    }
+
+    @Operation(summary = "Xác nhận ký cam kết hợp đồng thực tập điện tử")
+    @Auditable(action = AuditAction.CONFIRM_CONTRACT, module = AuditModule.DOCUMENT, description = "Thực tập sinh xác nhận ký hợp đồng")
+    @PostMapping("/contracts/{contractId}/confirm")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<ApiResponse<ContractResponse>> confirmContract(
+            @PathVariable("contractId") Long contractId,
+            @Valid @RequestBody ConfirmContractRequest request,
+            Authentication authentication
+    ) {
+        CustomUserDetails userDetails = extractUserDetails(authentication);
+        log.info("API Xác nhận ký hợp đồng ID: {}, user={}", contractId, userDetails != null ? userDetails.getUsername() : "null");
+        ContractResponse response = internContractService.confirmContract(contractId, request, userDetails);
+        return ResponseEntity.ok(ApiResponse.success(200, "Xác nhận ký hợp đồng thực tập thành công", response));
+    }
+
+    @Operation(summary = "Từ chối ký hợp đồng thực tập kèm lý do")
+    @Auditable(action = AuditAction.REJECT_CONTRACT, module = AuditModule.DOCUMENT, description = "Thực tập sinh từ chối ký hợp đồng")
+    @PostMapping("/contracts/{contractId}/reject")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<ApiResponse<ContractResponse>> rejectContract(
+            @PathVariable("contractId") Long contractId,
+            @Valid @RequestBody RejectContractRequest request,
+            Authentication authentication
+    ) {
+        CustomUserDetails userDetails = extractUserDetails(authentication);
+        log.info("API Từ chối ký hợp đồng ID: {}, user={}", contractId, userDetails != null ? userDetails.getUsername() : "null");
+        ContractResponse response = internContractService.rejectContract(contractId, request, userDetails);
+        return ResponseEntity.ok(ApiResponse.success(200, "Đã ghi nhận từ chối hợp đồng thực tập", response));
     }
 
     @Operation(summary = "Tải hoặc xem tệp hợp đồng đính kèm")
@@ -96,5 +162,12 @@ public class InternContractController {
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDispositionValue)
                 .body(downloadDto.getResource());
+    }
+
+    private CustomUserDetails extractUserDetails(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails userDetails) {
+            return userDetails;
+        }
+        return null;
     }
 }

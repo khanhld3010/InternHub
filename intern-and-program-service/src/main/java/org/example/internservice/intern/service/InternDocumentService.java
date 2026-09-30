@@ -43,4 +43,22 @@ public interface InternDocumentService {
      * @return Metadata tài liệu sau khi cập nhật
      */
     DocumentResponse reviewDocument(Long documentId, ReviewDocumentRequest request);
+
+    /**
+     * Yêu cầu cấp Presigned Upload URL trực tiếp lên Object Storage (S3/MinIO)
+     */
+    org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse createPresignedUploadUrl(
+            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlRequest request);
+
+    /**
+     * Xác nhận upload thành công lên S3 và ghi nhận bản ghi nghiệp vụ
+     */
+    DocumentResponse confirmUpload(
+            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.ConfirmUploadRequest request);
+
+    /**
+     * Lấy Presigned URL xem/tải tài liệu an toàn từ Object Storage
+     */
+    org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse getDocumentViewUrl(Long documentId);
 }
+

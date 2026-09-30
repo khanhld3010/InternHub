@@ -42,6 +42,8 @@ public class InternDocumentServiceImpl implements InternDocumentService {
     private final InternProfileRepository internProfileRepository;
     private final InternDocumentRepository internDocumentRepository;
     private final FileStorageService fileStorageService;
+    private final org.example.internservice.intern.client.FileServiceClient fileServiceClient;
+
 
     @Override
     @Transactional
@@ -226,4 +228,105 @@ public class InternDocumentServiceImpl implements InternDocumentService {
                 .updatedAt(savedDocument.getUpdatedAt())
                 .build();
     }
+
+    @Override
+    public org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse createPresignedUploadUrl(
+            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlRequest request) {
+        log.info("Cấp link upload trực tiếp S3 cho intern: {}, fileName: {}", internCode, request.getFileName());
+        getAndValidateInternProfile(internCode);
+
+        org.example.internservice.intern.client.FileServiceClient.PresignedUploadRequest internalReq =
+                org.example.internservice.intern.client.FileServiceClient.PresignedUploadRequest.builder()
+                        .prefix("temp")
+                        .fileName(request.getFileName())
+                        .contentType(request.getContentType())
+                        .sizeLimitBytes(request.getFileSize())
+                        .build();
+
+        org.example.internservice.intern.client.FileServiceClient.PresignedUploadResponse internalRes =
+                fileServiceClient.createPresignedUpload(internalReq);
+
+        return org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse.builder()
+                .tempKey(internalRes.getTempKey())
+                .presignedUrl(internalRes.getPresignedUrl())
+                .expiresInSeconds(internalRes.getExpiresInSeconds())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse confirmUpload(
+            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.ConfirmUploadRequest request) {
+        log.info("Xác nhận upload thành công từ client cho intern: {}, tempKey: {}", internCode, request.getTempKey());
+        InternProfile internProfile = getAndValidateInternProfile(internCode);
+        DocumentType documentType = parseDocumentType(request.getDocumentType());
+
+        // Định dạng đường dẫn chính thức: documents/{internCode}/{documentType}_{timestamp}_{uuid}.pdf
+        String extension = "";
+        if (request.getOriginalFileName().contains(".")) {
+            extension = request.getOriginalFileName().substring(request.getOriginalFileName().lastIndexOf("."));
+        }
+        String destKey = String.format("documents/%s/%s_%d_%s%s",
+                internCode, documentType.name(), System.currentTimeMillis(), java.util.UUID.randomUUID().toString().substring(0, 8), extension);
+
+        // Gọi file-service promote từ temp sang permanent
+        org.example.internservice.intern.client.FileServiceClient.PromoteFileRequest promoteReq =
+                org.example.internservice.intern.client.FileServiceClient.PromoteFileRequest.builder()
+                        .tempKey(request.getTempKey())
+                        .destinationKey(destKey)
+                        .build();
+
+        org.example.internservice.intern.client.FileServiceClient.PromoteFileResponse promoteRes = fileServiceClient.promoteFile(promoteReq);
+
+        // Ghi vào database sau khi promote thành công 100%
+        InternDocument document = InternDocument.builder()
+                .internProfile(internProfile)
+                .documentType(documentType)
+                .originalFileName(request.getOriginalFileName())
+                .fileName(destKey)
+                .filePath(promoteRes.getFinalKey())
+                .fileSize(promoteRes.getFileSize() != null ? promoteRes.getFileSize() : 0L)
+                .contentType(promoteRes.getContentType() != null ? promoteRes.getContentType() : "application/octet-stream")
+                .status(DocumentStatus.PENDING_REVIEW)
+                .build();
+
+        InternDocument saved = internDocumentRepository.save(document);
+        log.info("Ghi nhận tài liệu thành công vào DB với ID: {}", saved.getId());
+        return mapToDocumentResponse(saved, internCode);
+    }
+
+    @Override
+    public org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse getDocumentViewUrl(Long documentId) {
+        InternDocument document = internDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
+
+        // Kiểm tra nếu là file lưu trữ trên S3 (có prefix documents/ hoặc temp/)
+        String filePath = document.getFilePath();
+        if (filePath != null && (filePath.startsWith("documents/") || filePath.startsWith("temp/"))) {
+            org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest viewReq =
+                    org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest.builder()
+                            .fileKey(filePath)
+                            .expiresInMinutes(30)
+                            .build();
+
+            org.example.internservice.intern.client.FileServiceClient.PresignedViewResponse viewRes = fileServiceClient.createPresignedView(viewReq);
+
+            return org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse.builder()
+                    .documentId(document.getId())
+                    .fileName(document.getOriginalFileName())
+                    .presignedUrl(viewRes.getPresignedUrl())
+                    .expiresInSeconds(viewRes.getExpiresInSeconds())
+                    .build();
+        }
+
+        // Với file cũ lưu local, trả về null presignedUrl để client fallback tải an toàn qua controller
+        return org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse.builder()
+                .documentId(document.getId())
+                .fileName(document.getOriginalFileName())
+                .presignedUrl(null)
+                .expiresInSeconds(0)
+                .build();
+    }
 }
+
+
