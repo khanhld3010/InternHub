@@ -17,7 +17,17 @@ public class JwtProperties {
     private String secretKey = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
 
     /**
-     * Thời gian hết hạn của Access Token tính bằng millisecond (mặc định 24h = 86400000ms)
+     * Thời gian hết hạn của Access Token tính bằng millisecond (mặc định 15 phút = 900000ms)
      */
-    private long expiration = 86400000L;
+    private long expiration = 900000L;
+
+    /**
+     * Thời gian hết hạn của Refresh Token tính bằng millisecond (mặc định 7 ngày = 604800000ms)
+     */
+    private long refreshExpiration = 604800000L;
+
+    /**
+     * Cờ Secure cho Cookie (mặc định false cho môi trường dev localhost, true trên production HTTPS)
+     */
+    private boolean cookieSecure = false;
 }
