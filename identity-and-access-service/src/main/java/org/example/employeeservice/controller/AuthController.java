@@ -16,6 +16,8 @@ import org.example.employeeservice.service.AuthService;
 import org.example.employeeservice.system.audit.annotation.Auditable;
 import org.example.employeeservice.system.audit.entity.AuditAction;
 import org.example.employeeservice.system.audit.entity.AuditModule;
+import org.example.employeeservice.rbac.dto.response.UserPermissionsResponse;
+import org.example.employeeservice.rbac.service.RoleManagementService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -32,6 +34,7 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final RoleManagementService roleManagementService;
 
     @Operation(summary = "Đăng nhập hệ thống bằng username và password")
     @Auditable(action = AuditAction.LOGIN_SUCCESS, module = AuditModule.AUTH, description = "Người dùng đăng nhập vào hệ thống")
@@ -95,5 +98,13 @@ public class AuthController {
         log.info("API: Đổi mật khẩu cho người dùng: {}", username);
         authService.changePassword(username, request);
         return ResponseEntity.ok(ApiResponse.success("Đổi mật khẩu thành công!", null));
+    @Operation(summary = "Lấy chi tiết danh sách đặc quyền (permissions) của tài khoản đang đăng nhập")
+    @GetMapping("/me/permissions")
+    public ResponseEntity<ApiResponse<UserPermissionsResponse>> getCurrentUserPermissions(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Chưa xác thực"));
+        }
+        UserPermissionsResponse response = roleManagementService.getUserPermissions(authentication.getName());
+        return ResponseEntity.ok(ApiResponse.success("Lấy thông tin quyền hạn người dùng thành công", response));
     }
 }
