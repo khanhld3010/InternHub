@@ -13,6 +13,7 @@
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **v1.0** | 2026-10-01 | Senior Backend AI Pair-Programmer | `TM-31` | Tạo mới | Thiết kế đặc tả kỹ thuật 13 phần cho hệ thống phân quyền động (Dynamic RBAC) đáp ứng nhu cầu quản trị vai trò, ma trận đặc quyền và bảo mật hạt mịn cho InternHub. |
 | **v1.1** | 2026-10-01 | Senior Backend AI Pair-Programmer | `TM-31` | Hoàn tất triển khai | Triển khai hoàn chỉnh toàn bộ mã nguồn Backend: Entity Permission, Role, DTOs, Services, Controllers, JwtTokenProvider, DataInitializer, API Gateway routes và bộ Unit Tests đạt 100% tỷ lệ vượt qua. |
+| **v1.2** | 2026-10-01 | Senior AI System Architect | `TM-31` | Đồng bộ ma trận quyền | Chuẩn hóa danh mục 17 đặc quyền trên 7 modules (bổ sung module DOCUMENT: DOCUMENT_VIEW, DOCUMENT_REVIEW), đặc tả chi tiết ma trận phân quyền mặc định cho 4 vai trò hệ thống (Admin, HR, Mentor, Intern) khớp 100% giữa Spec, Backend DB Seed và Frontend UI. |
 
 ---
 
@@ -39,7 +40,7 @@
 
 ### 3.1. Trong phạm vi (In Scope)
 - Tạo Entity `Permission` và mở rộng Entity `Role` với quan hệ Many-to-Many (`role_permissions`).
-- Cung cấp danh mục 16 đặc quyền chuẩn hóa phân theo 6 nhóm module: `USER`, `ROLE`, `INTERN`, `PROGRAM`, `CONTRACT`, `SYSTEM`.
+- Cung cấp danh mục 17 đặc quyền chuẩn hóa phân theo 7 nhóm module: `USER`, `ROLE`, `INTERN`, `PROGRAM`, `CONTRACT`, `DOCUMENT`, `SYSTEM`.
 - Tự động nạp dữ liệu ban đầu (Seed Data) cho bảng permissions và thiết lập quyền mặc định cho 4 vai trò có sẵn thông qua `DataInitializer`.
 - Cập nhật cơ chế sinh JWT Token để đính kèm `permissions` vào Claims.
 - Cập nhật `CustomUserDetailsService` để nạp danh sách permissions vào `GrantedAuthority` của Spring Security Context.
@@ -89,12 +90,37 @@
 
 ---
 
-## 6. Business Rules (Quy Tắc Nghiệp Vụ)
+## 6. Business Rules & Ma Trận Phân Quyền Mặc Định (Business Rules & Default Role-Permission Matrix)
+
+### 6.1. Quy Tắc Nghiệp Vụ Cốt Lõi
 - **BR-1:** Tên vai trò (Role Name) chỉ được chứa chữ cái, chữ số và dấu gạch dưới, độ dài từ 2 đến 50 ký tự, tự động chuyển về dạng IN HOA.
 - **BR-2:** Bốn vai trò mặc định (`ADMIN`, `HR`, `MENTOR`, `INTERN`) có `is_system = true`, không thể bị xóa và không thể đổi tên.
-- **BR-3:** Vai trò `ADMIN` mặc định luôn có đủ 100% tất cả các quyền trong hệ thống.
+- **BR-3:** Vai trò `ADMIN` mặc định luôn có đủ 100% tất cả các quyền trong hệ thống (17/17 đặc quyền).
 - **BR-4:** Mã quyền (`permission code`) tuân thủ quy tắc UPPERCASE snake_case, ví dụ: `MODULE_ACTION` (ví dụ: `INTERN_APPROVE`, `USER_MANAGE`).
 - **BR-5:** Mọi thay đổi về vai trò và phân quyền đều phải được ghi log kiểm toán (Audit Log) theo tiêu chuẩn của hệ thống.
+
+### 6.2. Ma Trận Phân Quyền Chuẩn Hóa Của 4 Vai Trò Hệ Thống (Default Role Matrix)
+
+| STT | Phân Hệ (Module) | Mã Quyền (Code) | Tên Chức Năng Nghiệp Vụ | ADMIN (17) | HR (12) | MENTOR (3) | INTERN (4) | Giải Trình Nghiệp Vụ & Phạm Vi |
+| :---: | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| 1 | `USER` | `USER_VIEW` | Xem danh sách người dùng & tài khoản | :white_check_mark: | :white_check_mark: | :x: | :x: | HR cần tra cứu tài khoản nhân sự/mentor để phân công |
+| 2 | `USER` | `USER_MANAGE` | Khóa/Mở khóa & gán vai trò tài khoản | :white_check_mark: | :x: | :x: | :x: | Đặc quyền quản trị nhạy cảm cấp cao của Admin |
+| 3 | `ROLE` | `ROLE_VIEW` | Xem danh mục vai trò & ma trận quyền | :white_check_mark: | :x: | :x: | :x: | Chỉ Admin được xem cấu hình phân quyền bảo mật |
+| 4 | `ROLE` | `ROLE_MANAGE` | Quản lý vai trò & cấu hình đặc quyền | :white_check_mark: | :x: | :x: | :x: | Chỉ Admin được tạo/sửa/xóa vai trò & cấp quyền |
+| 5 | `INTERN` | `INTERN_VIEW` | Xem danh sách & chi tiết hồ sơ TTS | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | Mentor xem TTS hướng dẫn; Intern xem hồ sơ cá nhân |
+| 6 | `INTERN` | `INTERN_CREATE` | Thêm mới hồ sơ thực tập sinh | :white_check_mark: | :white_check_mark: | :x: | :x: | HR nhập liệu và tiếp nhận hồ sơ ứng viên |
+| 7 | `INTERN` | `INTERN_EDIT` | Chỉnh sửa thông tin hồ sơ thực tập | :white_check_mark: | :white_check_mark: | :x: | :x: | HR cập nhật thông tin thực tập sinh |
+| 8 | `INTERN` | `INTERN_APPROVE` | Phê duyệt hoặc từ chối hồ sơ thực tập | :white_check_mark: | :white_check_mark: | :x: | :x: | HR đánh giá tiếp nhận chính thức vào kỳ thực tập |
+| 9 | `INTERN` | `INTERN_ASSIGN_MENTOR` | Phân công mentor cho thực tập sinh | :white_check_mark: | :white_check_mark: | :x: | :x: | HR điều phối ghép cặp người hướng dẫn |
+| 10 | `PROGRAM` | `PROGRAM_VIEW` | Xem chương trình thực tập đang mở | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | Toàn bộ nhân sự và TTS cần xem thông tin kỳ thực tập |
+| 11 | `PROGRAM` | `PROGRAM_MANAGE` | Tạo mới, sửa, đóng/mở chương trình | :white_check_mark: | :white_check_mark: | :x: | :x: | HR quản trị các đợt tuyển dụng thực tập |
+| 12 | `CONTRACT` | `CONTRACT_VIEW` | Xem danh sách & chi tiết hợp đồng | :white_check_mark: | :white_check_mark: | :x: | :white_check_mark: | HR quản lý đãi ngộ; Intern xem hợp đồng cá nhân (Bảo mật với Mentor) |
+| 13 | `CONTRACT` | `CONTRACT_MANAGE` | Tải hợp đồng, cập nhật đãi ngộ & ký | :white_check_mark: | :white_check_mark: | :x: | :x: | HR khởi tạo và ký duyệt hợp đồng thực tập |
+| 14 | `DOCUMENT` | `DOCUMENT_VIEW` | Xem CV & tài liệu hồ sơ đính kèm | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | Mentor xem CV của TTS; Intern xem tài liệu đã nộp |
+| 15 | `DOCUMENT` | `DOCUMENT_REVIEW` | Phê duyệt hoặc từ chối CV/tài liệu | :white_check_mark: | :white_check_mark: | :x: | :x: | HR thẩm định giấy tờ hợp lệ |
+| 16 | `SYSTEM` | `SYSTEM_BACKUP` | Quản trị sao lưu dữ liệu toàn hệ thống | :white_check_mark: | :x: | :x: | :x: | Đặc quyền hạ tầng chỉ dành riêng cho Admin |
+| 17 | `SYSTEM` | `SYSTEM_AUDIT_VIEW` | Xem nhật ký kiểm toán & vết thao tác | :white_check_mark: | :x: | :x: | :x: | Giám sát an ninh hệ thống chỉ dành cho Admin |
+| **Tổng cộng** | **7 Phân Hệ** | **17 Đặc Quyền Toàn Hệ Thống** | — | **17/17 (100%)** | **12/17 (71%)** | **3/17 (18%)** | **4/17 (24%)** | Khớp 100% giữa Spec, Backend Seed & Frontend Matrix Table |
 
 ---
 
@@ -147,7 +173,7 @@
       "description": "Quản trị viên toàn quyền hệ thống",
       "isSystem": true,
       "userCount": 1,
-      "permissionCount": 16,
+      "permissionCount": 17,
       "createdAt": "2026-10-01T08:00:00"
     }
   ],
@@ -168,17 +194,20 @@
     "name": "HR",
     "description": "Chuyên viên quản lý nhân sự & tuyển dụng",
     "isSystem": true,
+    "userCount": 2,
     "permissions": [
-      "INTERN_VIEW",
-      "INTERN_CREATE",
-      "INTERN_EDIT",
+      "CONTRACT_MANAGE",
+      "CONTRACT_VIEW",
+      "DOCUMENT_REVIEW",
+      "DOCUMENT_VIEW",
       "INTERN_APPROVE",
       "INTERN_ASSIGN_MENTOR",
-      "PROGRAM_VIEW",
+      "INTERN_CREATE",
+      "INTERN_EDIT",
+      "INTERN_VIEW",
       "PROGRAM_MANAGE",
-      "CONTRACT_VIEW",
-      "CONTRACT_MANAGE",
-      "DOCUMENT_VIEW"
+      "PROGRAM_VIEW",
+      "USER_VIEW"
     ],
     "createdAt": "2026-10-01T08:00:00"
   },
@@ -268,7 +297,7 @@
 - [x] **AC-2:** Hệ thống từ chối xóa hoặc sửa tên của các vai trò hệ thống (`is_system = true`) với mã HTTP 400.
 - [x] **AC-3:** Hệ thống từ chối xóa vai trò đang có tài khoản sử dụng với mã HTTP 400.
 - [x] **AC-4:** Khi người dùng đăng nhập, JWT Token chứa đầy đủ claim `permissions` và API `/api/auth/me/permissions` trả về đúng danh sách quyền của tài khoản.
-- [x] **AC-5:** Tất cả 16 quyền chuẩn được tự động khởi tạo trong DB khi ứng dụng khởi động lần đầu.
+- [x] **AC-5:** Tất cả 17 quyền chuẩn phân trên 7 phân hệ được tự động khởi tạo trong DB khi ứng dụng khởi động lần đầu.
 
 ---
 

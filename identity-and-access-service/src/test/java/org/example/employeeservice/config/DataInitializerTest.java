@@ -134,9 +134,17 @@ class DataInitializerTest {
                 getClass().getClassLoader(),
                 new Class<?>[]{RoleRepository.class},
                 (proxy, method, args) -> {
-                    if ("findByName".equals(method.getName())) {
+                    if ("findByName".equals(method.getName()) || "findByNameIgnoreCase".equals(method.getName())) {
                         String name = (String) args[0];
-                        return Optional.ofNullable(roleStore.get(name));
+                        Role found = roleStore.get(name);
+                        if (found == null) {
+                            found = roleStore.entrySet().stream()
+                                    .filter(e -> e.getKey().equalsIgnoreCase(name))
+                                    .map(Map.Entry::getValue)
+                                    .findFirst()
+                                    .orElse(null);
+                        }
+                        return Optional.ofNullable(found);
                     }
                     if ("save".equals(method.getName())) {
                         Role role = (Role) args[0];

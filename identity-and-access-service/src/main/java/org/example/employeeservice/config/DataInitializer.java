@@ -223,8 +223,8 @@ public class DataInitializer implements CommandLineRunner {
             return;
         }
 
-        // 1. Admin: Nhận tất cả quyền
-        if (adminRole.getPermissions() == null || adminRole.getPermissions().isEmpty()) {
+        // 1. Admin: Nhận tất cả quyền (luôn đảm bảo 100% đặc quyền hệ thống theo BR-3)
+        if (adminRole.getPermissions() == null || adminRole.getPermissions().size() != allPermissions.size()) {
             adminRole.setPermissions(new HashSet<>(allPermissions));
             roleRepository.save(adminRole);
             log.info("-> Đã gán toàn bộ {} quyền cho vai trò Admin", allPermissions.size());
@@ -261,12 +261,8 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private Role getOrCreateRole(String roleName) {
-        return getOrCreateRole(roleName, null);
-    }
-
     private Role getOrCreateRole(String roleName, String description) {
-        return roleRepository.findByName(roleName)
+        return roleRepository.findByNameIgnoreCase(roleName)
                 .map(existing -> {
                     boolean changed = false;
                     if (existing.getIsSystem() == null || !existing.getIsSystem()) {
