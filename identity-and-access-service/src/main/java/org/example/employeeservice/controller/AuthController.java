@@ -98,6 +98,8 @@ public class AuthController {
         log.info("API: Đổi mật khẩu cho người dùng: {}", username);
         authService.changePassword(username, request);
         return ResponseEntity.ok(ApiResponse.success("Đổi mật khẩu thành công!", null));
+    }
+
     @Operation(summary = "Lấy chi tiết danh sách đặc quyền (permissions) của tài khoản đang đăng nhập")
     @GetMapping("/me/permissions")
     public ResponseEntity<ApiResponse<UserPermissionsResponse>> getCurrentUserPermissions(Authentication authentication) {
