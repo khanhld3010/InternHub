@@ -6,3 +6,8 @@ spring:
     name: identity-and-access-service
   config:
     import: optional:configserver:${CONFIG_SERVER_URL:http://config-server:8888}
+
+app:
+  oauth2:
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:mock-google-client-id}
