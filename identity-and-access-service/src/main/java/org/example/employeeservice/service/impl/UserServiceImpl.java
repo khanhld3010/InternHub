@@ -22,6 +22,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
+    private final org.example.employeeservice.client.NotificationServiceClient notificationServiceClient;
 
     @Override
     public List<UserResponse> getAllUsers() {
@@ -71,6 +72,84 @@ public class UserServiceImpl implements UserService {
         Account updatedAccount = accountRepository.save(account);
         user.setAccount(updatedAccount);
 
+        // Nếu chuyển sang INACTIVE, phát tín hiệu bảo mật ép đăng xuất tức thì qua WebSocket & Redis
+        if ("INACTIVE".equalsIgnoreCase(newStatus)) {
+            log.warn("Tài khoản userId={} bị vô hiệu hóa (INACTIVE), phát lệnh ACCOUNT_LOCKED tới socket", id);
+            notificationServiceClient.dispatchSecurityCommand(
+                    "ACCOUNT_LOCKED",
+                    id.longValue(),
+                    "Tài khoản của bạn đã bị khóa bởi Quản trị viên hệ thống",
+                    "Phiên làm việc đã bị chấm dứt. Vui lòng liên hệ ban quản trị để biết thêm chi tiết."
+            );
+        }
+
+        return mapToResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateCurrentUserProfile(String username, org.example.employeeservice.dto.request.UpdateUserProfileRequest request) {
+        log.info("Cập nhật thông tin cá nhân cho người dùng username={}", username);
+        Account account = accountRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với username: " + username));
+
+        User user = account.getUser();
+        if (user == null && account.getUserId() != null) {
+            user = userRepository.findById(account.getUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông tin người dùng gắn với tài khoản"));
+        }
+        if (user == null) {
+            throw new ResourceNotFoundException("Không tìm thấy dữ liệu người dùng");
+        }
+
+        if (request.getFullName() != null && !request.getFullName().trim().isEmpty()) {
+            user.setFullName(request.getFullName().trim());
+        }
+
+        String phone = request.getPhoneNumber() != null ? request.getPhoneNumber().trim() : 
+                      (request.getPhone() != null ? request.getPhone().trim() : null);
+        if (phone != null && !phone.isEmpty()) {
+            // Kiểm tra trùng lặp số điện thoại nếu thay đổi
+            if (!phone.equals(user.getPhoneNumber()) && userRepository.existsByPhoneNumber(phone)) {
+                throw new org.example.employeeservice.exception.DuplicateResourceException("Số điện thoại này đã được sử dụng bởi tài khoản khác");
+            }
+            user.setPhoneNumber(phone);
+        }
+
+        if (request.getDateOfBirth() != null) {
+            user.setDateOfBirth(request.getDateOfBirth());
+        }
+
+        if (request.getGender() != null) {
+            user.setGender(request.getGender());
+        }
+
+        if (request.getAddress() != null) {
+            user.setAddress(request.getAddress().trim());
+        }
+
+        if (request.getBio() != null) {
+            user.setBio(request.getBio().trim());
+        }
+
+        User savedUser = userRepository.save(user);
+        return mapToResponse(savedUser);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserResponse getUserByUsername(String username) {
+        log.info("Lấy thông tin profile cho username: {}", username);
+        Account account = accountRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với username: " + username));
+        User user = account.getUser();
+        if (user == null && account.getUserId() != null) {
+            user = userRepository.findById(account.getUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông tin người dùng gắn với tài khoản"));
+        }
+        if (user == null) {
+            throw new ResourceNotFoundException("Không tìm thấy dữ liệu người dùng");
+        }
         return mapToResponse(user);
     }
 

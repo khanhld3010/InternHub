@@ -43,6 +43,7 @@ public class InternDocumentServiceImpl implements InternDocumentService {
     private final InternDocumentRepository internDocumentRepository;
     private final FileStorageService fileStorageService;
     private final org.example.internservice.intern.client.FileServiceClient fileServiceClient;
+    private final org.example.internservice.intern.client.NotificationEventDispatcher notificationEventDispatcher;
 
 
     @Override
@@ -146,7 +147,35 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         InternDocument updated = internDocumentRepository.save(document);
         log.info("Cập nhật thành công trạng thái tài liệu ID: {} thành {}", updated.getId(), updated.getStatus());
 
+        // Bắn thông báo real-time tới thực tập sinh
+        notifyDocumentReviewResult(updated);
+
         return mapToDocumentResponse(updated, updated.getInternProfile().getInternCode());
+    }
+
+    private void notifyDocumentReviewResult(InternDocument doc) {
+        if (doc == null || doc.getInternProfile() == null || doc.getInternProfile().getUserId() == null) {
+            return;
+        }
+        Long internUserId = doc.getInternProfile().getUserId();
+        String docTypeName = doc.getDocumentType() != null ? doc.getDocumentType().name() : "Tài liệu";
+        boolean isApproved = doc.getStatus() == DocumentStatus.APPROVED;
+
+        String title = isApproved ? "Tài liệu được duyệt" : "Tài liệu bị từ chối";
+        String content = isApproved
+                ? String.format("Tài liệu %s (%s) của bạn đã được phê duyệt.", docTypeName, doc.getOriginalFileName())
+                : String.format("Tài liệu %s (%s) của bạn đã bị từ chối. Lý do: %s",
+                        docTypeName, doc.getOriginalFileName(), doc.getRejectionReason());
+
+        notificationEventDispatcher.dispatch(org.example.internservice.intern.client.dto.CreateNotificationInternalRequest.builder()
+                .recipientId(internUserId)
+                .title(title)
+                .content(content)
+                .type(isApproved ? "DOCUMENT_APPROVED" : "DOCUMENT_REJECTED")
+                .referenceType("DOCUMENT")
+                .referenceId(String.valueOf(doc.getId()))
+                .actionUrl("/profile")
+                .build());
     }
 
     private void validateFile(MultipartFile file) {

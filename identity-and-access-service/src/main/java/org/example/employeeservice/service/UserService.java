@@ -17,6 +17,8 @@ public interface UserService {
 
     UserResponse toggleUserStatus(Integer id);
 
+    UserResponse updateCurrentUserProfile(String username, org.example.employeeservice.dto.request.UpdateUserProfileRequest request);
+    UserResponse getUserByUsername(String username);
     UserResponse getCurrentUserProfile(String username);
 
     UserResponse updateOwnProfile(String username, org.example.employeeservice.dto.request.UpdateProfileRequest request);

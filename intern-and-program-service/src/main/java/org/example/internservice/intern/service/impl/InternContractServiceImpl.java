@@ -7,6 +7,7 @@ import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.client.FileServiceClient;
+import org.example.internservice.intern.client.dto.CreateNotificationInternalRequest;
 import org.example.internservice.intern.dto.request.ConfirmContractRequest;
 import org.example.internservice.intern.dto.request.ContractFeedbackRequest;
 import org.example.internservice.intern.dto.request.ContractStorageDtos;
@@ -61,6 +62,8 @@ public class InternContractServiceImpl implements InternContractService {
     private final FileStorageService fileStorageService;
     private final FileServiceClient fileServiceClient;
     private final org.example.internservice.intern.client.IntegrationEmailClient integrationEmailClient;
+    private final org.example.internservice.intern.client.NotificationEventDispatcher notificationEventDispatcher;
+    private final org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
 
     @Override
     @Transactional
@@ -101,6 +104,7 @@ public class InternContractServiceImpl implements InternContractService {
                 .build();
 
         InternContract savedContract = saveContractWithRollback(contract, relativeFilePath);
+        notifyContractCreated(savedContract, internProfile);
         return mapToContractResponse(savedContract, internProfile);
     }
 
@@ -203,6 +207,9 @@ public class InternContractServiceImpl implements InternContractService {
         } catch (Exception ex) {
             log.warn("Lỗi khi gửi email mời ký hợp đồng: {}", ex.getMessage());
         }
+
+        // Bắn thông báo real-time tới thực tập sinh
+        notifyContractCreated(saved, internProfile);
 
         return mapToContractResponse(saved, internProfile);
     }
@@ -373,6 +380,9 @@ public class InternContractServiceImpl implements InternContractService {
         profile.setEndDate(contract.getEndDate());
         internProfileRepository.save(profile);
 
+        // Bắn thông báo real-time tới HR
+        notifyContractSignedByIntern(savedContract, profile);
+
         return mapToContractResponse(savedContract, profile);
     }
 
@@ -430,6 +440,10 @@ public class InternContractServiceImpl implements InternContractService {
         InternContract saved = internContractRepository.save(contract);
 
         log.info("Hợp đồng [{}] đã được chấm dứt hợp lệ và lưu vết kiểm toán (Audit Trail). Không thực hiện xóa vật lý.", contract.getContractNumber());
+
+        // Bắn thông báo real-time chấm dứt hợp đồng
+        notifyContractTerminated(saved, contract.getInternProfile());
+
         return mapToContractResponse(saved, contract.getInternProfile());
     }
 
@@ -469,6 +483,9 @@ public class InternContractServiceImpl implements InternContractService {
 
             integrationEmailClient.sendContractNotificationEmail(emailPayload);
         }
+
+        // Bắn thông báo real-time nhắc nhở ký hợp đồng
+        notifyContractReminder(contract, profile);
     }
 
     @Override
@@ -719,5 +736,93 @@ public class InternContractServiceImpl implements InternContractService {
                 .createdAt(contract.getCreatedAt())
                 .updatedAt(contract.getUpdatedAt())
                 .build();
+    }
+
+    private void notifyContractCreated(InternContract contract, InternProfile profile) {
+        Long recipientUserId = resolveInternUserId(profile);
+        if (recipientUserId == null) {
+            return;
+        }
+        CreateNotificationInternalRequest notif = CreateNotificationInternalRequest.builder()
+                .recipientId(recipientUserId)
+                .title("Hợp đồng thực tập mới")
+                .content(String.format("HR đã gửi hợp đồng %s (%s). Vui lòng kiểm tra và ký xác nhận trực tuyến.",
+                        contract.getContractNumber(), contract.getContractTitle()))
+                .type("CONTRACT_CREATED")
+                .referenceType("CONTRACT")
+                .referenceId(String.valueOf(contract.getId()))
+                .actionUrl("/profile?tab=contract")
+                .build();
+        notificationEventDispatcher.dispatch(notif);
+    }
+
+    private void notifyContractSignedByIntern(InternContract contract, InternProfile profile) {
+        List<Long> hrUserIds = identityServiceClient.findUserIdsByRole("HR");
+        if (hrUserIds.isEmpty()) {
+            hrUserIds = identityServiceClient.findUserIdsByRole("ADMIN");
+        }
+        notificationEventDispatcher.dispatchToMultiple(hrUserIds, hrId -> CreateNotificationInternalRequest.builder()
+                .recipientId(hrId)
+                .actorId(profile.getUserId())
+                .title("Thực tập sinh đã ký hợp đồng")
+                .content(String.format("TTS %s (%s) đã ký xác nhận hợp đồng %s.",
+                        profile.getFullName(), profile.getInternCode(), contract.getContractNumber()))
+                .type("CONTRACT_SIGNED_BY_INTERN")
+                .referenceType("CONTRACT")
+                .referenceId(String.valueOf(contract.getId()))
+                .actionUrl("/hr/contracts/" + contract.getId())
+                .build());
+    }
+
+    private void notifyContractTerminated(InternContract contract, InternProfile profile) {
+        Long recipientUserId = resolveInternUserId(profile);
+        if (recipientUserId != null) {
+            CreateNotificationInternalRequest notif = CreateNotificationInternalRequest.builder()
+                    .recipientId(recipientUserId)
+                    .title("Hợp đồng thực tập đã chấm dứt")
+                    .content(String.format("Hợp đồng %s đã được chấm dứt. Lý do: %s",
+                            contract.getContractNumber(), contract.getTerminationReason()))
+                    .type("CONTRACT_TERMINATED")
+                    .referenceType("CONTRACT")
+                    .referenceId(String.valueOf(contract.getId()))
+                    .actionUrl("/profile?tab=contract")
+                    .build();
+            notificationEventDispatcher.dispatch(notif);
+        }
+    }
+
+    private void notifyContractReminder(InternContract contract, InternProfile profile) {
+        Long recipientUserId = resolveInternUserId(profile);
+        if (recipientUserId != null) {
+            CreateNotificationInternalRequest notif = CreateNotificationInternalRequest.builder()
+                    .recipientId(recipientUserId)
+                    .title("Nhắc nhở ký hợp đồng thực tập")
+                    .content(String.format("Hợp đồng %s (%s) đang chờ bạn ký xác nhận. Vui lòng hoàn tất sớm.",
+                            contract.getContractNumber(), contract.getContractTitle()))
+                    .type("CONTRACT_REMINDER")
+                    .referenceType("CONTRACT")
+                    .referenceId(String.valueOf(contract.getId()))
+                    .actionUrl("/profile?tab=contract")
+                    .build();
+            notificationEventDispatcher.dispatch(notif);
+        }
+    }
+
+    private Long resolveInternUserId(InternProfile profile) {
+        if (profile == null) {
+            return null;
+        }
+        if (profile.getUserId() != null) {
+            return profile.getUserId();
+        }
+        if (profile.getEmail() != null && !profile.getEmail().isBlank()) {
+            Long fetchedId = identityServiceClient.findUserIdByEmail(profile.getEmail());
+            if (fetchedId != null) {
+                profile.setUserId(fetchedId);
+                internProfileRepository.save(profile);
+                return fetchedId;
+            }
+        }
+        return null;
     }
 }

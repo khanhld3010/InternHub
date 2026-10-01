@@ -224,12 +224,66 @@ services:
       timeout: 5s
       retries: 5
 
+  # -------------------------------------------------------------
+  # Redis Message Broker (Real-time Pub/Sub & Revocation Storage)
+  # -------------------------------------------------------------
+  redis-broker:
+    image: redis:alpine
+    container_name: internhub-redis-broker
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Notification Service (WebSocket STOMP & Push Notifications)
+  # -------------------------------------------------------------
+  notification-service:
+    build: ./notification-service
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+      REDIS_HOST: redis-broker
+      REDIS_PORT: 6379
+      DB_URL: "jdbc:mysql://mysql-db:3306/notification_db?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+      EUREKA_URI: "http://discovery-server:8761/eureka/"
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 networks:
   micro-network:
     driver: bridge
 
 volumes:
   s3_storage_data:
+    driver: local
+  redis_data:
     driver: local
 
 

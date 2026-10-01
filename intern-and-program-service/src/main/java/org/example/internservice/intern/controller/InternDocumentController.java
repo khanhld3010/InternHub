@@ -51,7 +51,7 @@ public class InternDocumentController {
 
     @Operation(summary = "Lấy danh sách tài liệu của một thực tập sinh")
     @GetMapping("/{internCode}/documents")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR', 'INTERN')")
     public ResponseEntity<ApiResponse<List<DocumentResponse>>> getDocumentsByInternCode(
             @PathVariable("internCode") String internCode
     ) {
@@ -62,7 +62,7 @@ public class InternDocumentController {
 
     @Operation(summary = "Tải hoặc xem tài liệu đính kèm")
     @GetMapping("/documents/{documentId}/download")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR', 'INTERN')")
     public ResponseEntity<Resource> downloadDocument(
             @PathVariable("documentId") Long documentId,
             @RequestParam(name = "disposition", defaultValue = "inline") String disposition

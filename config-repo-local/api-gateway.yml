@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:internhub-redis-broker}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
   cloud:
     gateway:
       globalcors:
@@ -28,12 +33,40 @@ spring:
             locator:
               enabled: true
               lower-case-service-id: true
+          default-filters:
+            - name: SetResponseHeader
+              args:
+                name: X-Frame-Options
+                value: DENY
+            - name: SetResponseHeader
+              args:
+                name: X-Content-Type-Options
+                value: nosniff
+            - name: SetResponseHeader
+              args:
+                name: X-XSS-Protection
+                value: 1; mode=block
+            - name: SetResponseHeader
+              args:
+                name: Referrer-Policy
+                value: strict-origin-when-cross-origin
+            - name: SetResponseHeader
+              args:
+                name: Content-Security-Policy
+                value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: http: https:; connect-src 'self' ws: wss: http: https:;"
           routes:
             # 1. Identity and Access Service (Auth, Users, IAM)
             - id: identity-auth
               uri: lb://identity-and-access-service
               predicates:
                 - Path=/api/auth/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    redis-rate-limiter.requestedTokens: 1
+                    key-resolver: "#{@ipKeyResolver}"
 
             - id: identity-users
               uri: lb://identity-and-access-service
@@ -95,7 +128,25 @@ spring:
               predicates:
                 - Path=/api/system/audit-logs, /api/system/audit-logs/**
 
-            # 4. Identity fallback cho /api/employees/**
+            # 4. Notification Service (WebSocket & Notifications REST)
+            - id: notification-internal-block
+              uri: no://op
+              predicates:
+                - Path=/api/notifications/internal, /api/notifications/internal/**
+              filters:
+                - SetStatus=403
+
+            - id: notification-ws
+              uri: lb:ws://notification-service
+              predicates:
+                - Path=/ws/**
+
+            - id: notification-rest
+              uri: lb://notification-service
+              predicates:
+                - Path=/api/notifications, /api/notifications/**
+
+            # 5. Identity fallback cho /api/employees/**
             - id: identity-employees
               uri: lb://identity-and-access-service
               predicates:

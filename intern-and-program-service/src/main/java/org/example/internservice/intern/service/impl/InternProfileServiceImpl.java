@@ -60,6 +60,7 @@ public class InternProfileServiceImpl implements InternProfileService {
     private final org.example.internservice.intern.client.IntegrationEmailClient integrationEmailClient;
     private final org.example.internservice.intern.service.OnboardingTokenService onboardingTokenService;
     private final ApplicationEventPublisher eventPublisher;
+    private final org.example.internservice.intern.client.NotificationEventDispatcher notificationDispatcher;
 
     @Override
     @Transactional
@@ -193,6 +194,23 @@ public class InternProfileServiceImpl implements InternProfileService {
         InternProfile savedProfile = internProfileRepository.save(profile);
         log.info("Nộp hồ sơ thành công cho ứng viên: internCode={}, ID={}, programId={}", 
                 internCode, savedProfile.getId(), program.getId());
+
+        // Bắn thông báo real-time tới HR và ADMIN
+        List<Long> hrUserIds = identityServiceClient.findUserIdsByRole("HR");
+        if (hrUserIds.isEmpty()) {
+            hrUserIds = identityServiceClient.findUserIdsByRole("ADMIN");
+        }
+        notificationDispatcher.dispatchToMultiple(hrUserIds, hrId -> org.example.internservice.intern.client.dto.CreateNotificationInternalRequest.builder()
+                .recipientId(hrId)
+                .actorId(savedProfile.getUserId())
+                .title("Đơn ứng tuyển mới")
+                .content(String.format("Ứng viên %s vừa nộp hồ sơ vào vị trí %s (%s).",
+                        savedProfile.getFullName(), savedProfile.getAppliedPosition(), program.getName()))
+                .type("APPLICATION_SUBMITTED")
+                .referenceType("APPLICATION")
+                .referenceId(String.valueOf(savedProfile.getId()))
+                .actionUrl("/hr/interns/" + savedProfile.getId())
+                .build());
 
         return mapToResponse(savedProfile);
     }

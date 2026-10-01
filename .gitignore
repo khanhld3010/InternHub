@@ -32,3 +32,9 @@ uploads/
 .env
 .env.*
 !.env.example
+
+# Agent and AI local configs
+.agents/
+SKILLS_GUIDE.md
+skills-lock.json
+

@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 public class InternDecisionProcessedEvent extends ApplicationEvent {
 
     private final Long internProfileId;
+    private final Long userId;
     private final String internCode;
     private final String fullName;
     private final String email;
@@ -21,9 +22,14 @@ public class InternDecisionProcessedEvent extends ApplicationEvent {
     private final String appliedPosition;
     private final java.time.LocalDate startDate;
 
+    public Long getUserId() {
+        return userId;
+    }
+
     public InternDecisionProcessedEvent(Object source, InternProfile profile) {
         super(source);
         this.internProfileId = profile.getId();
+        this.userId = profile.getUserId();
         this.internCode = profile.getInternCode();
         this.fullName = profile.getFullName();
         this.email = profile.getEmail();

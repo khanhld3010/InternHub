@@ -346,6 +346,28 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void changePassword(String username, org.example.employeeservice.dto.request.ChangePasswordRequest request) {
+        log.info("Xử lý đổi mật khẩu cho người dùng username={}", username);
+        Account account = accountRepository.findByUsername(username)
+                .orElseThrow(() -> new BadRequestException("Không tìm thấy tài khoản người dùng"));
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), account.getPasswordHash())) {
+            log.warn("Đổi mật khẩu thất bại: Mật khẩu hiện tại không chính xác cho user: {}", username);
+            throw new org.example.employeeservice.exception.BadRequestException("Mật khẩu hiện tại không chính xác");
+        }
+
+        if (passwordEncoder.matches(request.getNewPassword(), account.getPasswordHash())) {
+            log.warn("Đổi mật khẩu thất bại: Mật khẩu mới trùng với mật khẩu cũ cho user: {}", username);
+            throw new org.example.employeeservice.exception.BadRequestException("Mật khẩu mới không được trùng với mật khẩu hiện tại");
+        }
+
+        account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        accountRepository.save(account);
+        log.info("Đổi mật khẩu thành công cho user: {}", username);
+    }
+
     private String generateOtp() {
         SecureRandom random = new SecureRandom();
         int code = random.nextInt(1_000_000);
