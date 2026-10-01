@@ -9,11 +9,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.employeeservice.config.JwtProperties;
 import org.example.employeeservice.entity.Account;
+import org.example.employeeservice.entity.Permission;
+import org.example.employeeservice.repository.RoleRepository;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -21,6 +26,7 @@ import java.util.Date;
 public class JwtTokenProvider {
 
     private final JwtProperties jwtProperties;
+    private final RoleRepository roleRepository;
 
     private SecretKey getSigningKey() {
         byte[] keyBytes;
@@ -46,11 +52,25 @@ public class JwtTokenProvider {
 
         String roleName = (account.getRole() != null) ? account.getRole().getName().toUpperCase() : "USER";
 
+        List<String> permissionCodes = new ArrayList<>();
+        if (account.getRole() != null && account.getRole().getId() != null) {
+            roleRepository.findByIdWithPermissions(account.getRole().getId())
+                    .ifPresent(r -> {
+                        if (r.getPermissions() != null) {
+                            for (Permission p : r.getPermissions()) {
+                                permissionCodes.add(p.getCode());
+                            }
+                        }
+                    });
+            Collections.sort(permissionCodes);
+        }
+
         return Jwts.builder()
                 .subject(account.getUsername())
                 .claim("userId", account.getUserId())
                 .claim("role", roleName)
                 .claim("accountId", account.getId())
+                .claim("permissions", permissionCodes)
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(getSigningKey(), Jwts.SIG.HS256)
@@ -98,5 +118,19 @@ public class JwtTokenProvider {
 
     public long getExpirationInSeconds() {
         return jwtProperties.getExpiration() / 1000;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getPermissionsFromToken(String token) {
+        try {
+            Claims claims = getClaimsFromToken(token);
+            Object perms = claims.get("permissions");
+            if (perms instanceof List<?>) {
+                return (List<String>) perms;
+            }
+        } catch (Exception ex) {
+            log.warn("Không thể trích xuất permissions từ token: {}", ex.getMessage());
+        }
+        return Collections.emptyList();
     }
 }

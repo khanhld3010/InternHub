@@ -2,8 +2,10 @@ package org.example.employeeservice.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.employeeservice.entity.Account;
+import org.example.employeeservice.entity.Permission;
 import org.example.employeeservice.entity.Role;
 import org.example.employeeservice.repository.AccountRepository;
+import org.example.employeeservice.repository.PermissionRepository;
 import org.example.employeeservice.repository.RoleRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
@@ -13,16 +15,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * Khởi tạo dữ liệu mặc định (Users, Roles và Accounts) chuẩn hóa theo Database hiện tại (internhub_db).
- * Users: 6 tài khoản người dùng mẫu
- * Roles: Admin, HR, Mentor, Intern
- * Accounts tương ứng với Users trong DB:
- *  - admin  (userId = 6: Lưu Đức Khánh - Quản trị viên)
- *  - hr     (userId = 2: Trần Thị Bích - Tuyển dụng / HR)
- *  - mentor (userId = 3: Lê Hoàng Nam - Người hướng dẫn)
- *  - intern (userId = 4: Phạm Đức Minh - Thực tập sinh)
+ * Khởi tạo dữ liệu mặc định (Users, Roles, Permissions và Accounts) chuẩn hóa theo Database hiện tại (internhub_db).
  */
 @Slf4j
 @Component
@@ -32,18 +31,30 @@ public class DataInitializer implements CommandLineRunner {
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbcTemplate;
+    private final PermissionRepository permissionRepository;
 
     @Autowired
     public DataInitializer(
             RoleRepository roleRepository,
             AccountRepository accountRepository,
             PasswordEncoder passwordEncoder,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            PermissionRepository permissionRepository
     ) {
         this.roleRepository = roleRepository;
         this.accountRepository = accountRepository;
         this.passwordEncoder = passwordEncoder;
         this.jdbcTemplate = jdbcTemplate;
+        this.permissionRepository = permissionRepository;
+    }
+
+    public DataInitializer(
+            RoleRepository roleRepository,
+            AccountRepository accountRepository,
+            PasswordEncoder passwordEncoder,
+            JdbcTemplate jdbcTemplate
+    ) {
+        this(roleRepository, accountRepository, passwordEncoder, jdbcTemplate, null);
     }
 
     public DataInitializer(
@@ -51,7 +62,7 @@ public class DataInitializer implements CommandLineRunner {
             AccountRepository accountRepository,
             PasswordEncoder passwordEncoder
     ) {
-        this(roleRepository, accountRepository, passwordEncoder, null);
+        this(roleRepository, accountRepository, passwordEncoder, null, null);
     }
 
     @Override
@@ -62,13 +73,19 @@ public class DataInitializer implements CommandLineRunner {
         // 1. Khởi tạo bảng users và người dùng mẫu nếu chưa có
         initializeUsersIfNotExist();
 
-        // 2. Khởi tạo danh sách vai trò (Roles) chuẩn theo DB: Admin, HR, Mentor, Intern
-        Role adminRole = getOrCreateRole("Admin");
-        Role hrRole = getOrCreateRole("HR");
-        Role mentorRole = getOrCreateRole("Mentor");
-        Role internRole = getOrCreateRole("Intern");
+        // 2. Khởi tạo danh mục đặc quyền (Permissions) chuẩn hóa
+        initializePermissionsIfNotExist();
 
-        // 3. Khởi tạo tài khoản mẫu (Accounts) với mật khẩu mặc định "123456"
+        // 3. Khởi tạo danh sách vai trò (Roles) chuẩn theo DB: Admin, HR, Mentor, Intern
+        Role adminRole = getOrCreateRole("Admin", "Quản trị viên toàn quyền hệ thống");
+        Role hrRole = getOrCreateRole("HR", "Chuyên viên quản lý nhân sự & tuyển dụng");
+        Role mentorRole = getOrCreateRole("Mentor", "Người hướng dẫn và đánh giá thực tập sinh");
+        Role internRole = getOrCreateRole("Intern", "Thực tập sinh tham gia chương trình");
+
+        // 4. Gán quyền mặc định cho các vai trò hệ thống
+        assignDefaultPermissions(adminRole, hrRole, mentorRole, internRole);
+
+        // 5. Khởi tạo tài khoản mẫu (Accounts) với mật khẩu mặc định "123456"
         createAccountIfNotExist("admin", "123456", 6, adminRole);
         createAccountIfNotExist("hr", "123456", 2, hrRole);
         createAccountIfNotExist("mentor", "123456", 3, mentorRole);
@@ -149,11 +166,120 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private Role getOrCreateRole(String roleName) {
-        return roleRepository.findByName(roleName)
+    private void initializePermissionsIfNotExist() {
+        if (permissionRepository == null) {
+            log.debug("PermissionRepository không khả dụng, bỏ qua khởi tạo permissions.");
+            return;
+        }
+
+        List<Permission> standardPermissions = List.of(
+                // USER
+                Permission.builder().code("USER_VIEW").name("Xem danh sách người dùng").module("USER").description("Xem danh sách và thông tin tài khoản người dùng").build(),
+                Permission.builder().code("USER_MANAGE").name("Quản lý người dùng").module("USER").description("Khóa/mở khóa tài khoản và phân vai trò người dùng").build(),
+
+                // ROLE
+                Permission.builder().code("ROLE_VIEW").name("Xem danh mục vai trò").module("ROLE").description("Xem danh sách vai trò và ma trận phân quyền").build(),
+                Permission.builder().code("ROLE_MANAGE").name("Quản lý vai trò & quyền").module("ROLE").description("Tạo, sửa, xóa vai trò và gán quyền cho vai trò").build(),
+
+                // INTERN
+                Permission.builder().code("INTERN_VIEW").name("Xem hồ sơ thực tập sinh").module("INTERN").description("Xem danh sách, tìm kiếm và chi tiết hồ sơ thực tập sinh").build(),
+                Permission.builder().code("INTERN_CREATE").name("Tạo hồ sơ thực tập sinh").module("INTERN").description("Thêm mới hồ sơ thực tập sinh vào hệ thống").build(),
+                Permission.builder().code("INTERN_EDIT").name("Chỉnh sửa hồ sơ thực tập sinh").module("INTERN").description("Cập nhật thông tin thực tập sinh").build(),
+                Permission.builder().code("INTERN_APPROVE").name("Phê duyệt/Từ chối hồ sơ").module("INTERN").description("Phê duyệt hoặc từ chối hồ sơ ứng tuyển thực tập").build(),
+                Permission.builder().code("INTERN_ASSIGN_MENTOR").name("Phân công mentor").module("INTERN").description("Gán người hướng dẫn phụ trách cho thực tập sinh").build(),
+
+                // PROGRAM
+                Permission.builder().code("PROGRAM_VIEW").name("Xem chương trình thực tập").module("PROGRAM").description("Xem danh sách chương trình đào tạo đang mở tuyển").build(),
+                Permission.builder().code("PROGRAM_MANAGE").name("Quản lý chương trình thực tập").module("PROGRAM").description("Tạo mới, chỉnh sửa, đóng/mở chương trình thực tập").build(),
+
+                // CONTRACT
+                Permission.builder().code("CONTRACT_VIEW").name("Xem hợp đồng thực tập").module("CONTRACT").description("Xem danh sách và chi tiết hợp đồng đào tạo thực tập").build(),
+                Permission.builder().code("CONTRACT_MANAGE").name("Quản lý hợp đồng thực tập").module("CONTRACT").description("Tải lên hợp đồng, cập nhật đãi ngộ và xác nhận ký").build(),
+
+                // DOCUMENT
+                Permission.builder().code("DOCUMENT_VIEW").name("Xem tài liệu & CV").module("DOCUMENT").description("Xem CV và các giấy tờ đính kèm của thực tập sinh").build(),
+                Permission.builder().code("DOCUMENT_REVIEW").name("Phê duyệt tài liệu").module("DOCUMENT").description("Duyệt hoặc từ chối CV và tài liệu nộp").build(),
+
+                // SYSTEM
+                Permission.builder().code("SYSTEM_BACKUP").name("Quản trị sao lưu dữ liệu").module("SYSTEM").description("Kích hoạt sao lưu toàn diện và khôi phục dữ liệu").build(),
+                Permission.builder().code("SYSTEM_AUDIT_VIEW").name("Xem nhật ký kiểm toán").module("SYSTEM").description("Xem lịch sử thao tác và vết kiểm toán hệ thống").build()
+        );
+
+        for (Permission perm : standardPermissions) {
+            if (!permissionRepository.existsByCode(perm.getCode())) {
+                permissionRepository.save(perm);
+                log.info("-> Đã khởi tạo Permission: {} [{}]", perm.getCode(), perm.getName());
+            }
+        }
+    }
+
+    private void assignDefaultPermissions(Role adminRole, Role hrRole, Role mentorRole, Role internRole) {
+        if (permissionRepository == null) {
+            return;
+        }
+
+        List<Permission> allPermissions = permissionRepository.findAll();
+        if (allPermissions.isEmpty()) {
+            return;
+        }
+
+        // 1. Admin: Nhận tất cả quyền (luôn đảm bảo 100% đặc quyền hệ thống theo BR-3)
+        if (adminRole.getPermissions() == null || adminRole.getPermissions().size() != allPermissions.size()) {
+            adminRole.setPermissions(new HashSet<>(allPermissions));
+            roleRepository.save(adminRole);
+            log.info("-> Đã gán toàn bộ {} quyền cho vai trò Admin", allPermissions.size());
+        }
+
+        // 2. HR: Quyền về intern, program, contract, document và user view
+        if (hrRole.getPermissions() == null || hrRole.getPermissions().isEmpty()) {
+            Set<Permission> hrPerms = allPermissions.stream()
+                    .filter(p -> List.of("INTERN", "PROGRAM", "CONTRACT", "DOCUMENT").contains(p.getModule()) || "USER_VIEW".equals(p.getCode()))
+                    .collect(Collectors.toSet());
+            hrRole.setPermissions(hrPerms);
+            roleRepository.save(hrRole);
+            log.info("-> Đã gán {} quyền cho vai trò HR", hrPerms.size());
+        }
+
+        // 3. Mentor: Quyền xem intern, document, program
+        if (mentorRole.getPermissions() == null || mentorRole.getPermissions().isEmpty()) {
+            Set<Permission> mentorPerms = allPermissions.stream()
+                    .filter(p -> List.of("INTERN_VIEW", "DOCUMENT_VIEW", "PROGRAM_VIEW").contains(p.getCode()))
+                    .collect(Collectors.toSet());
+            mentorRole.setPermissions(mentorPerms);
+            roleRepository.save(mentorRole);
+            log.info("-> Đã gán {} quyền cho vai trò Mentor", mentorPerms.size());
+        }
+
+        // 4. Intern: Quyền xem intern, document, contract, program
+        if (internRole.getPermissions() == null || internRole.getPermissions().isEmpty()) {
+            Set<Permission> internPerms = allPermissions.stream()
+                    .filter(p -> List.of("INTERN_VIEW", "DOCUMENT_VIEW", "CONTRACT_VIEW", "PROGRAM_VIEW").contains(p.getCode()))
+                    .collect(Collectors.toSet());
+            internRole.setPermissions(internPerms);
+            roleRepository.save(internRole);
+            log.info("-> Đã gán {} quyền cho vai trò Intern", internPerms.size());
+        }
+    }
+
+    private Role getOrCreateRole(String roleName, String description) {
+        return roleRepository.findByNameIgnoreCase(roleName)
+                .map(existing -> {
+                    boolean changed = false;
+                    if (existing.getIsSystem() == null || !existing.getIsSystem()) {
+                        existing.setIsSystem(true);
+                        changed = true;
+                    }
+                    if (existing.getDescription() == null && description != null) {
+                        existing.setDescription(description);
+                        changed = true;
+                    }
+                    return changed ? roleRepository.save(existing) : existing;
+                })
                 .orElseGet(() -> {
                     Role newRole = Role.builder()
                             .name(roleName)
+                            .description(description)
+                            .isSystem(true)
                             .build();
                     Role saved = roleRepository.save(newRole);
                     log.info("-> Đã khởi tạo Role: {}", roleName);

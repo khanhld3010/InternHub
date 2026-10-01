@@ -24,6 +24,21 @@ spring:
               predicates:
                 - Path=/api/users, /api/users/**
 
+            - id: identity-system-roles
+              uri: lb://identity-and-access-service
+              predicates:
+                - Path=/api/system/roles, /api/system/roles/**
+
+            - id: identity-system-permissions
+              uri: lb://identity-and-access-service
+              predicates:
+                - Path=/api/system/permissions, /api/system/permissions/**
+
+            - id: identity-system-users
+              uri: lb://identity-and-access-service
+              predicates:
+                - Path=/api/system/users, /api/system/users/**
+
             # 2. Intern and Program Service (Interns, Documents)
             # Route cũ tương thích ngược: /api/employees/interns/** -> /api/interns/**
             - id: intern-legacy-compat
