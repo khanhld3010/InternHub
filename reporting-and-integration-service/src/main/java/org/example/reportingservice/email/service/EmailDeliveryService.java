@@ -229,4 +229,37 @@ public class EmailDeliveryService {
                 null
         );
     }
+
+    /**
+     * Gửi email thông báo liên quan đến hợp đồng (Mời ký, Nhắc ký, Thắc mắc)
+     */
+    @Async
+    public void sendContractNotificationEmailAsync(org.example.reportingservice.email.dto.request.SendContractNotificationEmailRequest request) {
+        log.info("Bắt đầu gửi email thông báo hợp đồng async. Event: {}, contract: {}, to: {}",
+                request.getEventType(), request.getContractNumber(), request.getRecipientEmail());
+
+        String subject;
+        String templateCode = request.getEventType();
+
+        if ("CONTRACT_REMINDER".equalsIgnoreCase(request.getEventType())) {
+            subject = "[InternHub] Nhắc nhở: Hợp đồng thực tập đang chờ bạn ký xác nhận (" + request.getContractNumber() + ")";
+        } else if ("CONTRACT_INVITATION".equalsIgnoreCase(request.getEventType())) {
+            subject = "[InternHub] Ban hành hợp đồng tiếp nhận thực tập (" + request.getContractNumber() + ")";
+        } else if ("CONTRACT_FEEDBACK".equalsIgnoreCase(request.getEventType())) {
+            subject = "[InternHub] Thực tập sinh phản hồi thắc mắc về Hợp đồng (" + request.getContractNumber() + ")";
+        } else {
+            subject = "[InternHub] Thông báo về hợp đồng thực tập (" + request.getContractNumber() + ")";
+        }
+
+        String htmlContent = emailTemplateBuilder.buildContractNotificationEmail(request);
+
+        sendSingleEmail(
+                request.getRecipientEmail(),
+                request.getRecipientName(),
+                subject,
+                templateCode,
+                htmlContent,
+                request.getContractId()
+        );
+    }
 }

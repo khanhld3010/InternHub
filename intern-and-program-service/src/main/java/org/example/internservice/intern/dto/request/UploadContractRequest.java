@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.example.internservice.intern.entity.enums.ContractType;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.math.BigDecimal;
@@ -36,6 +37,10 @@ public class UploadContractRequest {
 
     @DecimalMin(value = "0.0", inclusive = true, message = "Mức phụ cấp không được âm")
     private BigDecimal allowanceAmount;
+
+    private ContractType contractType;
+
+    private Long parentContractId;
 
     @Size(max = 1000, message = "Ghi chú không được vượt quá 1000 ký tự")
     private String notes;

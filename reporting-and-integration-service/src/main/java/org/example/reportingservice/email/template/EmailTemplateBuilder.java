@@ -366,6 +366,96 @@ public class EmailTemplateBuilder {
         );
     }
 
+    /**
+     * Template email thông báo hợp đồng thực tập (Mời ký, Nhắc ký, Đã ký, TTS thắc mắc)
+     */
+    public String buildContractNotificationEmail(org.example.reportingservice.email.dto.request.SendContractNotificationEmailRequest req) {
+        String eventType = req.getEventType();
+        String contractNumber = req.getContractNumber();
+        String title = req.getContractTitle();
+        String recipientName = req.getRecipientName();
+        String startDateStr = req.getStartDate() != null ? req.getStartDate().format(DATE_FORMATTER) : "—";
+        String endDateStr = req.getEndDate() != null ? req.getEndDate().format(DATE_FORMATTER) : "—";
+        String contractPortalUrl = frontendUrl + "/intern/documents";
+
+        if ("CONTRACT_REMINDER".equalsIgnoreCase(eventType)) {
+            String body =
+                    "<h1 style=\"margin:0 0 16px 0; font-size:22px; line-height:30px; font-weight:800; color:#12141C;\">Nhắc nhở: Hợp đồng thực tập đang chờ bạn ký xác nhận</h1>" +
+                    "<p style=\"margin:0 0 16px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                    "Xin chào <strong style=\"color:#12141C;\">" + escapeHtml(recipientName) + "</strong>," +
+                    "</p>" +
+                    "<p style=\"margin:0 0 20px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                    "Bộ phận Nhân sự xin thông báo hợp đồng tiếp nhận thực tập <strong style=\"color:#12141C;\">" + escapeHtml(contractNumber) + "</strong> (" + escapeHtml(title) + ") của bạn hiện vẫn đang ở trạng thái <strong>Chờ ký xác nhận</strong>." +
+                    "</p>" +
+                    "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#F6F7FA; border:1px solid #E7E9EF; border-radius:8px; margin:20px 0;\">" +
+                    "<tr><td style=\"padding:16px 20px;\">" +
+                    "  <p style=\"margin:0 0 8px 0; font-size:13px; color:#5B6072;\">• Mã hợp đồng: <strong style=\"color:#12141C;\">" + escapeHtml(contractNumber) + "</strong></p>" +
+                    "  <p style=\"margin:0 0 8px 0; font-size:13px; color:#5B6072;\">• Thời gian thực tập: <strong style=\"color:#12141C;\">" + startDateStr + " — " + endDateStr + "</strong></p>" +
+                    "  <p style=\"margin:0; font-size:13px; color:#5B6072;\">• Mức phụ cấp: <strong style=\"color:#059669;\">" + (req.getAllowanceAmount() != null ? String.format("%,.0f VNĐ", req.getAllowanceAmount()) : "Không có") + "</strong></p>" +
+                    "</td></tr></table>" +
+                    "<p style=\"margin:0 0 20px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                    "Để đảm bảo quyền lợi và kịp thời tiếp nhận trước ngày bắt đầu, bạn vui lòng đăng nhập vào hệ thống để đọc kỹ điều khoản và ký xác nhận điện tử:" +
+                    "</p>" +
+                    buildButton(contractPortalUrl, "Xem Và Ký Hợp Đồng Ngay") +
+                    "<p style=\"margin:16px 0 0 0; font-size:13px; line-height:20px; color:#94A3B8;\">" +
+                    "Nếu bản scan bị mờ hoặc có thắc mắc về điều khoản, bạn có thể chọn <em>'Có thắc mắc, liên hệ HR'</em> ngay trên giao diện xem hợp đồng.<br>" +
+                    "<strong style=\"color:#5B6072;\">Bộ phận Nhân sự " + escapeHtml(companyName) + "</strong>" +
+                    "</p>";
+
+            return wrapEmail(
+                    "Nhắc nhở ký hợp đồng thực tập: " + contractNumber,
+                    "NHẮC NHỞ KÝ HỢP ĐỒNG", "#D97706", "#FEF3C7",
+                    body
+            );
+        } else if ("CONTRACT_INVITATION".equalsIgnoreCase(eventType)) {
+            String body =
+                    "<h1 style=\"margin:0 0 16px 0; font-size:22px; line-height:30px; font-weight:800; color:#12141C;\">Thông báo: Ban hành hợp đồng thực tập mới</h1>" +
+                    "<p style=\"margin:0 0 16px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                    "Xin chào <strong style=\"color:#12141C;\">" + escapeHtml(recipientName) + "</strong>," +
+                    "</p>" +
+                    "<p style=\"margin:0 0 20px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                    "Phòng Nhân sự đã ban hành văn bản hợp đồng tiếp nhận thực tập số <strong style=\"color:#12141C;\">" + escapeHtml(contractNumber) + "</strong> dành cho bạn." +
+                    "</p>" +
+                    buildButton(contractPortalUrl, "Đọc & Ký Hợp Đồng Điện Tử") +
+                    "<p style=\"margin:16px 0 0 0; font-size:13px; line-height:20px; color:#94A3B8;\">" +
+                    "Trân trọng,<br><strong style=\"color:#5B6072;\">Ban Nhân sự " + escapeHtml(companyName) + "</strong>" +
+                    "</p>";
+
+            return wrapEmail(
+                    "Ban hành hợp đồng tiếp nhận thực tập: " + contractNumber,
+                    "HỢP ĐỒNG MỚI", "#4F46E5", "#EEF2FF",
+                    body
+            );
+        } else if ("CONTRACT_FEEDBACK".equalsIgnoreCase(eventType)) {
+            String body =
+                    "<h1 style=\"margin:0 0 16px 0; font-size:20px; line-height:28px; font-weight:800; color:#12141C;\">Thực tập sinh gửi phản hồi thắc mắc về Hợp đồng</h1>" +
+                    "<p style=\"margin:0 0 16px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                    "Kính gửi Chuyên viên Nhân sự," +
+                    "</p>" +
+                    "<p style=\"margin:0 0 16px 0; font-size:14px; line-height:22px; color:#5B6072;\">" +
+                    "Thực tập sinh <strong style=\"color:#12141C;\">" + escapeHtml(req.getSignerFullName() != null ? req.getSignerFullName() : recipientName) + "</strong> vừa gửi phản hồi thắc mắc về hợp đồng <strong style=\"color:#12141C;\">" + escapeHtml(contractNumber) + "</strong>:" +
+                    "</p>" +
+                    "<div style=\"background-color:#FFFBEB; border:1px solid #FEF3C7; border-radius:8px; padding:16px; margin:20px 0;\">" +
+                    "  <p style=\"margin:0; font-size:14px; line-height:22px; color:#92400E;\">" +
+                    "    <em>\"" + escapeHtml(req.getFeedbackNotes()) + "\"</em>" +
+                    "  </p>" +
+                    "</div>" +
+                    buildButton(frontendUrl + "/hr/contracts", "Xem Chi Tiết Trong Contract Hub") +
+                    "<p style=\"margin:16px 0 0 0; font-size:13px; line-height:20px; color:#94A3B8;\">" +
+                    "Vui lòng kiểm tra lại bản scan hoặc liên hệ trực tiếp với thực tập sinh để hỗ trợ." +
+                    "</p>";
+
+            return wrapEmail(
+                    "[InternHub] Thắc mắc hợp đồng từ TTS: " + contractNumber,
+                    "THẮC MẮC HỢP ĐỒNG", "#EA580C", "#FFF7ED",
+                    body
+            );
+        }
+
+        // Default generic
+        return wrapEmail("Thông báo hợp đồng", "HỢP ĐỒNG", "#4F46E5", "#EEF2FF", "<p>Thông báo hợp đồng: " + escapeHtml(contractNumber) + "</p>");
+    }
+
     private String escapeHtml(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;")

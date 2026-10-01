@@ -81,4 +81,23 @@ public class IntegrationEmailClient {
                     url, payload.get("email"), e.getMessage());
         }
     }
+
+    public void sendContractNotificationEmail(Map<String, Object> payload) {
+        String url = reportingServiceUrl + "/api/integration/emails/contract-notification";
+        log.info("Gửi yêu cầu email hợp đồng sang ReportingService tại URL: {}, event: {}, contract: {}, to: {}",
+                url, payload.get("eventType"), payload.get("contractNumber"), payload.get("recipientEmail"));
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Call", "true");
+
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
+            restTemplate.postForEntity(url, requestEntity, Void.class);
+            log.info("Gửi yêu cầu email hợp đồng sang ReportingService thành công cho contractNumber: {}", payload.get("contractNumber"));
+        } catch (Exception e) {
+            log.warn("Không thể gửi email hợp đồng sang ReportingService ({}). Lỗi: {}", url, e.getMessage());
+            // Không ném exception để tránh làm gián đoạn luồng nghiệp vụ chính
+        }
+    }
 }

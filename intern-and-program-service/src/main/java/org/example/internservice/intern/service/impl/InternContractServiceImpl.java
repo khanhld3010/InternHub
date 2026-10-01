@@ -6,14 +6,20 @@ import org.example.internservice.common.storage.FileStorageService;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.exception.ResourceNotFoundException;
+import org.example.internservice.intern.client.FileServiceClient;
 import org.example.internservice.intern.dto.request.ConfirmContractRequest;
+import org.example.internservice.intern.dto.request.ContractFeedbackRequest;
+import org.example.internservice.intern.dto.request.ContractStorageDtos;
 import org.example.internservice.intern.dto.request.RejectContractRequest;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos;
+import org.example.internservice.intern.dto.request.TerminateContractRequest;
 import org.example.internservice.intern.dto.request.UploadContractRequest;
 import org.example.internservice.intern.dto.response.ContractResponse;
 import org.example.internservice.intern.dto.response.DocumentDownloadDto;
 import org.example.internservice.intern.entity.InternContract;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.ContractStatus;
+import org.example.internservice.intern.entity.enums.ContractType;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternContractRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
@@ -29,9 +35,11 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -51,16 +59,23 @@ public class InternContractServiceImpl implements InternContractService {
     private final InternProfileRepository internProfileRepository;
     private final InternContractRepository internContractRepository;
     private final FileStorageService fileStorageService;
+    private final FileServiceClient fileServiceClient;
+    private final org.example.internservice.intern.client.IntegrationEmailClient integrationEmailClient;
 
     @Override
     @Transactional
     public ContractResponse uploadContract(String internCode, MultipartFile file, UploadContractRequest request, String uploadedBy) {
-        log.info("Bắt đầu xử lý tải lên hợp đồng: internCode={}, uploadedBy={}", internCode, uploadedBy);
+        log.info("Bắt đầu xử lý tải lên hợp đồng (multipart): internCode={}, uploadedBy={}", internCode, uploadedBy);
         validateFile(file);
         validateContractRequest(request);
 
         InternProfile internProfile = getAndValidateInternProfile(internCode);
         String contractNumber = resolveContractNumber(request.getContractNumber());
+
+        InternContract parentContract = resolveParentContract(request.getParentContractId(), internProfile);
+        ContractType contractType = request.getContractType() != null
+                ? request.getContractType()
+                : (parentContract != null ? ContractType.EXTENSION_APPENDIX : ContractType.OFFICIAL_INTERNSHIP);
 
         String subDirectory = "contracts/" + internProfile.getInternCode();
         String uniqueFileName = fileStorageService.storeFile(file, subDirectory);
@@ -68,6 +83,8 @@ public class InternContractServiceImpl implements InternContractService {
 
         InternContract contract = InternContract.builder()
                 .internProfile(internProfile)
+                .parentContract(parentContract)
+                .contractType(contractType)
                 .contractNumber(contractNumber)
                 .contractTitle(request.getContractTitle().trim())
                 .startDate(request.getStartDate())
@@ -85,6 +102,157 @@ public class InternContractServiceImpl implements InternContractService {
 
         InternContract savedContract = saveContractWithRollback(contract, relativeFilePath);
         return mapToContractResponse(savedContract, internProfile);
+    }
+
+    @Override
+    public StorageBusinessDtos.RequestUploadUrlResponse requestContractUploadUrl(
+            String internCode, ContractStorageDtos.RequestContractUploadUrlRequest request) {
+        log.info("HR yêu cầu presigned S3 upload URL cho hợp đồng intern: {}", internCode);
+        getAndValidateInternProfile(internCode);
+
+        FileServiceClient.PresignedUploadRequest internalReq = FileServiceClient.PresignedUploadRequest.builder()
+                .prefix("temp/contracts")
+                .fileName(request.getFileName())
+                .contentType(request.getContentType())
+                .sizeLimitBytes(request.getFileSize())
+                .build();
+
+        FileServiceClient.PresignedUploadResponse internalRes = fileServiceClient.createPresignedUpload(internalReq);
+
+        return StorageBusinessDtos.RequestUploadUrlResponse.builder()
+                .tempKey(internalRes.getTempKey())
+                .presignedUrl(internalRes.getPresignedUrl())
+                .expiresInSeconds(internalRes.getExpiresInSeconds())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public ContractResponse confirmContractUpload(
+            String internCode, ContractStorageDtos.ConfirmContractUploadRequest request, String uploadedBy) {
+        log.info("Xác nhận upload S3 thành công cho hợp đồng intern: {}, tempKey: {}", internCode, request.getTempKey());
+        InternProfile internProfile = getAndValidateInternProfile(internCode);
+
+        if (request.getStartDate() == null || request.getEndDate() == null) {
+            throw new BadRequestException("Ngày bắt đầu và ngày kết thúc hợp đồng không được để trống");
+        }
+        if (request.getEndDate().isBefore(request.getStartDate()) || request.getEndDate().isEqual(request.getStartDate())) {
+            throw new BadRequestException("Ngày kết thúc hợp đồng phải sau ngày bắt đầu");
+        }
+
+        String contractNumber = resolveContractNumber(request.getContractNumber());
+        InternContract parentContract = resolveParentContract(request.getParentContractId(), internProfile);
+        ContractType contractType = request.getContractType() != null
+                ? request.getContractType()
+                : (parentContract != null ? ContractType.EXTENSION_APPENDIX : ContractType.OFFICIAL_INTERNSHIP);
+
+        String extension = ".pdf";
+        if (request.getOriginalFileName().contains(".")) {
+            extension = request.getOriginalFileName().substring(request.getOriginalFileName().lastIndexOf("."));
+        }
+        String destKey = String.format("contracts/%s/%s_%d_%s%s",
+                internCode, contractNumber, System.currentTimeMillis(), UUID.randomUUID().toString().substring(0, 8), extension);
+
+        FileServiceClient.PromoteFileRequest promoteReq = FileServiceClient.PromoteFileRequest.builder()
+                .tempKey(request.getTempKey())
+                .destinationKey(destKey)
+                .build();
+
+        FileServiceClient.PromoteFileResponse promoteRes = fileServiceClient.promoteFile(promoteReq);
+
+        InternContract contract = InternContract.builder()
+                .internProfile(internProfile)
+                .parentContract(parentContract)
+                .contractType(contractType)
+                .contractNumber(contractNumber)
+                .contractTitle(request.getContractTitle().trim())
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
+                .allowanceAmount(request.getAllowanceAmount())
+                .status(ContractStatus.PENDING_SIGNATURE)
+                .originalFileName(request.getOriginalFileName())
+                .fileName(destKey)
+                .filePath(promoteRes.getFinalKey())
+                .fileSize(promoteRes.getFileSize() != null ? promoteRes.getFileSize() : 0L)
+                .contentType(promoteRes.getContentType() != null ? promoteRes.getContentType() : "application/pdf")
+                .uploadedBy(StringUtils.hasText(uploadedBy) ? uploadedBy : "HR")
+                .notes(request.getNotes())
+                .build();
+
+        InternContract saved = internContractRepository.save(contract);
+        log.info("Lưu hợp đồng S3 vào DB thành công với ID: {}", saved.getId());
+
+        // Gửi email thông báo mời ký hợp đồng cho TTS
+        try {
+            if (internProfile.getEmail() != null && !internProfile.getEmail().isBlank()) {
+                java.util.Map<String, Object> emailPayload = new java.util.HashMap<>();
+                emailPayload.put("contractId", saved.getId());
+                emailPayload.put("recipientEmail", internProfile.getEmail());
+                emailPayload.put("recipientName", internProfile.getFullName());
+                emailPayload.put("contractNumber", saved.getContractNumber());
+                emailPayload.put("contractTitle", saved.getContractTitle());
+                emailPayload.put("contractType", saved.getContractType() != null ? saved.getContractType().name() : "OFFICIAL_INTERNSHIP");
+                emailPayload.put("startDate", saved.getStartDate() != null ? saved.getStartDate().toString() : null);
+                emailPayload.put("endDate", saved.getEndDate() != null ? saved.getEndDate().toString() : null);
+                emailPayload.put("allowanceAmount", saved.getAllowanceAmount());
+                emailPayload.put("eventType", "CONTRACT_INVITATION");
+                emailPayload.put("notes", saved.getNotes());
+
+                integrationEmailClient.sendContractNotificationEmail(emailPayload);
+            }
+        } catch (Exception ex) {
+            log.warn("Lỗi khi gửi email mời ký hợp đồng: {}", ex.getMessage());
+        }
+
+        return mapToContractResponse(saved, internProfile);
+    }
+
+    @Override
+    public ContractStorageDtos.ViewContractUrlResponse getContractViewUrl(Long contractId, CustomUserDetails userDetails) {
+        log.info("Lấy Presigned View URL cho hợp đồng ID: {}", contractId);
+        if (contractId == null || contractId <= 0) {
+            throw new BadRequestException("ID hợp đồng không hợp lệ");
+        }
+        InternContract contract = internContractRepository.findByIdWithProfile(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
+
+        verifyContractOwnership(contract, userDetails);
+
+        String filePath = contract.getFilePath();
+        if (filePath != null && (filePath.startsWith("contracts/") || filePath.startsWith("temp/"))) {
+            try {
+                FileServiceClient.PresignedViewRequest viewReq = FileServiceClient.PresignedViewRequest.builder()
+                        .fileKey(filePath)
+                        .expiresInMinutes(30)
+                        .build();
+
+                FileServiceClient.PresignedViewResponse viewRes = fileServiceClient.createPresignedView(viewReq);
+                return ContractStorageDtos.ViewContractUrlResponse.builder()
+                        .contractId(contract.getId())
+                        .contractNumber(contract.getContractNumber())
+                        .originalFileName(contract.getOriginalFileName())
+                        .presignedUrl(viewRes.getPresignedUrl())
+                        .expiresInSeconds(viewRes.getExpiresInSeconds())
+                        .build();
+            } catch (Exception ex) {
+                log.warn("Không thể sinh presigned view url từ file-service, fallback sang URL rỗng: {}", ex.getMessage());
+            }
+        }
+
+        return ContractStorageDtos.ViewContractUrlResponse.builder()
+                .contractId(contract.getId())
+                .contractNumber(contract.getContractNumber())
+                .originalFileName(contract.getOriginalFileName())
+                .presignedUrl(null)
+                .expiresInSeconds(0)
+                .build();
+    }
+
+    @Override
+    public List<ContractResponse> getAllContracts() {
+        log.info("HR truy vấn danh sách toàn bộ hợp đồng công ty");
+        List<InternContract> contracts = internContractRepository.findAllWithProfile();
+        return contracts.stream().map(c -> mapToContractResponse(c, c.getInternProfile())).toList();
     }
 
     @Override
@@ -137,6 +305,7 @@ public class InternContractServiceImpl implements InternContractService {
         }
         return contracts.stream()
                 .filter(c -> c.getStatus() == ContractStatus.PENDING_SIGNATURE
+                        || c.getStatus() == ContractStatus.PENDING_INTERN_FEEDBACK
                         || c.getStatus() == ContractStatus.ACTIVE
                         || c.getStatus() == ContractStatus.SIGNED)
                 .findFirst()
@@ -172,7 +341,7 @@ public class InternContractServiceImpl implements InternContractService {
 
         verifyContractOwnership(contract, userDetails);
 
-        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE) {
+        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE && contract.getStatus() != ContractStatus.PENDING_INTERN_FEEDBACK) {
             throw new BadRequestException("Hợp đồng này không ở trạng thái chờ ký (Trạng thái hiện tại: " + contract.getStatus() + ")");
         }
 
@@ -182,18 +351,174 @@ public class InternContractServiceImpl implements InternContractService {
             throw new BadRequestException("Hợp đồng này đã hết hạn hiệu lực vào ngày " + contract.getEndDate() + ". Vui lòng liên hệ HR để nhận hợp đồng mới.");
         }
 
-        contract.setStatus(ContractStatus.SIGNED);
+        contract.setStatus(ContractStatus.ACTIVE);
         contract.setSignedAt(LocalDateTime.now());
         contract.setSignerFullName(request.getSignerFullName().trim());
         contract.setInternConfirmationNote(request.getConfirmationNote());
+
+        // Nếu đây là phụ lục gia hạn (có parentContract), chuyển trạng thái HĐ cũ sang SUPERSEDED
+        if (contract.getParentContract() != null) {
+            InternContract parent = contract.getParentContract();
+            log.info("Hợp đồng ID [{}] là phụ lục gia hạn của HĐ ID [{}], chuyển HĐ cha sang SUPERSEDED", contract.getId(), parent.getId());
+            parent.setStatus(ContractStatus.SUPERSEDED);
+            internContractRepository.save(parent);
+        }
+
         InternContract savedContract = internContractRepository.save(contract);
 
+        // Cập nhật InternProfile: chuyển status sang INTERNING và đồng bộ ngày kết thúc thực tập mới nhất
         InternProfile profile = contract.getInternProfile();
-        log.info("Chuyển trạng thái intern [{}] từ [{}] sang INTERNING sau khi ký hợp đồng", profile.getInternCode(), profile.getStatus());
+        log.info("Chuyển trạng thái intern [{}] sang INTERNING và cập nhật endDate thành [{}]", profile.getInternCode(), contract.getEndDate());
         profile.setStatus(InternStatus.INTERNING);
+        profile.setEndDate(contract.getEndDate());
         internProfileRepository.save(profile);
 
         return mapToContractResponse(savedContract, profile);
+    }
+
+    @Override
+    @Transactional
+    public ContractResponse submitFeedback(Long contractId, ContractFeedbackRequest request, CustomUserDetails userDetails) {
+        log.info("Thực tập sinh gửi phản hồi thắc mắc cho hợp đồng ID: {}", contractId);
+        if (contractId == null || contractId <= 0) {
+            throw new BadRequestException("ID hợp đồng không hợp lệ");
+        }
+        if (request == null || !StringUtils.hasText(request.getFeedbackNotes())) {
+            throw new BadRequestException("Nội dung phản hồi không được để trống");
+        }
+
+        InternContract contract = internContractRepository.findByIdWithProfile(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
+
+        verifyContractOwnership(contract, userDetails);
+
+        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE && contract.getStatus() != ContractStatus.PENDING_INTERN_FEEDBACK) {
+            throw new BadRequestException("Chỉ có thể gửi thắc mắc khi hợp đồng đang ở trạng thái chờ ký hoặc chờ phản hồi");
+        }
+
+        contract.setStatus(ContractStatus.PENDING_INTERN_FEEDBACK);
+        contract.setFeedbackNotes(request.getFeedbackNotes().trim());
+        contract.setFeedbackAt(LocalDateTime.now());
+        InternContract saved = internContractRepository.save(contract);
+
+        log.info("Đã lưu thắc mắc của TTS cho hợp đồng ID [{}]. Hệ thống tự động ghi nhận để HR xử lý.", contractId);
+        return mapToContractResponse(saved, contract.getInternProfile());
+    }
+
+    @Override
+    @Transactional
+    public ContractResponse terminateContract(Long contractId, TerminateContractRequest request, String terminatedBy) {
+        log.info("HR [{}] yêu cầu chấm dứt hợp đồng ID: {}", terminatedBy, contractId);
+        if (contractId == null || contractId <= 0) {
+            throw new BadRequestException("ID hợp đồng không hợp lệ");
+        }
+        if (request == null || !StringUtils.hasText(request.getTerminationReason())) {
+            throw new BadRequestException("Lý do chấm dứt hợp đồng không được để trống");
+        }
+
+        InternContract contract = internContractRepository.findByIdWithProfile(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
+
+        if (contract.getStatus() == ContractStatus.TERMINATED) {
+            throw new BadRequestException("Hợp đồng này đã bị chấm dứt trước đó");
+        }
+
+        contract.setStatus(ContractStatus.TERMINATED);
+        contract.setTerminationReason(request.getTerminationReason().trim());
+        contract.setTerminatedAt(LocalDateTime.now());
+        contract.setTerminatedBy(StringUtils.hasText(terminatedBy) ? terminatedBy : "HR");
+        InternContract saved = internContractRepository.save(contract);
+
+        log.info("Hợp đồng [{}] đã được chấm dứt hợp lệ và lưu vết kiểm toán (Audit Trail). Không thực hiện xóa vật lý.", contract.getContractNumber());
+        return mapToContractResponse(saved, contract.getInternProfile());
+    }
+
+    @Override
+    @Transactional
+    public void sendContractReminder(Long contractId, String sentBy) {
+        log.info("HR [{}] gửi nhắc nhở ký cho hợp đồng ID: {}", sentBy, contractId);
+        InternContract contract = internContractRepository.findByIdWithProfile(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng với ID: " + contractId));
+
+        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE && contract.getStatus() != ContractStatus.PENDING_INTERN_FEEDBACK) {
+            throw new BadRequestException("Chỉ có thể gửi nhắc nhở khi hợp đồng đang ở trạng thái chờ ký hoặc chờ phản hồi");
+        }
+
+        InternProfile profile = contract.getInternProfile();
+        log.info("Đã phát lệnh nhắc nhở ký hợp đồng [{}] tới thực tập sinh [{}] (Email: {})",
+                contract.getContractNumber(), profile.getFullName(), profile.getEmail());
+
+        // Cập nhật vết nhắc nhở
+        contract.setLastRemindedAt(LocalDateTime.now());
+        contract.setReminderCount(contract.getReminderCount() != null ? contract.getReminderCount() + 1 : 1);
+        internContractRepository.save(contract);
+
+        if (profile.getEmail() != null && !profile.getEmail().isBlank()) {
+            java.util.Map<String, Object> emailPayload = new java.util.HashMap<>();
+            emailPayload.put("contractId", contract.getId());
+            emailPayload.put("recipientEmail", profile.getEmail());
+            emailPayload.put("recipientName", profile.getFullName());
+            emailPayload.put("contractNumber", contract.getContractNumber());
+            emailPayload.put("contractTitle", contract.getContractTitle());
+            emailPayload.put("contractType", contract.getContractType() != null ? contract.getContractType().name() : "OFFICIAL_INTERNSHIP");
+            emailPayload.put("startDate", contract.getStartDate() != null ? contract.getStartDate().toString() : null);
+            emailPayload.put("endDate", contract.getEndDate() != null ? contract.getEndDate().toString() : null);
+            emailPayload.put("allowanceAmount", contract.getAllowanceAmount());
+            emailPayload.put("eventType", "CONTRACT_REMINDER");
+            emailPayload.put("notes", contract.getNotes());
+
+            integrationEmailClient.sendContractNotificationEmail(emailPayload);
+        }
+    }
+
+    @Override
+    @Transactional
+    public int scanAndSendPendingContractReminders(int overdueDays, int cooldownDays) {
+        LocalDateTime createdBefore = LocalDateTime.now().minusDays(overdueDays);
+        LocalDateTime remindedBefore = LocalDateTime.now().minusDays(cooldownDays);
+
+        log.info("[CRON-CONTRACT] Bắt đầu quét hợp đồng chờ ký: createdBefore={}, remindedBefore={}",
+                createdBefore, remindedBefore);
+
+        List<InternContract> pendingContracts = internContractRepository.findContractsNeedingSignatureReminder(
+                ContractStatus.PENDING_SIGNATURE, createdBefore, remindedBefore);
+
+        log.info("[CRON-CONTRACT] Phát hiện {} hợp đồng PENDING_SIGNATURE cần gửi email nhắc nhở tự động",
+                pendingContracts.size());
+
+        int count = 0;
+        for (InternContract contract : pendingContracts) {
+            try {
+                InternProfile profile = contract.getInternProfile();
+                if (profile != null && profile.getEmail() != null && !profile.getEmail().isBlank()) {
+                    java.util.Map<String, Object> emailPayload = new java.util.HashMap<>();
+                    emailPayload.put("contractId", contract.getId());
+                    emailPayload.put("recipientEmail", profile.getEmail());
+                    emailPayload.put("recipientName", profile.getFullName());
+                    emailPayload.put("contractNumber", contract.getContractNumber());
+                    emailPayload.put("contractTitle", contract.getContractTitle());
+                    emailPayload.put("contractType", contract.getContractType() != null ? contract.getContractType().name() : "OFFICIAL_INTERNSHIP");
+                    emailPayload.put("startDate", contract.getStartDate() != null ? contract.getStartDate().toString() : null);
+                    emailPayload.put("endDate", contract.getEndDate() != null ? contract.getEndDate().toString() : null);
+                    emailPayload.put("allowanceAmount", contract.getAllowanceAmount());
+                    emailPayload.put("eventType", "CONTRACT_REMINDER");
+                    emailPayload.put("notes", contract.getNotes());
+
+                    integrationEmailClient.sendContractNotificationEmail(emailPayload);
+
+                    contract.setLastRemindedAt(LocalDateTime.now());
+                    contract.setReminderCount(contract.getReminderCount() != null ? contract.getReminderCount() + 1 : 1);
+                    internContractRepository.save(contract);
+                    count++;
+                }
+            } catch (Exception e) {
+                log.error("[CRON-CONTRACT] Lỗi khi gửi email nhắc nhở tự động cho hợp đồng ID: {}. Lỗi: {}",
+                        contract.getId(), e.getMessage());
+            }
+        }
+
+        log.info("[CRON-CONTRACT] Đã hoàn tất quét và gửi email nhắc nhở cho {} hợp đồng.", count);
+        return count;
     }
 
     @Override
@@ -215,7 +540,7 @@ public class InternContractServiceImpl implements InternContractService {
 
         verifyContractOwnership(contract, userDetails);
 
-        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE) {
+        if (contract.getStatus() != ContractStatus.PENDING_SIGNATURE && contract.getStatus() != ContractStatus.PENDING_INTERN_FEEDBACK) {
             throw new BadRequestException("Hợp đồng này không ở trạng thái chờ ký (Trạng thái hiện tại: " + contract.getStatus() + ")");
         }
 
@@ -224,6 +549,19 @@ public class InternContractServiceImpl implements InternContractService {
         InternContract savedContract = internContractRepository.save(contract);
 
         return mapToContractResponse(savedContract, contract.getInternProfile());
+    }
+
+    private InternContract resolveParentContract(Long parentContractId, InternProfile internProfile) {
+        if (parentContractId == null || parentContractId <= 0) {
+            return null;
+        }
+        InternContract parent = internContractRepository.findByIdWithProfile(parentContractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng gốc để gia hạn với ID: " + parentContractId));
+
+        if (!parent.getInternProfile().getId().equals(internProfile.getId())) {
+            throw new BadRequestException("Hợp đồng gốc không thuộc về thực tập sinh này");
+        }
+        return parent;
     }
 
     private void verifyContractOwnership(InternContract contract, CustomUserDetails userDetails) {
@@ -343,10 +681,19 @@ public class InternContractServiceImpl implements InternContractService {
     }
 
     private ContractResponse mapToContractResponse(InternContract contract, InternProfile profile) {
+        Long daysRemaining = null;
+        if (contract.getEndDate() != null) {
+            daysRemaining = ChronoUnit.DAYS.between(LocalDate.now(), contract.getEndDate());
+        }
+
         return ContractResponse.builder()
                 .id(contract.getId())
-                .internCode(profile.getInternCode())
-                .internFullName(profile.getFullName())
+                .parentContractId(contract.getParentContract() != null ? contract.getParentContract().getId() : null)
+                .parentContractNumber(contract.getParentContract() != null ? contract.getParentContract().getContractNumber() : null)
+                .contractType(contract.getContractType())
+                .internCode(profile != null ? profile.getInternCode() : null)
+                .internFullName(profile != null ? profile.getFullName() : null)
+                .internEmail(profile != null ? profile.getEmail() : null)
                 .contractNumber(contract.getContractNumber())
                 .contractTitle(contract.getContractTitle())
                 .startDate(contract.getStartDate())
@@ -361,8 +708,14 @@ public class InternContractServiceImpl implements InternContractService {
                 .signerFullName(contract.getSignerFullName())
                 .internConfirmationNote(contract.getInternConfirmationNote())
                 .rejectionReason(contract.getRejectionReason())
+                .feedbackNotes(contract.getFeedbackNotes())
+                .feedbackAt(contract.getFeedbackAt())
+                .terminationReason(contract.getTerminationReason())
+                .terminatedAt(contract.getTerminatedAt())
+                .terminatedBy(contract.getTerminatedBy())
                 .notes(contract.getNotes())
-                .internProfileStatus(profile.getStatus())
+                .internProfileStatus(profile != null ? profile.getStatus() : null)
+                .daysRemaining(daysRemaining)
                 .createdAt(contract.getCreatedAt())
                 .updatedAt(contract.getUpdatedAt())
                 .build();
