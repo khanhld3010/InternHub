@@ -16,6 +16,9 @@ public interface InternContractRepository extends JpaRepository<InternContract, 
 
     Optional<InternContract> findByContractNumber(String contractNumber);
 
+    @Query("SELECT c FROM InternContract c JOIN FETCH c.internProfile ORDER BY c.createdAt DESC")
+    List<InternContract> findAllWithProfile();
+
     @Query("SELECT c FROM InternContract c JOIN FETCH c.internProfile WHERE c.internProfile.internCode = :internCode ORDER BY c.createdAt DESC")
     List<InternContract> findByInternCodeWithProfile(@Param("internCode") String internCode);
 
@@ -27,4 +30,19 @@ public interface InternContractRepository extends JpaRepository<InternContract, 
 
     @Query("SELECT c FROM InternContract c JOIN FETCH c.internProfile p WHERE (:userId IS NOT NULL AND (p.userId = :userId OR p.id = :userId)) OR (:identifier IS NOT NULL AND (p.email = :identifier OR p.internCode = :identifier)) ORDER BY c.createdAt DESC")
     List<InternContract> findAllByUserIdOrEmailWithProfile(@Param("userId") Long userId, @Param("identifier") String identifier);
+
+    /**
+     * Tìm các hợp đồng đang ở trạng thái PENDING_SIGNATURE được tạo trước cutoffTime
+     * và chưa được gửi nhắc nhở trong khoảng remindCooldown (hoặc chưa từng gửi nhắc nhở)
+     */
+    @Query("SELECT c FROM InternContract c JOIN FETCH c.internProfile p " +
+           "WHERE c.status = :status " +
+           "AND c.createdAt <= :createdBefore " +
+           "AND (c.lastRemindedAt IS NULL OR c.lastRemindedAt <= :remindedBefore) " +
+           "ORDER BY c.createdAt ASC")
+    List<InternContract> findContractsNeedingSignatureReminder(
+            @Param("status") org.example.internservice.intern.entity.enums.ContractStatus status,
+            @Param("createdBefore") java.time.LocalDateTime createdBefore,
+            @Param("remindedBefore") java.time.LocalDateTime remindedBefore
+    );
 }

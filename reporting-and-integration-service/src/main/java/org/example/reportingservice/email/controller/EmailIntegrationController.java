@@ -120,4 +120,17 @@ public class EmailIntegrationController {
 
         return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi email kích hoạt thành công", null));
     }
+
+    @PostMapping("/contract-notification")
+    @Operation(summary = "Tiếp nhận yêu cầu gửi email thông báo hợp đồng (nhắc nhở ký, mời ký, phản hồi)")
+    public ResponseEntity<ApiResponse<Void>> sendContractNotificationEmail(
+            @Valid @RequestBody org.example.reportingservice.email.dto.request.SendContractNotificationEmailRequest request) {
+
+        log.info("Nhận yêu cầu gửi email hợp đồng: event={}, contractNumber={}, to={}",
+                request.getEventType(), request.getContractNumber(), request.getRecipientEmail());
+
+        emailDeliveryService.sendContractNotificationEmailAsync(request);
+
+        return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi email thông báo hợp đồng thành công", null));
+    }
 }
