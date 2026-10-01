@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,5 +22,6 @@ public class RoleResponse {
     private Boolean isSystem;
     private Long userCount;
     private Integer permissionCount;
+    private List<String> permissions;
     private LocalDateTime createdAt;
 }

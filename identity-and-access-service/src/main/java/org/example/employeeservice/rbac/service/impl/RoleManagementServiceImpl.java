@@ -45,7 +45,9 @@ public class RoleManagementServiceImpl implements RoleManagementService {
 
         return roles.stream().map(role -> {
             long userCount = accountRepository.countByRoleId(role.getId());
-            int permCount = (role.getPermissions() != null) ? role.getPermissions().size() : 0;
+            List<String> permCodes = (role.getPermissions() != null)
+                    ? role.getPermissions().stream().map(Permission::getCode).sorted().collect(Collectors.toList())
+                    : Collections.emptyList();
 
             return RoleResponse.builder()
                     .id(role.getId())
@@ -53,7 +55,8 @@ public class RoleManagementServiceImpl implements RoleManagementService {
                     .description(role.getDescription())
                     .isSystem(Boolean.TRUE.equals(role.getIsSystem()))
                     .userCount(userCount)
-                    .permissionCount(permCount)
+                    .permissionCount(permCodes.size())
+                    .permissions(permCodes)
                     .createdAt(role.getCreatedAt())
                     .build();
         }).collect(Collectors.toList());
