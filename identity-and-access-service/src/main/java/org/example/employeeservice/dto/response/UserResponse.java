@@ -25,6 +25,7 @@ public class UserResponse {
     private LocalDate dateOfBirth;
     private Gender gender;
     private String address;
+    private String bio;
     private String avatarUrl;
     private String department;
     private String position;
