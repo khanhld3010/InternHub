@@ -33,6 +33,34 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(200, "Lấy danh sách người dùng thành công", users));
     }
 
+    @Operation(summary = "Lấy thông tin cá nhân của người dùng hiện tại")
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserResponse>> getCurrentUserProfile(org.springframework.security.core.Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new org.example.employeeservice.exception.UnauthorizedException("Yêu cầu đăng nhập");
+        }
+        String username = authentication.getName();
+        log.info("API: Lấy thông tin cá nhân cho username: {}", username);
+        UserResponse user = userService.getUserByUsername(username);
+        return ResponseEntity.ok(ApiResponse.success(200, "Lấy thông tin tài khoản thành công", user));
+    }
+
+    @Operation(summary = "Cập nhật thông tin cá nhân của người dùng hiện tại (Self-Service)")
+    @Auditable(action = AuditAction.UPDATE_USER, module = AuditModule.USER, description = "Người dùng cập nhật thông tin cá nhân")
+    @PutMapping("/me")
+    public ResponseEntity<ApiResponse<UserResponse>> updateCurrentUserProfile(
+            org.springframework.security.core.Authentication authentication,
+            @jakarta.validation.Valid @RequestBody org.example.employeeservice.dto.request.UpdateUserProfileRequest request
+    ) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new org.example.employeeservice.exception.UnauthorizedException("Yêu cầu đăng nhập");
+        }
+        String username = authentication.getName();
+        log.info("API: Người dùng {} cập nhật hồ sơ cá nhân", username);
+        UserResponse response = userService.updateCurrentUserProfile(username, request);
+        return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật hồ sơ thành công", response));
+    }
+
     @Operation(summary = "Lấy thông tin chi tiết người dùng theo ID")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable Integer id) {

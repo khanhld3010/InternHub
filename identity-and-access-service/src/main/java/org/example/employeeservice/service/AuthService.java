@@ -12,4 +12,5 @@ public interface AuthService {
     RegisterResponse register(RegisterRequest request);
     void activateAccount(ActivateAccountRequest request);
     void resendActivation(ResendActivationRequest request);
+    void changePassword(String username, org.example.employeeservice.dto.request.ChangePasswordRequest request);
 }

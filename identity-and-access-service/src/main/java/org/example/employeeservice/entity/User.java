@@ -52,6 +52,9 @@ public class User {
     @Column(name = "address", length = 255)
     private String address;
 
+    @Column(name = "bio", length = 500)
+    private String bio;
+
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
 

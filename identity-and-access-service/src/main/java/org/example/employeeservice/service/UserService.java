@@ -16,4 +16,7 @@ public interface UserService {
     User findEntityById(Integer id);
 
     UserResponse toggleUserStatus(Integer id);
+
+    UserResponse updateCurrentUserProfile(String username, org.example.employeeservice.dto.request.UpdateUserProfileRequest request);
+    UserResponse getUserByUsername(String username);
 }
