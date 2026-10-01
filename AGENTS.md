@@ -15,7 +15,7 @@ Nhiệm vụ của bạn là hỗ trợ người dùng xây dựng, tối ưu h�
 
 ---
 
-## 2. Toàn Bộ 29 Nguyên Tắc Bất Biến (29 Non-Negotiable Rules)
+## 2. Toàn Bộ 30 Nguyên Tắc Bất Biến (30 Non-Negotiable Rules)
 
 ### 🏛️ Trụ Cột I: Giao Thức Phối Hợp Người - AI
 1. **KHÔNG TỰ Ý ĐƯA RA QUYẾT ĐỊNH**: Mọi thay đổi về cấu trúc package, thêm thư viện `build.gradle`, logic nghiệp vụ hay can thiệp mã nguồn đều phải thông qua sự phê duyệt của người dùng.
@@ -31,32 +31,33 @@ Nhiệm vụ của bạn là hỗ trợ người dùng xây dựng, tối ưu h�
 9. **NGHIÊM CẤM DÙNG MOCK HOẶC CỜ BYPASS ĐỂ NÉ TRÁNH BẢO MẬT**: Tuyệt đối cấm tạo cờ `BYPASS_AUTH`, mở `permitAll()` tùy tiện hoặc fake user trong `SecurityContextHolder`. Mọi cơ chế kiểm tra phân quyền RBAC phải chạy qua Spring Security và JWT thật.
 10. **KHÔNG COMMIT CREDENTIALS & SECRETS**: Tuyệt đối không commit mật khẩu Database, secret key JWT vào Git. Toàn bộ thông tin nhạy cảm phải nạp qua biến môi trường hoặc Spring Cloud Config Server.
 11. **BẮT BUỘC DÙNG DỮ LIỆU THỰC TẾ & DỪNG LẠI BÁO CÁO NGAY KHI DATABASE GẶP SỰ CỐ**: Mọi API phải test trên dữ liệu thật có trong Database. Khi cần tài khoản test theo quyền (`ADMIN`, `HR`, `MENTOR`, `INTERN`), Agent phải hỏi người dùng. Nếu DB gặp sự cố (mất kết nối, cạn pool HikariCP, chết container), Agent **phải dừng lại ngay lập tức và báo cáo chi tiết cho người dùng**.
+12. **NGHIÊM CẤM HOÀN TOÀN HÀNH VI ĐỌC, SỬA, PHÂN TÍCH FILE `.env` (STRICT ZERO-ACCESS TO `.env`)**: Tuyệt đối nghiêm cấm AI Agent và toàn bộ hệ thống thực hiện bất kỳ hành vi mở, đọc (`view_file`, `cat`), sửa đổi (`write_to_file`, `replace_file_content`), hoặc phân tích (`grep_search`, parse) đối với file `.env` của người dùng. Nếu cần bất kỳ thông tin, cấu hình, biến môi trường hay giá trị nào từ file `.env`, Agent **BẮT BUỘC PHẢI THÔNG BÁO VÀ YÊU CẦU NGƯỜI DÙNG KIỂM TRA GIÚP**, tuyệt đối không tự ý can thiệp.
 
 ### 🧩 Trụ Cột III: Kiến Trúc Microservices & Package-by-Feature
-12. **CHUẨN HÓA BẢN ĐỒ 6 MICROSERVICES**: Tuân thủ chính xác phạm vi của từng service trong hệ thống: `api-gateway` (8080), `discovery-server` (8761), `config-server` (8888), `identity-and-access-service` (8081), `intern-and-program-service` (8082), `reporting-and-integration-service` (8083).
-13. **CẤU TRÚC MÃ NGUỒN PACKAGE-BY-FEATURE TRIỆT ĐỂ**: Mỗi feature (ví dụ `intern`, `program`, `evaluation`) tự chứa trọn vẹn các package con: `entity/`, `repository/`, `service/`, `controller/`, `dto/`. Cấm gom layer ở cấp cao nhất gây phân tán nghiệp vụ.
-14. **BẮT BUỘC KẾ THỪA `BaseEntity` CHO 100% JPA ENTITIES**: Tất cả Entity phải kế thừa `common/entity/BaseEntity.java` để tự động hóa quản lý `id`, `createdAt`, `updatedAt`, `@PrePersist`, `@PreUpdate`.
-15. **PHÂN TÁCH HOÀN TOÀN REQUEST & RESPONSE DTO**: Tuyệt đối không trả JPA Entity trực tiếp ra Controller; không nhận Entity trực tiếp trong `@RequestBody`. Bắt buộc dùng `dto/request/` và `dto/response/`.
-16. **TIÊU CHUẨN ANTI-GOD-CLASS (GIỚI HẠN TRẦN 200 - 300 DÒNG)**: Tuyệt đối cấm tạo các Class hoặc Service nguyên khối. Khi một class vượt quá 300 dòng hoặc method vượt quá 40 dòng, bắt buộc phải phân rã thành các Sub-Services hoặc Helper chuyên trách.
+13. **CHUẨN HÓA BẢN ĐỒ 6 MICROSERVICES**: Tuân thủ chính xác phạm vi của từng service trong hệ thống: `api-gateway` (8080), `discovery-server` (8761), `config-server` (8888), `identity-and-access-service` (8081), `intern-and-program-service` (8082), `reporting-and-integration-service` (8083).
+14. **CẤU TRÚC MÃ NGUỒN PACKAGE-BY-FEATURE TRIỆT ĐỂ**: Mỗi feature (ví dụ `intern`, `program`, `evaluation`) tự chứa trọn vẹn các package con: `entity/`, `repository/`, `service/`, `controller/`, `dto/`. Cấm gom layer ở cấp cao nhất gây phân tán nghiệp vụ.
+15. **BẮT BUỘC KẾ THỪA `BaseEntity` CHO 100% JPA ENTITIES**: Tất cả Entity phải kế thừa `common/entity/BaseEntity.java` để tự động hóa quản lý `id`, `createdAt`, `updatedAt`, `@PrePersist`, `@PreUpdate`.
+16. **PHÂN TÁCH HOÀN TOÀN REQUEST & RESPONSE DTO**: Tuyệt đối không trả JPA Entity trực tiếp ra Controller; không nhận Entity trực tiếp trong `@RequestBody`. Bắt buộc dùng `dto/request/` và `dto/response/`.
+17. **TIÊU CHUẨN ANTI-GOD-CLASS (GIỚI HẠN TRẦN 200 - 300 DÒNG)**: Tuyệt đối cấm tạo các Class hoặc Service nguyên khối. Khi một class vượt quá 300 dòng hoặc method vượt quá 40 dòng, bắt buộc phải phân rã thành các Sub-Services hoặc Helper chuyên trách.
 
 ### 🌐 Trụ Cột IV: Tiêu Chuẩn REST API & Spring Data JPA
-17. **CHUẨN HÓA THIẾT KẾ RESTFUL API**: Sử dụng danh từ số nhiều cho tài nguyên (ví dụ: `/api/v1/interns`, `/api/v1/programs`), đúng HTTP Verbs (`GET`, `POST`, `PUT`, `DELETE`), và định dạng URL kebab-case.
-18. **ĐÓNG GÓI RESPONSE CHUẨN HÓA `ApiResponse<T>`**: 100% API endpoints phải trả về `ResponseEntity<ApiResponse<T>>` với format nhất quán (`success`, `message`, `data`, `timestamp`).
-19. **CHUẨN HÓA PHÂN TRANG 0-INDEXED SPRING DATA**: Sử dụng `Pageable` của Spring Data JPA với chỉ số trang bắt đầu từ `0` (`page=0`), trả về `PageResponse<T>` chuẩn hóa để Frontend dễ dàng hiển thị.
-20. **BẮT BUỘC DÙNG CONSTRUCTOR INJECTION QUA `@RequiredArgsConstructor`**: Khai báo dependency dưới dạng `private final`. **TUYỆT ĐỐI CẤM SỬ DỤNG `@Autowired` TRÊN FIELD**.
-21. **PHÒNG CHỐNG TRIỆT ĐỂ LỖI N+1 QUERY TRONG JPA**: Luôn sử dụng `JOIN FETCH`, `@EntityGraph`, hoặc DTO Projection khi nạp các quan hệ `@ManyToOne` / `@OneToMany`. Tránh lạm dụng EAGER fetching.
-22. **QUẢN LÝ GIAO DỊCH (`@Transactional`) RÕ RÀNG**: Đặt `@Transactional(readOnly = true)` tại cấp Class của ServiceImpl, và `@Transactional` tường minh trên các method ghi/sửa/xóa dữ liệu.
+18. **CHUẨN HÓA THIẾT KẾ RESTFUL API**: Sử dụng danh từ số nhiều cho tài nguyên (ví dụ: `/api/v1/interns`, `/api/v1/programs`), đúng HTTP Verbs (`GET`, `POST`, `PUT`, `DELETE`), và định dạng URL kebab-case.
+19. **ĐÓNG GÓI RESPONSE CHUẨN HÓA `ApiResponse<T>`**: 100% API endpoints phải trả về `ResponseEntity<ApiResponse<T>>` với format nhất quán (`success`, `message`, `data`, `timestamp`).
+20. **CHUẨN HÓA PHÂN TRANG 0-INDEXED SPRING DATA**: Sử dụng `Pageable` của Spring Data JPA với chỉ số trang bắt đầu từ `0` (`page=0`), trả về `PageResponse<T>` chuẩn hóa để Frontend dễ dàng hiển thị.
+21. **BẮT BUỘC DÙNG CONSTRUCTOR INJECTION QUA `@RequiredArgsConstructor`**: Khai báo dependency dưới dạng `private final`. **TUYỆT ĐỐI CẤM SỬ DỤNG `@Autowired` TRÊN FIELD**.
+22. **PHÒNG CHỐNG TRIỆT ĐỂ LỖI N+1 QUERY TRONG JPA**: Luôn sử dụng `JOIN FETCH`, `@EntityGraph`, hoặc DTO Projection khi nạp các quan hệ `@ManyToOne` / `@OneToMany`. Tránh lạm dụng EAGER fetching.
+23. **QUẢN LÝ GIAO DỊCH (`@Transactional`) RÕ RÀNG**: Đặt `@Transactional(readOnly = true)` tại cấp Class của ServiceImpl, và `@Transactional` tường minh trên các method ghi/sửa/xóa dữ liệu.
 
 ### 💎 Trụ Cột V: Tiêu Chuẩn Clean Code, Kiểm Thử & Gỡ Lỗi
-23. **QUY CHUẨN IMPORT TƯỜNG MINH - CẤM SỬ DỤNG FQN**: Luôn import tường minh ở đầu file. Tuyệt đối không viết đường dẫn package đầy đủ (Fully Qualified Name) trong thân mã nguồn.
-24. **SỬ DỤNG LOMBOK AN TOÀN TRÊN JPA ENTITY**: Dùng `@Getter`, `@Setter`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Builder`. Tránh dùng `@Data` trên các entity có quan hệ hai chiều để chống tràn bộ nhớ do đệ quy vô hạn `hashCode/equals/toString`.
-25. **TRIẾT LÝ PHÁT TRIỂN SPEC-DRIVEN (SPEC 13 PHẦN)**: Đối với các tính năng phức tạp (từ L3 trở lên), bắt buộc phải có tài liệu đặc tả `spec.md` gồm 13 phần trước khi viết code.
-26. **QUY TRÌNH KIỂM TRA BIÊN DỊCH BẮT BUỘC TRƯỚC KHI HOÀN TẤT**: Bắt buộc phải chạy `.\gradlew :<service>:compileJava` và `.\gradlew :<service>:test` đảm bảo ứng dụng biên dịch thành công 100% trước khi thông báo hoàn thành.
-27. **QUY TRÌNH GỠ LỖI 5 BƯỚC & CHẨN ĐOÁN MICROSERVICES**: Điều tra lỗi tận gốc (Root Cause Analysis), kiểm tra trạng thái Actuator (`/actuator/health`) và Eureka dashboard trước khi can thiệp mã nguồn.
-28. **XỬ LÝ LỆNH MƠ HỒ & CẢNH BÁO XUNG ĐỘT QUY TẮC (CONSTITUTIONAL GUARDRAIL)**:
+24. **QUY CHUẨN IMPORT TƯỜNG MINH - CẤM SỬ DỤNG FQN**: Luôn import tường minh ở đầu file. Tuyệt đối không viết đường dẫn package đầy đủ (Fully Qualified Name) trong thân mã nguồn.
+25. **SỬ DỤNG LOMBOK AN TOÀN TRÊN JPA ENTITY**: Dùng `@Getter`, `@Setter`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Builder`. Tránh dùng `@Data` trên các entity có quan hệ hai chiều để chống tràn bộ nhớ do đệ quy vô hạn `hashCode/equals/toString`.
+26. **TRIẾT LÝ PHÁT TRIỂN SPEC-DRIVEN (SPEC 13 PHẦN)**: Đối với các tính năng phức tạp (từ L3 trở lên), bắt buộc phải có tài liệu đặc tả `spec.md` gồm 13 phần trước khi viết code.
+27. **QUY TRÌNH KIỂM TRA BIÊN DỊCH BẮT BUỘC TRƯỚC KHI HOÀN TẤT**: Bắt buộc phải chạy `.\gradlew :<service>:compileJava` và `.\gradlew :<service>:test` đảm bảo ứng dụng biên dịch thành công 100% trước khi thông báo hoàn thành.
+28. **QUY TRÌNH GỠ LỖI 5 BƯỚC & CHẨN ĐOÁN MICROSERVICES**: Điều tra lỗi tận gốc (Root Cause Analysis), kiểm tra trạng thái Actuator (`/actuator/health`) và Eureka dashboard trước khi can thiệp mã nguồn.
+29. **XỬ LÝ LỆNH MƠ HỒ & CẢNH BÁO XUNG ĐỘT QUY TẮC (CONSTITUTIONAL GUARDRAIL)**:
     - Nếu câu lệnh của người dùng có thể hiểu theo nhiều cách khác nhau hoặc thiếu thông tin, Agent **bắt buộc phải hỏi lại để làm rõ**, tuyệt đối không tự ý suy đoán và ra quyết định.
     - Nếu yêu cầu của người dùng đi ngược lại bất kỳ quy tắc nào trong bộ quy chuẩn này, Agent **bắt buộc phải lập tức phát cảnh báo, chỉ rõ đích danh điều khoản vi phạm và nêu rủi ro kỹ thuật**, tuyệt đối không âm thầm làm theo khi chưa cảnh báo và nhận được sự tái xác nhận từ người dùng.
-29. **LƯU TRỮ ĐẶC TẢ VĨNH CỬU & BẮT BUỘC GIẢI TRÌNH KHI THAY ĐỔI MÃ NGUỒN (PERSISTENT SPEC & CHANGE RATIONALE)**:
+30. **LƯU TRỮ ĐẶC TẢ VĨNH CỬU & BẮT BUỘC GIẢI TRÌNH KHI THAY ĐỔI MÃ NGUỒN (PERSISTENT SPEC & CHANGE RATIONALE)**:
     - 100% tài liệu đặc tả tính năng (`spec.md`) của Backend bắt buộc phải được lưu trữ cố định trong Git repo tại `InternHub/docs/specs/` (ví dụ: `docs/specs/<mã-task>-<tên-tính-năng>-spec.md`).
     - Bất kể khi nào lập trình viên hay AI Agent thay đổi mã nguồn ảnh hưởng đến logic nghiệp vụ, API contract, validation hoặc cấu trúc cơ sở dữ liệu (từ cấp độ L2 trở lên):
       + **Bắt buộc cập nhật tài liệu Spec tương ứng** để phản ánh đúng hiện trạng hệ thống.

@@ -16,6 +16,8 @@ public class LoginResponse {
 
     private Long expiresIn;
     private String username;
+    private String fullName;
+    private String email;
     private String role;
     private Integer userId;
 }

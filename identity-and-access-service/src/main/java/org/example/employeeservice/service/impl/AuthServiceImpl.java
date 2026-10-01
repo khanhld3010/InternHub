@@ -58,22 +58,29 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        String username = request.getUsername().trim();
-        log.info("Xử lý đăng nhập cho tài khoản: {}", username);
+        String identifier = request.getUsername().trim();
+        log.info("Xử lý đăng nhập cho tài khoản: {}", identifier);
 
-        Account account = accountRepository.findByUsername(username)
-                .orElseThrow(() -> {
-                    log.warn("Không tìm thấy tài khoản với username: {}", username);
-                    return new UnauthorizedException("Tên đăng nhập hoặc mật khẩu không chính xác");
-                });
+        Account account;
+        if (identifier.contains("@")) {
+            User user = userRepository.findByEmail(identifier.toLowerCase()).orElse(null);
+            account = (user != null) ? accountRepository.findByUserId(user.getId()).orElse(null) : null;
+        } else {
+            account = accountRepository.findByUsername(identifier).orElse(null);
+        }
+
+        if (account == null) {
+            log.warn("Không tìm thấy tài khoản với identifier: {}", identifier);
+            throw new UnauthorizedException("Tên đăng nhập hoặc mật khẩu không chính xác");
+        }
 
         if (!"ACTIVE".equalsIgnoreCase(account.getStatus())) {
-            log.warn("Tài khoản {} không ở trạng thái ACTIVE (trạng thái: {})", username, account.getStatus());
+            log.warn("Tài khoản {} không ở trạng thái ACTIVE (trạng thái: {})", account.getUsername(), account.getStatus());
             throw new UnauthorizedException("Tài khoản chưa được kích hoạt qua email hoặc đang bị khóa");
         }
 
         if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
-            log.warn("Mật khẩu không khớp cho tài khoản: {}", username);
+            log.warn("Mật khẩu không khớp cho tài khoản: {}", account.getUsername());
             throw new UnauthorizedException("Tên đăng nhập hoặc mật khẩu không chính xác");
         }
 
@@ -83,13 +90,23 @@ public class AuthServiceImpl implements AuthService {
         String token = jwtTokenProvider.generateToken(account);
         String roleName = (account.getRole() != null) ? account.getRole().getName() : "USER";
 
-        log.info("Đăng nhập thành công cho tài khoản: {}, vai trò: {}", username, roleName);
+        User user = account.getUser();
+        if (user == null && account.getUserId() != null) {
+            user = userRepository.findById(account.getUserId()).orElse(null);
+        }
+
+        String fullName = (user != null && user.getFullName() != null) ? user.getFullName() : account.getUsername();
+        String email = (user != null) ? user.getEmail() : null;
+
+        log.info("Đăng nhập thành công cho tài khoản: {}, vai trò: {}", account.getUsername(), roleName);
 
         return LoginResponse.builder()
                 .accessToken(token)
                 .tokenType("Bearer")
                 .expiresIn(jwtTokenProvider.getExpirationInSeconds())
                 .username(account.getUsername())
+                .fullName(fullName)
+                .email(email)
                 .role(roleName)
                 .userId(account.getUserId())
                 .build();

@@ -26,8 +26,9 @@ public class CustomUserDetailsService implements UserDetailsService {
 
         boolean enabled = "ACTIVE".equalsIgnoreCase(account.getStatus());
         String roleName = (account.getRole() != null) ? account.getRole().getName().toUpperCase() : "USER";
+        String authorityName = roleName.startsWith("ROLE_") ? roleName : "ROLE_" + roleName;
         List<SimpleGrantedAuthority> authorities = Collections.singletonList(
-                new SimpleGrantedAuthority("ROLE_" + roleName)
+                new SimpleGrantedAuthority(authorityName)
         );
 
         return new User(

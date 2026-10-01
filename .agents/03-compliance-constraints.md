@@ -74,7 +74,12 @@ Dự án InternHub phân chia thành 4 vai trò chính:
          username: ${DB_USERNAME:root}
          password: ${DB_PASSWORD:123456}
      ```
-3. **Cấu hình CORS an toàn**:
+3. **NGHIÊM CẤM HOÀN TOÀN HÀNH VI ĐỌC, SỬA, PHÂN TÍCH FILE `.env` (STRICT ZERO-ACCESS TO `.env`)**:
+   > [!CAUTION]
+   > - **Vùng cấm tuyệt đối (Zero-Access Security Zone)**: Tuyệt đối nghiêm cấm AI Agent và bất kỳ tiến trình hệ thống tự động nào thực hiện hành vi mở, đọc (`view_file`, `cat`, lệnh terminal), sửa đổi (`write_to_file`, `replace_file_content`), hoặc phân tích cú pháp (`grep_search`, parse) đối với file `.env` của người dùng.
+   > - File `.env` chứa toàn bộ credentials, private keys, database credentials và bí mật môi trường riêng tư của người dùng.
+   > - **Quy trình khi cần thông tin**: Nếu trong quá trình phát triển, kiểm thử hoặc cấu hình mà Agent cần bất kỳ thông tin nào từ file `.env` (như tên biến môi trường, port, credentials, API keys...), Agent **BẮT BUỘC PHẢI THÔNG BÁO VÀ YÊU CẦU NGƯỜI DÙNG KIỂM TRA GIÚP**. Người dùng sẽ trực tiếp kiểm tra và cung cấp thông tin. Tuyệt đối không được tự ý can thiệp dưới bất kỳ hình thức nào.
+4. **Cấu hình CORS an toàn**:
    - Tại `api-gateway`, cấu hình CORS phải giới hạn đúng các origin được phép truy cập (ví dụ: `http://localhost:5173` cho Frontend Vite Dev Server), cấm mở `*` (Allow All) một cách vô tội vạ trong môi trường sản xuất.
 
 ---

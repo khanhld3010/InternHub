@@ -21,6 +21,11 @@ jwt:
   secret-key: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
   expiration: ${JWT_EXPIRATION:86400000} # 24 giờ tính bằng milliseconds
 
+app:
+  oauth2:
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:mock-google-client-id}
+
 eureka:
   client:
     service-url:

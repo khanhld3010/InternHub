@@ -2,12 +2,12 @@
 
 > [!IMPORTANT]
 > **TÀI LIỆU QUY CHUẨN ĐÃ ĐƯỢC NÂNG CẤP VÀ CHUYỂN VỀ THƯ MỤC CHUẨN:**
-> Hệ thống quy chuẩn hoạt động, 29 nguyên tắc bất biến và 7 tài liệu chuyên sâu của Backend đã được quy tụ đồng bộ tại:
+> Hệ thống quy chuẩn hoạt động, 30 nguyên tắc bất biến và 7 tài liệu chuyên sâu của Backend đã được quy tụ đồng bộ tại:
 > - **Chỉ thị Master:** [AGENTS.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/AGENTS.md)
 > - **Bộ quy chuẩn chuyên sâu:** [InternHub/.agents/](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/)
->   - [01-working-rules.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/01-working-rules.md): Quy tắc làm việc, giao thức 4 bước, cấm SQL phá hoại, Git/Jira TM, giải trình thay đổi
+>   - [01-working-rules.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/01-working-rules.md): Quy tắc làm việc, giao thức 4 bước, cấm SQL phá hoại, Git/Jira TM, giải trình thay đổi, cấm truy cập .env
 >   - [02-system-architecture.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/02-system-architecture.md): Bản đồ 6 Microservices, Port map, Docker, Package-by-Feature
->   - [03-compliance-constraints.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/03-compliance-constraints.md): Bảo mật JWT, RBAC 4 role, bảo toàn DB, cấm sửa Frontend
+>   - [03-compliance-constraints.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/03-compliance-constraints.md): Bảo mật JWT, RBAC 4 role, bảo toàn DB, cấm sửa Frontend, zero-access .env
 >   - [04-development-guide.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/04-development-guide.md): Triết lý Spec-Driven 14 phần, lưu trữ spec vĩnh cửu, đồng bộ nguyên tử
 >   - [05-coding-standards.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/05-coding-standards.md): Clean Code Java, Constructor Injection, BaseEntity, chống N+1 JPA
 >   - [06-testing-verification.md](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/06-testing-verification.md): Kiểm thử Gradle, JUnit 5, Mockito, Actuator healthcheck
@@ -31,9 +31,10 @@
    - Tránh dùng `@Data` trên Entity có quan hệ hai chiều.
 6. **Quản Lý `@Transactional`**:
    - `@Transactional(readOnly = true)` tại class level của ServiceImpl, `@Transactional` tại method ghi dữ liệu.
-7. **Ranh Giới An Toàn (Boundary Isolation)**:
+7. **Ranh Giới An Toàn (Boundary Isolation) & Bảo Mật Tuyệt Đối**:
    - Đang làm Backend: **Tuyệt đối cấm tự ý sửa mã nguồn Frontend (`InternHub-Frontend/`)**.
    - Cấm chạy SQL phá hoại (`DROP`, `TRUNCATE`, `ALTER` xóa cột) làm hỏng database `internhub_db`.
+   - **Tuyệt đối cấm đọc, sửa, phân tích file `.env` (Zero-Access)**: Nghiêm cấm mọi hành vi đọc, sửa, phân tích file `.env`. Nếu cần bất kỳ thông tin nào từ `.env`, bắt buộc thông báo để người dùng kiểm tra giúp.
 8. **Quy Trình Git & Jira `TM`**:
    - Nhánh chức năng: `<type>/<mã-task-jira>/<tên-kebab-case>`. Luôn rẽ nhánh từ `develop` và tạo PR vào `develop`.
    - Commit message: `<type>(<mã-task-jira>): <mô tả ngắn gọn tiếng Việt>`.
