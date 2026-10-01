@@ -21,6 +21,8 @@ public class InternDecisionEventListener {
 
     private final IntegrationEmailClient emailClient;
     private final OnboardingTokenService tokenService;
+    private final org.example.internservice.intern.client.NotificationEventDispatcher notificationDispatcher;
+    private final org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
 
     @Async
     @EventListener
@@ -50,5 +52,43 @@ public class InternDecisionEventListener {
         }
 
         emailClient.sendInternDecisionEmail(payload);
+
+        // Bắn thông báo real-time tới ứng viên nếu đã có tài khoản người dùng
+        dispatchDecisionNotification(event);
+    }
+
+    private void dispatchDecisionNotification(InternDecisionProcessedEvent event) {
+        Long targetUserId = event.getUserId();
+        if (targetUserId == null && event.getEmail() != null) {
+            targetUserId = identityServiceClient.findUserIdByEmail(event.getEmail());
+        }
+        if (targetUserId == null) {
+            return;
+        }
+
+        if (event.getDecision() == InternStatus.APPROVED) {
+            notificationDispatcher.dispatch(org.example.internservice.intern.client.dto.CreateNotificationInternalRequest.builder()
+                    .recipientId(targetUserId)
+                    .title("Hồ sơ thực tập được phê duyệt")
+                    .content("Chúc mừng! Hồ sơ ứng tuyển của bạn đã được phê duyệt. Vui lòng kiểm tra email để nhận thông tin hướng dẫn tiếp theo.")
+                    .type("APPLICATION_APPROVED")
+                    .referenceType("APPLICATION")
+                    .referenceId(String.valueOf(event.getInternProfileId()))
+                    .actionUrl("/profile")
+                    .build());
+        } else if (event.getDecision() == InternStatus.REJECTED) {
+            String reasonText = (event.getRejectionReason() != null && !event.getRejectionReason().isBlank())
+                    ? " Lý do: " + event.getRejectionReason()
+                    : "";
+            notificationDispatcher.dispatch(org.example.internservice.intern.client.dto.CreateNotificationInternalRequest.builder()
+                    .recipientId(targetUserId)
+                    .title("Kết quả xét duyệt hồ sơ")
+                    .content("Hồ sơ ứng tuyển của bạn chưa phù hợp ở thời điểm này." + reasonText)
+                    .type("APPLICATION_REJECTED")
+                    .referenceType("APPLICATION")
+                    .referenceId(String.valueOf(event.getInternProfileId()))
+                    .actionUrl("/profile")
+                    .build());
+        }
     }
 }

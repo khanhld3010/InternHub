@@ -71,6 +71,29 @@ public class IdentityServiceClient {
         return null;
     }
 
+    public List<Long> findUserIdsByRole(String roleName) {
+        if (roleName == null || roleName.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            List<Map<String, Object>> users = getAllUsers();
+            return users.stream()
+                    .filter(u -> {
+                        Object role = u.get("role");
+                        Object position = u.get("position");
+                        return (role != null && roleName.equalsIgnoreCase(role.toString())) ||
+                               (position != null && roleName.equalsIgnoreCase(position.toString()));
+                    })
+                    .map(u -> u.get("id"))
+                    .filter(java.util.Objects::nonNull)
+                    .map(id -> Long.valueOf(id.toString()))
+                    .toList();
+        } catch (Exception e) {
+            log.warn("Không thể tra cứu userIds theo role '{}': {}", roleName, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
     public Map<String, Object> createUserAccount(Map<String, Object> registerRequest) {
         String url = identityServiceUrl + "/api/auth/register";
         log.info("Gọi sang identity-service để tạo tài khoản mới: url={}, username={}", url, registerRequest.get("username"));
