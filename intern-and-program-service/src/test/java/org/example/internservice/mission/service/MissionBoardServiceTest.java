@@ -65,6 +65,12 @@ class MissionBoardServiceTest {
     @Mock
     private InternProfileRepository internProfileRepository;
 
+    @Mock
+    private org.example.internservice.program.repository.DepartmentRepository departmentRepository;
+
+    @Mock
+    private org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
+
     @InjectMocks
     private MissionBoardServiceImpl missionBoardService;
 

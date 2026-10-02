@@ -52,6 +52,41 @@ public class MentorProgramController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách thực tập sinh trong chương trình thành công", response));
     }
 
+    @Operation(summary = "Thêm Mentor vào Chương trình thực tập (HR/Admin)")
+    @org.springframework.web.bind.annotation.PostMapping("/programs/{programId}/mentors/{mentorId}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> addMentorToProgram(
+            @PathVariable Long programId,
+            @PathVariable Long mentorId,
+            Authentication authentication
+    ) {
+        String assignedBy = authentication != null ? authentication.getName() : "HR";
+        missionBoardService.addMentorToProgram(programId, mentorId, assignedBy);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Thêm Mentor vào chương trình thành công", null));
+    }
+
+    @Operation(summary = "Lấy danh sách Mentor được phân công vào Chương trình thực tập")
+    @GetMapping("/programs/{programId}/mentors")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<List<org.example.internservice.intern.dto.response.MentorOptionResponse>>> getProgramMentors(
+            @PathVariable Long programId
+    ) {
+        List<org.example.internservice.intern.dto.response.MentorOptionResponse> response = missionBoardService.getMentorsByProgram(programId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách Mentor của chương trình thành công", response));
+    }
+
+    @Operation(summary = "Xóa Mentor khỏi Chương trình thực tập (HR/Admin)")
+    @org.springframework.web.bind.annotation.DeleteMapping("/programs/{programId}/mentors/{mentorId}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> removeMentorFromProgram(
+            @PathVariable Long programId,
+            @PathVariable Long mentorId
+    ) {
+        missionBoardService.removeMentorFromProgram(programId, mentorId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ Mentor khỏi chương trình thành công", null));
+    }
+
     private CustomUserDetails extractUserDetails(Authentication authentication) {
         if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails userDetails) {
             return userDetails;

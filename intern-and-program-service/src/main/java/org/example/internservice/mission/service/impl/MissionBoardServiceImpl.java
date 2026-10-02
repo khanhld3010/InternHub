@@ -2,8 +2,9 @@ package org.example.internservice.mission.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
+import org.example.internservice.intern.client.IdentityServiceClient;
+import org.example.internservice.intern.dto.response.MentorOptionResponse;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.MentorProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
@@ -23,8 +24,10 @@ import org.example.internservice.mission.entity.enums.MissionItemStatus;
 import org.example.internservice.mission.repository.MissionBoardRepository;
 import org.example.internservice.mission.repository.MissionItemRepository;
 import org.example.internservice.mission.service.MissionBoardService;
+import org.example.internservice.program.entity.Department;
 import org.example.internservice.program.entity.InternshipProgram;
 import org.example.internservice.program.entity.ProgramMentor;
+import org.example.internservice.program.repository.DepartmentRepository;
 import org.example.internservice.program.repository.InternshipProgramRepository;
 import org.example.internservice.program.repository.ProgramMentorRepository;
 import org.example.internservice.security.CustomUserDetails;
@@ -33,8 +36,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -48,6 +55,8 @@ public class MissionBoardServiceImpl implements MissionBoardService {
     private final ProgramMentorRepository programMentorRepository;
     private final MentorProfileRepository mentorProfileRepository;
     private final InternProfileRepository internProfileRepository;
+    private final DepartmentRepository departmentRepository;
+    private final IdentityServiceClient identityServiceClient;
 
     @Override
     @Transactional
@@ -165,12 +174,46 @@ public class MissionBoardServiceImpl implements MissionBoardService {
     @Override
     public List<MentorProgramResponse> getMyMentoredPrograms(CustomUserDetails userDetails) {
         Long identifier = resolveMentorIdNullable(userDetails);
-        if (identifier == null) {
+        Long userId = userDetails != null ? userDetails.getUserId() : null;
+        if (identifier == null && userId == null) {
             return List.of();
         }
-        List<ProgramMentor> programMentors = programMentorRepository.findByMentorIdentifierWithProgram(identifier);
-        return programMentors.stream().map(pm -> {
-            InternshipProgram p = pm.getProgram();
+
+        Map<Long, InternshipProgram> programMap = new LinkedHashMap<>();
+
+        // 1. Tìm từ bảng phân công program_mentors
+        if (identifier != null) {
+            List<ProgramMentor> programMentors = programMentorRepository.findByMentorIdentifierWithProgram(identifier);
+            for (ProgramMentor pm : programMentors) {
+                if (pm.getProgram() != null) {
+                    programMap.put(pm.getProgram().getId(), pm.getProgram());
+                }
+            }
+        }
+        if (userId != null && !userId.equals(identifier)) {
+            List<ProgramMentor> programMentors = programMentorRepository.findByMentorIdentifierWithProgram(userId);
+            for (ProgramMentor pm : programMentors) {
+                if (pm.getProgram() != null) {
+                    programMap.put(pm.getProgram().getId(), pm.getProgram());
+                }
+            }
+        }
+
+        // 2. Smart fallback: Tìm từ các InternProfile được gán trực tiếp cho Mentor này
+        List<InternProfile> assignedInterns = new ArrayList<>();
+        if (identifier != null) {
+            assignedInterns.addAll(internProfileRepository.findByMentorId(identifier));
+        }
+        if (userId != null && !userId.equals(identifier)) {
+            assignedInterns.addAll(internProfileRepository.findByMentorId(userId));
+        }
+        for (InternProfile intern : assignedInterns) {
+            if (intern.getProgram() != null && !programMap.containsKey(intern.getProgram().getId())) {
+                programMap.put(intern.getProgram().getId(), intern.getProgram());
+            }
+        }
+
+        return programMap.values().stream().map(p -> {
             int totalInterns = internProfileRepository.findByProgramId(p.getId()).size();
             int activeInterns = (int) internProfileRepository.countByProgramIdAndStatusIn(p.getId(), List.of(InternStatus.INTERNING));
             return MentorProgramResponse.builder()
@@ -200,15 +243,133 @@ public class MissionBoardServiceImpl implements MissionBoardService {
                 .toList();
     }
 
+    @Override
+    @Transactional
+    public void addMentorToProgram(Long programId, Long mentorId, String assignedBy) {
+        InternshipProgram program = findProgramOrThrow(programId);
+
+        MentorProfile mentor = mentorProfileRepository.findById(mentorId)
+                .or(() -> mentorProfileRepository.findByUserId(mentorId))
+                .orElse(null);
+
+        if (mentor == null) {
+            List<Map<String, Object>> users = identityServiceClient.getAllUsers();
+            Map<String, Object> mentorUser = users.stream()
+                    .filter(u -> {
+                        Object uid = u.get("id");
+                        return uid != null && Long.valueOf(uid.toString()).equals(mentorId);
+                    })
+                    .findFirst()
+                    .orElse(null);
+
+            if (mentorUser != null) {
+                String fullName = mentorUser.get("fullName") != null ? mentorUser.get("fullName").toString() : ("Mentor " + mentorId);
+                String email = mentorUser.get("email") != null ? mentorUser.get("email").toString() : ("mentor" + mentorId + "@internhub.vn");
+                String phone = mentorUser.get("phone") != null ? mentorUser.get("phone").toString()
+                        : (mentorUser.get("phoneNumber") != null ? mentorUser.get("phoneNumber").toString() : ("09" + (System.currentTimeMillis() % 100000000)));
+                Department dept = program.getDepartment() != null ? program.getDepartment()
+                        : departmentRepository.findAll().stream().findFirst().orElse(null);
+
+                mentor = MentorProfile.builder()
+                        .userId(mentorId)
+                        .fullName(fullName)
+                        .email(email)
+                        .phone(phone)
+                        .department(dept)
+                        .status("ACTIVE")
+                        .build();
+                try {
+                    mentor = mentorProfileRepository.save(mentor);
+                } catch (Exception e) {
+                    mentor = mentorProfileRepository.findByEmail(email).orElse(null);
+                }
+            }
+        }
+
+        if (mentor == null) {
+            throw new ResourceNotFoundException("Không tìm thấy thông tin Mentor với ID: " + mentorId);
+        }
+
+        boolean exists = programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, mentor.getId())
+                || programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, mentorId);
+        if (!exists) {
+            ProgramMentor pm = ProgramMentor.builder()
+                    .program(program)
+                    .mentor(mentor)
+                    .assignedBy(assignedBy != null ? assignedBy : "HR")
+                    .assignedAt(LocalDateTime.now())
+                    .build();
+            programMentorRepository.save(pm);
+            log.info("HR {} đã thêm Mentor {} (ID={}) vào Program ID={}", assignedBy, mentor.getFullName(), mentor.getId(), programId);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void removeMentorFromProgram(Long programId, Long mentorId) {
+        findProgramOrThrow(programId);
+        List<ProgramMentor> pms = programMentorRepository.findByProgramId(programId);
+        for (ProgramMentor pm : pms) {
+            if ((pm.getMentor() != null && pm.getMentor().getId().equals(mentorId))
+                    || (pm.getMentor() != null && pm.getMentor().getUserId() != null && pm.getMentor().getUserId().equals(mentorId))) {
+                programMentorRepository.delete(pm);
+                log.info("Đã gỡ Mentor ID={} khỏi Program ID={}", mentorId, programId);
+                return;
+            }
+        }
+    }
+
+    @Override
+    public List<MentorOptionResponse> getMentorsByProgram(Long programId) {
+        findProgramOrThrow(programId);
+        List<ProgramMentor> pms = programMentorRepository.findByProgramId(programId);
+        return pms.stream().map(pm -> {
+            MentorProfile m = pm.getMentor();
+            return MentorOptionResponse.builder()
+                    .id(m.getId())
+                    .fullName(m.getFullName())
+                    .email(m.getEmail())
+                    .phone(m.getPhone())
+                    .departmentId(m.getDepartment() != null ? m.getDepartment().getId() : null)
+                    .departmentName(m.getDepartment() != null ? m.getDepartment().getName() : null)
+                    .departmentCode(m.getDepartment() != null ? m.getDepartment().getCode() : null)
+                    .status(m.getStatus())
+                    .build();
+        }).toList();
+    }
+
     private InternshipProgram findProgramOrThrow(Long programId) {
         return programRepository.findById(programId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với id: " + programId));
     }
 
     private MentorProfile resolveMentorProfile(CustomUserDetails userDetails) {
-        return mentorProfileRepository.findByUserId(userDetails.getUserId())
-                .orElseGet(() -> mentorProfileRepository.findAll().stream().findFirst()
-                        .orElseThrow(() -> new BadRequestException("Không tìm thấy hồ sơ Mentor tương ứng với tài khoản đăng nhập")));
+        if (userDetails != null && userDetails.getUserId() != null) {
+            Optional<MentorProfile> byUserId = mentorProfileRepository.findByUserId(userDetails.getUserId());
+            if (byUserId.isPresent()) {
+                return byUserId.get();
+            }
+        }
+        if (userDetails != null && userDetails.getUsername() != null) {
+            Optional<MentorProfile> byEmail = mentorProfileRepository.findByEmail(userDetails.getUsername());
+            if (byEmail.isPresent()) {
+                return byEmail.get();
+            }
+        }
+        List<MentorProfile> allMentors = mentorProfileRepository.findAll();
+        if (!allMentors.isEmpty()) {
+            return allMentors.get(0);
+        }
+        Department defaultDept = departmentRepository.findAll().stream().findFirst().orElse(null);
+        MentorProfile created = MentorProfile.builder()
+                .userId(userDetails != null ? userDetails.getUserId() : 1L)
+                .fullName(userDetails != null ? userDetails.getUsername() : "Mentor User")
+                .email(userDetails != null ? (userDetails.getUsername() + "@internhub.vn") : "mentor@internhub.vn")
+                .phone("09" + (System.currentTimeMillis() % 100000000))
+                .department(defaultDept)
+                .status("ACTIVE")
+                .build();
+        return mentorProfileRepository.save(created);
     }
 
     private Long resolveMentorIdNullable(CustomUserDetails userDetails) {
@@ -226,7 +387,21 @@ public class MissionBoardServiceImpl implements MissionBoardService {
         if (isHrOrAdmin) {
             return;
         }
-        if (mentorId != null && !programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, mentorId)) {
+        if (mentorId != null) {
+            boolean existsInProgramMentor = programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, mentorId);
+            if (existsInProgramMentor) {
+                return;
+            }
+            Long userId = userDetails != null ? userDetails.getUserId() : null;
+            if (userId != null && programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, userId)) {
+                return;
+            }
+            // Smart Fallback: Cho phép nếu có bất kỳ InternProfile nào trong Program này được phân công cho Mentor
+            boolean hasInternInProgram = internProfileRepository.findByProgramId(programId).stream()
+                    .anyMatch(i -> (i.getMentorId() != null && (i.getMentorId().equals(mentorId) || (userId != null && i.getMentorId().equals(userId)))));
+            if (hasInternInProgram) {
+                return;
+            }
             throw new AccessDeniedException("Bạn không được phân công phụ trách chương trình thực tập này");
         }
     }

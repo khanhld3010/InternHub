@@ -26,4 +26,8 @@ public class MentorProgramResponse {
     private LocalDate endDate;
     private Integer totalInterns;
     private Integer activeInterns;
+
+    public Long getId() {
+        return programId;
+    }
 }

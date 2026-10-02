@@ -55,6 +55,7 @@ public class InternProfileServiceImpl implements InternProfileService {
     private final org.example.internservice.program.repository.InternshipProgramRepository programRepository;
     private final org.example.internservice.intern.repository.InternMentorAssignmentRepository internMentorAssignmentRepository;
     private final org.example.internservice.program.repository.DepartmentRepository departmentRepository;
+    private final org.example.internservice.program.repository.ProgramMentorRepository programMentorRepository;
     private final org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
     private final org.example.internservice.intern.repository.MentorProfileRepository mentorProfileRepository;
     private final org.example.internservice.intern.client.IntegrationEmailClient integrationEmailClient;
@@ -445,6 +446,7 @@ public class InternProfileServiceImpl implements InternProfileService {
 
         // 3. Tìm thông tin Mentor từ MentorProfile hoặc Identity Service
         org.example.internservice.intern.entity.MentorProfile mentorProfile = mentorProfileRepository.findById(request.getMentorId())
+                .or(() -> mentorProfileRepository.findByUserId(request.getMentorId()))
                 .orElse(null);
 
         String mentorFullName;
@@ -467,17 +469,50 @@ public class InternProfileServiceImpl implements InternProfileService {
                     .findFirst()
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông tin Mentor với ID: " + request.getMentorId()));
 
-            String mentorRole = (String) mentorUser.get("role");
-            String mentorStatus = (String) mentorUser.get("status");
-            if (!"MENTOR".equalsIgnoreCase(mentorRole)) {
+            String mentorRole = mentorUser.get("role") != null ? mentorUser.get("role").toString() : "";
+            String mentorStatus = mentorUser.get("status") != null ? mentorUser.get("status").toString() : "";
+            boolean isMentorRole = "MENTOR".equalsIgnoreCase(mentorRole)
+                    || "ROLE_MENTOR".equalsIgnoreCase(mentorRole)
+                    || mentorRole.toUpperCase().contains("MENTOR");
+            if (!isMentorRole) {
                 throw new IllegalArgumentException("Người dùng được chọn không có vai trò MENTOR");
             }
-            if (!"ACTIVE".equalsIgnoreCase(mentorStatus)) {
+            if (!mentorStatus.isBlank() && !"ACTIVE".equalsIgnoreCase(mentorStatus)) {
                 throw new BadRequestException("Tài khoản Mentor đang bị vô hiệu hóa hoặc chưa kích hoạt");
             }
 
-            mentorFullName = (String) mentorUser.get("fullName");
-            mentorEmail = (String) mentorUser.get("email");
+            mentorFullName = mentorUser.get("fullName") != null ? mentorUser.get("fullName").toString() : ("Mentor " + request.getMentorId());
+            mentorEmail = mentorUser.get("email") != null ? mentorUser.get("email").toString() : ("mentor" + request.getMentorId() + "@internhub.vn");
+            String mentorPhone = mentorUser.get("phone") != null ? mentorUser.get("phone").toString()
+                    : (mentorUser.get("phoneNumber") != null ? mentorUser.get("phoneNumber").toString() : ("09" + (System.currentTimeMillis() % 100000000)));
+
+            // Tự động tạo MentorProfile trong intern-and-program-service nếu chưa có
+            try {
+                org.example.internservice.program.entity.Department dept = (intern.getProgram() != null && intern.getProgram().getDepartment() != null)
+                        ? intern.getProgram().getDepartment()
+                        : departmentRepository.findAll().stream().findFirst().orElse(null);
+
+                mentorProfile = org.example.internservice.intern.entity.MentorProfile.builder()
+                        .userId(request.getMentorId())
+                        .fullName(mentorFullName)
+                        .email(mentorEmail)
+                        .phone(mentorPhone)
+                        .department(dept)
+                        .status("ACTIVE")
+                        .build();
+                mentorProfile = mentorProfileRepository.save(mentorProfile);
+                log.info("Tự động tạo mới MentorProfile ID={} cho Mentor userId={}", mentorProfile.getId(), request.getMentorId());
+            } catch (Exception e) {
+                log.warn("Lỗi khi tự tạo MentorProfile: {}", e.getMessage());
+                mentorProfile = mentorProfileRepository.findByEmail(mentorEmail).orElse(null);
+            }
+        }
+
+        if (mentorFullName == null || mentorFullName.isBlank()) {
+            mentorFullName = "Mentor " + request.getMentorId();
+        }
+        if (mentorEmail == null || mentorEmail.isBlank()) {
+            mentorEmail = "mentor" + request.getMentorId() + "@internhub.vn";
         }
 
         Long oldMentorId = intern.getMentorId();
@@ -521,7 +556,27 @@ public class InternProfileServiceImpl implements InternProfileService {
         intern.setNeedsMentorReassignment(false);
         intern.setMentorReassignmentReason(null);
 
-        // 7. Cơ chế điều kiện kép: Chuyển APPROVED sang INTERNING nếu Program đã ONGOING
+        // 7. Tự động đồng bộ ProgramMentor để Mentor nhìn thấy Program trong Mission Board
+        if (intern.getProgram() != null && mentorProfile != null) {
+            try {
+                boolean existsInProgram = programMentorRepository.existsByProgramIdAndMentorIdentifier(intern.getProgram().getId(), mentorProfile.getId())
+                        || programMentorRepository.existsByProgramIdAndMentorIdentifier(intern.getProgram().getId(), request.getMentorId());
+                if (!existsInProgram) {
+                    org.example.internservice.program.entity.ProgramMentor pm = org.example.internservice.program.entity.ProgramMentor.builder()
+                            .program(intern.getProgram())
+                            .mentor(mentorProfile)
+                            .assignedBy(assignedBy)
+                            .assignedAt(LocalDateTime.now())
+                            .build();
+                    programMentorRepository.save(pm);
+                    log.info("Tự động đồng bộ Mentor ID={} vào Program ID={}", mentorProfile.getId(), intern.getProgram().getId());
+                }
+            } catch (Exception e) {
+                log.warn("Không thể lưu ProgramMentor khi phân công mentor: {}", e.getMessage());
+            }
+        }
+
+        // 8. Cơ chế điều kiện kép: Chuyển APPROVED sang INTERNING nếu Program đã ONGOING
         if (intern.getStatus() == InternStatus.APPROVED && intern.getProgram() != null && intern.getProgram().getStatus() == org.example.internservice.program.entity.enums.ProgramStatus.ONGOING) {
             intern.setStatus(InternStatus.INTERNING);
             log.info("TTS {} ({}) thỏa mãn điều kiện kép -> Tự động chuyển APPROVED -> INTERNING", intern.getFullName(), intern.getInternCode());

@@ -32,6 +32,7 @@ public class CreateMissionItemRequest {
 
     private LocalDate dueDate;
 
+    @com.fasterxml.jackson.annotation.JsonAlias({"assigneeInternIds", "assigneeIds"})
     @NotEmpty(message = "Vui lòng chọn ít nhất 1 thực tập sinh tham gia công việc")
     private Set<Long> internIds;
 }

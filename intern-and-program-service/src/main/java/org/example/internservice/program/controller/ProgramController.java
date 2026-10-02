@@ -43,6 +43,7 @@ import java.util.List;
 public class ProgramController {
 
     private final InternshipProgramService programService;
+    private final org.example.internservice.mission.service.MissionBoardService missionBoardService;
 
     @Operation(summary = "Lấy danh mục phòng ban (Dành cho Dropdown)")
     @GetMapping("/departments")
@@ -141,5 +142,40 @@ public class ProgramController {
     ) {
         programService.deleteProgram(id);
         return ResponseEntity.ok(ApiResponse.success(200, "Xóa chương trình thực tập thành công", null));
+    }
+
+    @Operation(summary = "Thêm Mentor vào Chương trình thực tập (HR/Admin)")
+    @PostMapping("/programs/{id}/mentors/{mentorId}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> addMentorToProgram(
+            @PathVariable Long id,
+            @PathVariable Long mentorId,
+            Authentication authentication
+    ) {
+        String assignedBy = authentication != null ? authentication.getName() : "HR";
+        missionBoardService.addMentorToProgram(id, mentorId, assignedBy);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Thêm Mentor vào chương trình thành công", null));
+    }
+
+    @Operation(summary = "Lấy danh sách Mentor của Chương trình thực tập")
+    @GetMapping("/programs/{id}/mentors")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<List<org.example.internservice.intern.dto.response.MentorOptionResponse>>> getProgramMentors(
+            @PathVariable Long id
+    ) {
+        List<org.example.internservice.intern.dto.response.MentorOptionResponse> response = missionBoardService.getMentorsByProgram(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách Mentor của chương trình thành công", response));
+    }
+
+    @Operation(summary = "Xóa Mentor khỏi Chương trình thực tập (HR/Admin)")
+    @DeleteMapping("/programs/{id}/mentors/{mentorId}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> removeMentorFromProgram(
+            @PathVariable Long id,
+            @PathVariable Long mentorId
+    ) {
+        missionBoardService.removeMentorFromProgram(id, mentorId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ Mentor khỏi chương trình thành công", null));
     }
 }

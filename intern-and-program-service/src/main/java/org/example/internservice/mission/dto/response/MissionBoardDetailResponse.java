@@ -42,4 +42,12 @@ public class MissionBoardDetailResponse {
 
     @Builder.Default
     private List<MissionItemResponse> completedItems = new ArrayList<>();
+
+    public List<MissionItemResponse> getItems() {
+        List<MissionItemResponse> all = new ArrayList<>();
+        if (todoItems != null) all.addAll(todoItems);
+        if (inProgressItems != null) all.addAll(inProgressItems);
+        if (completedItems != null) all.addAll(completedItems);
+        return all;
+    }
 }

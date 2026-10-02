@@ -15,6 +15,8 @@ import lombok.Setter;
 @AllArgsConstructor
 public class CreateMissionBoardRequest {
 
+    private Long programId;
+
     @NotBlank(message = "Tiêu đề bảng nhiệm vụ không được để trống")
     @Size(min = 3, max = 200, message = "Tiêu đề bảng nhiệm vụ phải từ 3 đến 200 ký tự")
     private String title;

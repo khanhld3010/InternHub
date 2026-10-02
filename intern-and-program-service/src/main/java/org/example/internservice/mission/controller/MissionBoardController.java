@@ -48,6 +48,22 @@ public class MissionBoardController {
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Tạo bảng nhiệm vụ thành công", response));
     }
 
+    @Operation(summary = "Tạo Bảng nhiệm vụ mới (Gọi trực tiếp qua /api/mission-boards)")
+    @PostMapping("/api/mission-boards")
+    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<MissionBoardResponse>> createBoardDirect(
+            @Valid @RequestBody CreateMissionBoardRequest request,
+            Authentication authentication
+    ) {
+        if (request.getProgramId() == null) {
+            throw new org.example.internservice.exception.BadRequestException("Mã chương trình thực tập (programId) không được để trống");
+        }
+        CustomUserDetails userDetails = extractUserDetails(authentication);
+        MissionBoardResponse response = missionBoardService.createBoard(request.getProgramId(), request, userDetails);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Tạo bảng nhiệm vụ thành công", response));
+    }
+
     @Operation(summary = "Lấy danh sách Bảng nhiệm vụ của Chương trình")
     @GetMapping("/api/programs/{programId}/mission-boards")
     @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")

@@ -25,4 +25,10 @@ public interface MissionBoardService {
     List<MentorProgramResponse> getMyMentoredPrograms(CustomUserDetails userDetails);
 
     List<AssigneeResponse> getProgramInterns(Long programId, CustomUserDetails userDetails);
+
+    void addMentorToProgram(Long programId, Long mentorId, String assignedBy);
+
+    void removeMentorFromProgram(Long programId, Long mentorId);
+
+    List<org.example.internservice.intern.dto.response.MentorOptionResponse> getMentorsByProgram(Long programId);
 }

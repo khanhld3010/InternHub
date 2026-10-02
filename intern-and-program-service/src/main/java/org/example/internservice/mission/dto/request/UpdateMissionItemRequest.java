@@ -28,5 +28,6 @@ public class UpdateMissionItemRequest {
 
     private LocalDate dueDate;
 
+    @com.fasterxml.jackson.annotation.JsonAlias({"assigneeInternIds", "assigneeIds"})
     private Set<Long> internIds;
 }
