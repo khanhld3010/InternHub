@@ -53,6 +53,12 @@ class InternContractServiceTest {
     @Mock
     private FileStorageService fileStorageService;
 
+    @Mock
+    private org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
+
+    @Mock
+    private org.example.internservice.intern.client.NotificationEventDispatcher notificationEventDispatcher;
+
     @InjectMocks
     private InternContractServiceImpl internContractService;
 
@@ -371,7 +377,7 @@ class InternContractServiceTest {
         ContractResponse response = internContractService.confirmContract(1L, request, internUser);
 
         assertNotNull(response);
-        assertEquals(ContractStatus.SIGNED, response.getStatus());
+        assertEquals(ContractStatus.ACTIVE, response.getStatus());
         assertEquals("Nguyễn Văn A", response.getSignerFullName());
         assertNotNull(response.getSignedAt());
         assertEquals(InternStatus.INTERNING, response.getInternProfileStatus());

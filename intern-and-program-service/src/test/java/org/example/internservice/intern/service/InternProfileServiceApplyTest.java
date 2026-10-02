@@ -45,6 +45,12 @@ class InternProfileServiceApplyTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
+
+    @Mock
+    private org.example.internservice.intern.client.NotificationEventDispatcher notificationEventDispatcher;
+
     @InjectMocks
     private InternProfileServiceImpl internProfileService;
 
