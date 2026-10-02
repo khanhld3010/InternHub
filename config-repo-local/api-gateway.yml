@@ -117,6 +117,11 @@ spring:
               predicates:
                 - Path=/api/onboarding, /api/onboarding/**
 
+            - id: mission-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/mission-boards, /api/mission-boards/**, /api/mission-items, /api/mission-items/**, /api/mentor, /api/mentor/**
+
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
               uri: lb://reporting-and-integration-service
