@@ -29,6 +29,9 @@ jwt:
 file:
   upload-dir: ${FILE_UPLOAD_DIR:/uploads}
 
+app:
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
+
 eureka:
   client:
     service-url:
