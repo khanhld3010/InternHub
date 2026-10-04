@@ -22,6 +22,7 @@ import org.example.internservice.mission.entity.enums.MissionItemStatus;
 import org.example.internservice.mission.entity.enums.MissionPriority;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -66,6 +67,15 @@ public class MissionItem extends BaseEntity {
     @Column(name = "order_index", nullable = false)
     @Builder.Default
     private Integer orderIndex = 0;
+
+    @Column(name = "submission_url", length = 500)
+    private String submissionUrl;
+
+    @Column(name = "completion_note", columnDefinition = "TEXT")
+    private String completionNote;
+
+    @Column(name = "submitted_at")
+    private LocalDateTime submittedAt;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

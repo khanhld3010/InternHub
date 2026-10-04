@@ -21,6 +21,7 @@ public class MissionItemResponse {
 
     private Long id;
     private Long boardId;
+    private String boardTitle;
     private String title;
     private String description;
     private MissionPriority priority;
@@ -30,6 +31,9 @@ public class MissionItemResponse {
     private LocalDate dueDate;
     private Boolean isOverdue;
     private Integer orderIndex;
+    private String submissionUrl;
+    private String completionNote;
+    private LocalDateTime submittedAt;
     private List<AssigneeResponse> assignees;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
