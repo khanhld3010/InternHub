@@ -6,6 +6,7 @@ import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.MentorProfile;
+import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.repository.MentorProfileRepository;
 import org.example.internservice.mission.dto.request.CreateMissionItemRequest;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -36,6 +38,8 @@ import java.util.Set;
 @Slf4j
 @Transactional(readOnly = true)
 public class MissionItemServiceImpl implements MissionItemService {
+
+    private static final String NOT_FOUND_MSG_PREFIX = "Không tìm thấy mục công việc với id: ";
 
     private final MissionItemRepository missionItemRepository;
     private final MissionBoardRepository missionBoardRepository;
@@ -72,7 +76,7 @@ public class MissionItemServiceImpl implements MissionItemService {
     @Transactional
     public MissionItemResponse updateItem(Long itemId, UpdateMissionItemRequest request, CustomUserDetails userDetails) {
         MissionItem item = missionItemRepository.findByIdWithAssignees(itemId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy mục công việc với id: " + itemId));
+                .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MSG_PREFIX + itemId));
         verifyMentorAccess(item.getBoard().getProgram().getId(), userDetails);
 
         if (request.getTitle() != null && !request.getTitle().isBlank()) {
@@ -88,7 +92,10 @@ public class MissionItemServiceImpl implements MissionItemService {
             validateDueDate(request.getDueDate(), item.getBoard());
             item.setDueDate(request.getDueDate());
         }
-        if (request.getInternIds() != null && !request.getInternIds().isEmpty()) {
+        if (request.getInternIds() != null) {
+            if (request.getInternIds().isEmpty()) {
+                throw new BadRequestException("Vui lòng chọn ít nhất 1 thực tập sinh tham gia công việc");
+            }
             Set<InternProfile> assignees = resolveAndValidateAssignees(request.getInternIds(), item.getBoard().getProgram().getId());
             item.setAssignees(assignees);
         }
@@ -101,7 +108,7 @@ public class MissionItemServiceImpl implements MissionItemService {
     @Transactional
     public MissionItemResponse updateItemStatus(Long itemId, UpdateItemStatusRequest request, CustomUserDetails userDetails) {
         MissionItem item = missionItemRepository.findByIdWithAssignees(itemId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy mục công việc với id: " + itemId));
+                .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MSG_PREFIX + itemId));
         verifyMentorAccess(item.getBoard().getProgram().getId(), userDetails);
 
         if (request.getStatus() == null) {
@@ -118,7 +125,7 @@ public class MissionItemServiceImpl implements MissionItemService {
     @Transactional
     public void deleteItem(Long itemId, CustomUserDetails userDetails) {
         MissionItem item = missionItemRepository.findById(itemId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy mục công việc với id: " + itemId));
+                .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MSG_PREFIX + itemId));
         verifyMentorAccess(item.getBoard().getProgram().getId(), userDetails);
 
         missionItemRepository.delete(item);
@@ -128,6 +135,9 @@ public class MissionItemServiceImpl implements MissionItemService {
     private void validateDueDate(LocalDate dueDate, MissionBoard board) {
         if (dueDate == null) {
             return;
+        }
+        if (dueDate.isBefore(LocalDate.now(ZoneId.systemDefault()))) {
+            throw new BadRequestException("Hạn chót công việc không được ở trong quá khứ");
         }
         if (board.getProgram().getEndDate() != null && dueDate.isAfter(board.getProgram().getEndDate())) {
             throw new BadRequestException("Hạn chót công việc không được vượt quá ngày kết thúc chương trình (" + board.getProgram().getEndDate() + ")");
@@ -146,6 +156,9 @@ public class MissionItemServiceImpl implements MissionItemService {
         for (InternProfile intern : interns) {
             if (intern.getProgram() == null || !intern.getProgram().getId().equals(programId)) {
                 throw new BadRequestException("Thực tập sinh [" + intern.getFullName() + " - " + intern.getInternCode() + "] không thuộc chương trình đào tạo của bảng nhiệm vụ này");
+            }
+            if (intern.getStatus() != null && intern.getStatus() != InternStatus.INTERNING && intern.getStatus() != InternStatus.APPROVED) {
+                throw new BadRequestException("Thực tập sinh [" + intern.getFullName() + " - " + intern.getInternCode() + "] đang ở trạng thái " + intern.getStatus() + ", không thể giao việc");
             }
         }
         return new HashSet<>(interns);
@@ -170,7 +183,7 @@ public class MissionItemServiceImpl implements MissionItemService {
     private MissionItemResponse mapToItemResponse(MissionItem item) {
         boolean isOverdue = item.getStatus() != MissionItemStatus.COMPLETED
                 && item.getDueDate() != null
-                && item.getDueDate().isBefore(LocalDate.now());
+                && item.getDueDate().isBefore(LocalDate.now(ZoneId.systemDefault()));
 
         List<AssigneeResponse> assignees = (item.getAssignees() == null) ? List.of() :
                 item.getAssignees().stream().map(intern -> AssigneeResponse.builder()

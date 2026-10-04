@@ -3,10 +3,12 @@ package org.example.internservice.mission.service;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.MentorProfile;
+import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.repository.MentorProfileRepository;
 import org.example.internservice.mission.dto.request.CreateMissionItemRequest;
 import org.example.internservice.mission.dto.request.UpdateItemStatusRequest;
+import org.example.internservice.mission.dto.request.UpdateMissionItemRequest;
 import org.example.internservice.mission.dto.response.MissionItemResponse;
 import org.example.internservice.mission.entity.MissionBoard;
 import org.example.internservice.mission.entity.MissionItem;
@@ -114,6 +116,7 @@ class MissionItemServiceTest {
                 .fullName("Nguyễn Văn A")
                 .email("a@example.com")
                 .program(mockProgram)
+                .status(InternStatus.INTERNING)
                 .build();
         mockIntern1.setId(11L);
 
@@ -122,6 +125,7 @@ class MissionItemServiceTest {
                 .fullName("Trần Thị B")
                 .email("b@example.com")
                 .program(mockProgram)
+                .status(InternStatus.INTERNING)
                 .build();
         mockIntern2.setId(12L);
     }
@@ -220,5 +224,101 @@ class MissionItemServiceTest {
         assertNotNull(response);
         assertEquals(MissionItemStatus.COMPLETED, response.getStatus());
         verify(missionItemRepository, times(1)).save(item);
+    }
+
+    @Test
+    @DisplayName("UT-BE-11: Bị từ chối khi TTS không ở trạng thái INTERNING hoặc APPROVED")
+    void createItem_Fail_InternStatusInvalid() {
+        InternProfile inactiveIntern = InternProfile.builder()
+                .internCode("INT-003")
+                .fullName("Lê Văn C")
+                .program(mockProgram)
+                .status(InternStatus.TERMINATED)
+                .build();
+        inactiveIntern.setId(13L);
+
+        CreateMissionItemRequest request = CreateMissionItemRequest.builder()
+                .title("Nhiệm vụ mới")
+                .internIds(Set.of(13L))
+                .build();
+
+        when(missionBoardRepository.findByIdWithDetails(1L)).thenReturn(Optional.of(mockBoard));
+        when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mockMentor));
+        when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 20L)).thenReturn(true);
+        when(internProfileRepository.findAllById(any())).thenReturn(List.of(inactiveIntern));
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                missionItemService.createItem(1L, request, mentorUserDetails));
+        assertTrue(ex.getMessage().contains("không thể giao việc"));
+        verify(missionItemRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("UT-BE-12: Bị từ chối khi thời hạn dueDate ở trong quá khứ")
+    void createItem_Fail_DueDateInPast() {
+        CreateMissionItemRequest request = CreateMissionItemRequest.builder()
+                .title("Nhiệm vụ hạn chót quá khứ")
+                .dueDate(LocalDate.now().minusDays(1))
+                .internIds(Set.of(11L))
+                .build();
+
+        when(missionBoardRepository.findByIdWithDetails(1L)).thenReturn(Optional.of(mockBoard));
+        when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mockMentor));
+        when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 20L)).thenReturn(true);
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                missionItemService.createItem(1L, request, mentorUserDetails));
+        assertTrue(ex.getMessage().contains("quá khứ"));
+        verify(missionItemRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("UT-BE-13: Bị từ chối khi cập nhật mục công việc với danh sách internIds rỗng")
+    void updateItem_Fail_EmptyAssignees() {
+        MissionItem item = MissionItem.builder()
+                .board(mockBoard)
+                .title("Viết API")
+                .status(MissionItemStatus.TODO)
+                .assignees(new HashSet<>(Set.of(mockIntern1)))
+                .build();
+        item.setId(101L);
+
+        UpdateMissionItemRequest request = UpdateMissionItemRequest.builder()
+                .internIds(Set.of())
+                .build();
+
+        when(missionItemRepository.findByIdWithAssignees(101L)).thenReturn(Optional.of(item));
+        when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mockMentor));
+        when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 20L)).thenReturn(true);
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                missionItemService.updateItem(101L, request, mentorUserDetails));
+        assertTrue(ex.getMessage().contains("Vui lòng chọn ít nhất 1 thực tập sinh tham gia công việc"));
+        verify(missionItemRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("UT-BE-14: Bị từ chối khi cập nhật mục công việc với dueDate ở trong quá khứ")
+    void updateItem_Fail_DueDateInPast() {
+        MissionItem item = MissionItem.builder()
+                .board(mockBoard)
+                .title("Viết API")
+                .status(MissionItemStatus.TODO)
+                .assignees(new HashSet<>(Set.of(mockIntern1)))
+                .build();
+        item.setId(101L);
+
+        UpdateMissionItemRequest request = UpdateMissionItemRequest.builder()
+                .dueDate(LocalDate.now().minusDays(2))
+                .build();
+
+        when(missionItemRepository.findByIdWithAssignees(101L)).thenReturn(Optional.of(item));
+        when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mockMentor));
+        when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 20L)).thenReturn(true);
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                missionItemService.updateItem(101L, request, mentorUserDetails));
+        assertTrue(ex.getMessage().contains("quá khứ"));
+        verify(missionItemRepository, never()).save(any());
     }
 }

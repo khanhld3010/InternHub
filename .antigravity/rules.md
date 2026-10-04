@@ -41,3 +41,7 @@
 9. **Lưu Trữ Spec Vĩnh Cửu & Đồng Bộ Nguyên Tử (Atomic Spec-Code Sync)**:
    - 100% Spec lưu tại `InternHub/docs/specs/`.
    - Mọi thay đổi code từ L2 trở lên bắt buộc phải cập nhật Spec và ghi nhận lý do vào bảng Revision History & Change Rationale. Không hoàn tất task nếu Spec chưa đồng bộ.
+10. **Quét Dự Án & Tối Đa Tái Sử Dụng Mã Nguồn (Reuse First, Zero Unnecessary Redundancy)**:
+   - **Chỉ thị cốt lõi**: **"ĐẢM BẢO SẼ QUÉT DỰ ÁN, TRÁNH VIỆC TẠO THÊM CODE MỚI KHÔNG CẦN THIẾT, SỬ DỤNG TỐI ĐA NHỮNG GÌ ĐÃ CÓ ĐỂ PHÁT TRIỂN"**.
+   - Trước khi tạo bất kỳ Entity, Table, DTO, Service, Component hay helper function nào, bắt buộc phải quét toàn bộ 6 microservices và CSDL để tái sử dụng, kế thừa hoặc mở rộng thay vì tạo mới gây rác và phân mảnh.
+   - Bắt buộc có phần *"Khảo Sát Hiện Trạng & Đánh Giá Tái Sử Dụng"* trong mọi Kế hoạch (`Plan`).
