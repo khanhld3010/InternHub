@@ -117,6 +117,13 @@ spring:
               predicates:
                 - Path=/api/onboarding, /api/onboarding/**
 
+            # Route cho phân hệ Chấm công TM-25
+            - id: attendance-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/attendances, /api/v1/attendances/**
+
+            # Route cho phân hệ Bảng nhiệm vụ & Giao việc TM-19
             - id: mission-service
               uri: lb://intern-and-program-service
               predicates:
