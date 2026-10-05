@@ -102,6 +102,12 @@ Tài liệu này định nghĩa nguyên tắc tối cao và quy trình làm vi�
     - **Vùng cấm tuyệt đối**: File `.env` của người dùng là khu vực bảo mật tối mật chứa credentials, secret keys và cấu hình môi trường nhạy cảm. Nghiêm cấm hoàn toàn các hành vi đọc (read/view/cat), chỉnh sửa (edit/write), hoặc phân tích (analyze/grep/parse) từ AI Agent hay bất kỳ tiến trình tự động nào của hệ thống.
     - **Quy trình phối hợp**: Nếu cần bất kỳ thông tin, cấu hình, biến môi trường hay giá trị nào liên quan đến file `.env`, Agent **BẮT BUỘC PHẢI THÔNG BÁO VÀ NHỜ NGƯỜI DÙNG KIỂM TRA GIÚP**. Người dùng sẽ chủ động kiểm tra và cung cấp thông tin cần thiết. Tuyệt đối không tự ý can thiệp.
 
+18. **QUÉT DỰ ÁN & TỐI ĐA TÁI SỬ DỤNG MÃ NGUỒN, SCHEMA CSDL (REUSE FIRST, ZERO UNNECESSARY REDUNDANCY)**:
+    - **Chỉ thị cốt lõi bắt buộc**: **"ĐẢM BẢO SẼ QUÉT DỰ ÁN, TRÁNH VIỆC TẠO THÊM CODE MỚI KHÔNG CẦN THIẾT, SỬ DỤNG TỐI ĐA NHỮNG GÌ ĐÃ CÓ ĐỂ PHÁT TRIỂN"**.
+    - **Khảo sát trước khi tạo mới**: Trước khi thiết kế hoặc tạo mới bất kỳ Entity, Bảng CSDL, DTO, Repository, Service hay Utility method nào, AI Agent **BẮT BUỘC PHẢI QUÉT VÀ KHẢO SÁT TOÀN DIỆN MÃ NGUỒN VÀ DATABASE SCHEMA ĐANG TỒN TẠI** trong toàn bộ 6 microservices và các tài liệu đặc tả (`specs`) đã có.
+    - **Chống tạo mới dư thừa, phân mảnh**: Nếu bài toán nghiệp vụ đã có Entity/Bảng CSDL tương ứng (ví dụ: `mentor_profiles`, `intern_mentor_assignments`, `departments`, `intern_profiles`), Enum tương đương hoặc hàm helper có sẵn, bắt buộc phải ưu tiên tái sử dụng, liên kết khóa ngoại hoặc kế thừa/mở rộng thay vì tự ý sinh ra các thực thể mới song song gây phân mảnh dữ liệu và phân rã kiến trúc.
+    - **Nghĩa vụ giải trình trong Kế hoạch**: Trong mọi Kế hoạch (`Plan`), Agent **bắt buộc phải có phần "Khảo Sát Hiện Trạng & Đánh Giá Tái Sử Dụng"** chứng minh đã rà soát kỹ lưỡng và giải trình cụ thể lý do vì sao một thành phần mới bắt buộc phải tạo thay vì tái sử dụng.
+
 ---
 
 ## 2. Giao Thức 4 Bước Bắt Buộc (Mandatory 4-Step Workflow)

@@ -174,3 +174,19 @@ import org.example.internservice.intern.service.InternService;
                  .body(ApiResponse.success(response, "Tạo mới hồ sơ thực tập sinh thành công"));
      }
      ```
+
+---
+
+## 8. Nguyên Tắc Ưu Tiên Tái Sử Dụng Mã Nguồn & Schema CSDL (Reuse First - Zero Redundancy)
+
+> [!IMPORTANT]
+> **NGHIÊM CẤM TỰ Ý TẠO MỚI KHI ĐÃ CÓ MÃ NGUỒN HOẶC SCHEMA TƯƠNG ĐƯƠNG.**
+
+1. **Khảo sát trước khi thiết kế**:
+   - Trước khi tạo bất kỳ Entity, Table, Enum, Repository, Service hay Utility method nào, bắt buộc phải dùng các công cụ tìm kiếm (`grep_search`, `list_dir`, `view_file`) quét toàn bộ 6 microservices và các file Spec cũ trong `docs/specs/`.
+2. **Ưu tiên tái sử dụng & liên kết**:
+   - Nếu trong CSDL đã có bảng quản lý thực thể tương ứng (ví dụ: `mentor_profiles` cho Mentor, `intern_mentor_assignments` cho phân công, `departments` cho phòng ban), **bắt buộc phải tái sử dụng hoặc liên kết khóa ngoại**.
+   - Tuyệt đối cấm tạo bảng song song (ví dụ: tạo bảng `mentors` khi đã có `mentor_profiles`) gây phân mảnh dữ liệu, mâu thuẫn trạng thái và phá vỡ tính toàn vẹn hệ thống.
+3. **Mở rộng có kiểm soát**:
+   - Nếu thực thể hoặc DTO hiện có còn thiếu trường, ưu tiên mở rộng (kèm giải trình trong Spec) thay vì tạo một Class/Table mới hoàn toàn.
+

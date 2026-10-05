@@ -51,6 +51,12 @@ class InternProfileMentorTest {
     private MentorProfileRepository mentorProfileRepository;
 
     @Mock
+    private org.example.internservice.program.repository.ProgramMentorRepository programMentorRepository;
+
+    @Mock
+    private org.example.internservice.program.repository.DepartmentRepository departmentRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks

@@ -172,7 +172,7 @@ public class InternProfileController {
 
     @Operation(summary = "Phân công hoặc đổi Mentor cho thực tập sinh (TM-16)")
     @Auditable(action = AuditAction.UPDATE_INTERN, module = AuditModule.INTERN, description = "Phân công hoặc thay đổi người hướng dẫn thực tập")
-    @PostMapping("/{id}/assign-mentor")
+    @PostMapping(value = {"/{id}/assign-mentor", "/{id}/mentor"})
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
     public ResponseEntity<ApiResponse<InternResponse>> assignMentor(
             @PathVariable("id") Long id,
