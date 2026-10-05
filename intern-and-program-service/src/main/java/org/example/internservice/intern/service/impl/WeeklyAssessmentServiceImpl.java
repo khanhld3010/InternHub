@@ -6,6 +6,8 @@ import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.dto.request.WeeklyAssessmentRequest;
 import org.example.internservice.intern.dto.response.MentorTriageOverviewResponse;
 import org.example.internservice.intern.dto.response.WeeklyAssessmentResponse;
+import org.example.internservice.intern.client.NotificationEventDispatcher;
+import org.example.internservice.intern.client.dto.CreateNotificationInternalRequest;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.InternWeeklyAssessment;
 import org.example.internservice.intern.repository.InternProfileRepository;
@@ -30,6 +32,7 @@ public class WeeklyAssessmentServiceImpl implements WeeklyAssessmentService {
 
     private final InternWeeklyAssessmentRepository assessmentRepository;
     private final InternProfileRepository internProfileRepository;
+    private final NotificationEventDispatcher notificationEventDispatcher;
 
     @Override
     @Transactional
@@ -82,6 +85,23 @@ public class WeeklyAssessmentServiceImpl implements WeeklyAssessmentService {
 
         InternWeeklyAssessment saved = assessmentRepository.save(assessment);
         log.info("Luu thanh cong danh gia tuan {} (status: {}) cho TTS: {}", saved.getWeekNumber(), saved.getStatus(), internCode);
+
+        // Bắn thông báo thời gian thực cho TTS khi Mentor công bố (PUBLISH) đánh giá tuần
+        if (isPublish && internProfile.getUserId() != null) {
+            String senderName = mentorName != null && !mentorName.isBlank() ? mentorName : "Mentor phụ trách";
+            CreateNotificationInternalRequest notif = CreateNotificationInternalRequest.builder()
+                    .recipientId(internProfile.getUserId())
+                    .actorId(mentorId)
+                    .title("Nhận xét đánh giá tuần mới")
+                    .content(String.format("%s đã công bố đánh giá Tuần %d cho bạn (Điểm TB: %s/10). Hãy xem phản hồi và mục tiêu tuần tới!",
+                            senderName, saved.getWeekNumber(), saved.getAverageScore()))
+                    .type("WEEKLY_ASSESSMENT_PUBLISHED")
+                    .referenceType("WEEKLY_ASSESSMENT")
+                    .referenceId(String.valueOf(saved.getId()))
+                    .actionUrl("/mentor/weekly-evaluations?internCode=" + internCode)
+                    .build();
+            notificationEventDispatcher.dispatch(notif);
+        }
 
         return WeeklyAssessmentResponse.fromEntity(saved);
     }

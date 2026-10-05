@@ -2,11 +2,16 @@ package org.example.internservice.intern.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.internservice.intern.client.IdentityServiceClient;
+import org.example.internservice.intern.client.NotificationEventDispatcher;
+import org.example.internservice.intern.client.dto.CreateNotificationInternalRequest;
 import org.example.internservice.intern.dto.InternEvaluationRequest;
 import org.example.internservice.intern.dto.InternEvaluationResponse;
 import org.example.internservice.intern.entity.InternEvaluation;
+import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.InternWeeklyAssessment;
 import org.example.internservice.intern.repository.InternEvaluationRepository;
+import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.repository.InternWeeklyAssessmentRepository;
 import org.example.internservice.intern.service.InternEvaluationService;
 import org.springframework.stereotype.Service;
@@ -25,7 +30,9 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
 
     private final InternEvaluationRepository evaluationRepository;
     private final InternWeeklyAssessmentRepository weeklyAssessmentRepository;
-    private final org.example.internservice.intern.repository.InternProfileRepository internProfileRepository;
+    private final InternProfileRepository internProfileRepository;
+    private final NotificationEventDispatcher notificationEventDispatcher;
+    private final IdentityServiceClient identityServiceClient;
 
     @Override
     @Transactional
@@ -55,11 +62,45 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
 
         InternEvaluation saved = evaluationRepository.save(evaluation);
 
-        // Cascade: Cập nhật trạng thái của InternProfile sang COMPLETED
+        // Cascade: Cập nhật trạng thái của InternProfile sang COMPLETED và bắn thông báo
         internProfileRepository.findByInternCode(internCode).ifPresent(profile -> {
             profile.setStatus(org.example.internservice.intern.entity.enums.InternStatus.COMPLETED);
             internProfileRepository.save(profile);
             log.info("Đã chuyển trạng thái hồ sơ TTS {} sang COMPLETED thành công", internCode);
+
+            String resultText = saved.getInternshipResult() != null ? saved.getInternshipResult() : "ĐẠT";
+
+            // 1. Thông báo cho TTS: HR đã duyệt kết quả thực tập chính thức
+            if (profile.getUserId() != null) {
+                CreateNotificationInternalRequest notifIntern = CreateNotificationInternalRequest.builder()
+                        .recipientId(profile.getUserId())
+                        .actorId(null)
+                        .title("Kết quả thực tập đã được phê duyệt")
+                        .content(String.format("Chúc mừng! Đánh giá hoàn thành thực tập của bạn đã được HR phê duyệt chính thức (Xếp loại: %s, Điểm tổng kết: %s/10).",
+                                resultText, saved.getFinalScore()))
+                        .type("FINAL_EVALUATION_APPROVED")
+                        .referenceType("EVALUATION")
+                        .referenceId(String.valueOf(saved.getId()))
+                        .actionUrl("/profile?tab=evaluation")
+                        .build();
+                notificationEventDispatcher.dispatch(notifIntern);
+            }
+
+            // 2. Thông báo cho Mentor: HR đã xác nhận phiếu đánh giá do Mentor nộp
+            if (profile.getMentorId() != null) {
+                CreateNotificationInternalRequest notifMentor = CreateNotificationInternalRequest.builder()
+                        .recipientId(profile.getMentorId())
+                        .actorId(null)
+                        .title("HR đã phê duyệt đánh giá thực tập")
+                        .content(String.format("Phiếu đánh giá thực tập của TTS %s (%s) do bạn hướng dẫn đã được HR %s phê duyệt hoàn tất.",
+                                profile.getFullName(), internCode, hrUsername))
+                        .type("FINAL_EVALUATION_APPROVED")
+                        .referenceType("EVALUATION")
+                        .referenceId(String.valueOf(saved.getId()))
+                        .actionUrl("/mentor/final-evaluations?internCode=" + internCode)
+                        .build();
+                notificationEventDispatcher.dispatch(notifMentor);
+            }
         });
 
         return mapToResponse(saved);
@@ -209,6 +250,29 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
         }
 
         InternEvaluation saved = evaluationRepository.save(evaluation);
+
+        // Bắn thông báo cho bộ phận HR khi Mentor gửi nộp (SUBMIT) đánh giá tốt nghiệp
+        if (Boolean.TRUE.equals(request.getIsSubmit())) {
+            internProfileRepository.findByInternCode(internCode).ifPresent(profile -> {
+                List<Long> hrUserIds = identityServiceClient.findUserIdsByRole("HR");
+                if (hrUserIds.isEmpty()) {
+                    hrUserIds = identityServiceClient.findUserIdsByRole("ADMIN");
+                }
+                String mentorName = saved.getMentorName() != null ? saved.getMentorName() : "Mentor phụ trách";
+                notificationEventDispatcher.dispatchToMultiple(hrUserIds, hrId -> CreateNotificationInternalRequest.builder()
+                        .recipientId(hrId)
+                        .actorId(saved.getMentorId())
+                        .title("Đánh giá tốt nghiệp thực tập mới")
+                        .content(String.format("%s đã hoàn tất phiếu đánh giá tốt nghiệp cho TTS %s (%s, Điểm: %s/10). Vui lòng xem xét phê duyệt!",
+                                mentorName, profile.getFullName(), internCode, saved.getFinalScore()))
+                        .type("FINAL_EVALUATION_SUBMITTED")
+                        .referenceType("EVALUATION")
+                        .referenceId(String.valueOf(saved.getId()))
+                        .actionUrl("/hr/evaluations?internCode=" + internCode)
+                        .build());
+            });
+        }
+
         return mapToResponse(saved);
     }
 
