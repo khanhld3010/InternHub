@@ -90,7 +90,7 @@ public class InternDocumentController {
 
     @Operation(summary = "Xét duyệt tài liệu thực tập sinh (Phê duyệt hoặc Từ chối)")
     @PatchMapping("/documents/{documentId}/review")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('DOCUMENT_REVIEW')")
     public ResponseEntity<ApiResponse<DocumentResponse>> reviewDocument(
             @PathVariable("documentId") Long documentId,
             @Valid @RequestBody ReviewDocumentRequest request

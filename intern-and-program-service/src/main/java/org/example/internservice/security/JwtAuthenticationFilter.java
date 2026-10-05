@@ -18,6 +18,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -41,13 +42,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String username = jwtTokenProvider.getUsernameFromToken(jwt);
                 String role = jwtTokenProvider.getRoleFromToken(jwt);
                 Long userId = jwtTokenProvider.getUserIdFromToken(jwt);
+                List<String> permissionCodes = jwtTokenProvider.getPermissionsFromToken(jwt);
 
-                List<GrantedAuthority> authorities = Collections.emptyList();
-                if (StringUtils.hasText(role)) {
-                    String cleanRole = role.trim().toUpperCase();
-                    String authorityName = cleanRole.startsWith("ROLE_") ? cleanRole : "ROLE_" + cleanRole;
-                    authorities = Collections.singletonList(new SimpleGrantedAuthority(authorityName));
-                }
+                List<GrantedAuthority> authorities = buildAuthorities(role, permissionCodes);
 
                 UserDetails userDetails = CustomUserDetails.builder()
                         .userId(userId)
@@ -70,6 +67,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private List<GrantedAuthority> buildAuthorities(String role, List<String> permissionCodes) {
+        List<GrantedAuthority> authorities = new ArrayList<>();
+
+        if (StringUtils.hasText(role)) {
+            String cleanRole = role.trim().toUpperCase();
+            String authorityName = cleanRole.startsWith("ROLE_") ? cleanRole : "ROLE_" + cleanRole;
+            authorities.add(new SimpleGrantedAuthority(authorityName));
+        }
+
+        if (permissionCodes != null) {
+            permissionCodes.stream()
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .map(SimpleGrantedAuthority::new)
+                    .forEach(authorities::add);
+        }
+
+        return authorities;
     }
 
     private String getJwtFromRequest(HttpServletRequest request) {

@@ -1,11 +1,14 @@
 package org.example.employeeservice.oauth2.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.example.employeeservice.config.JwtProperties;
 import org.example.employeeservice.dto.response.LoginResponse;
 import org.example.employeeservice.exception.GlobalExceptionHandler;
 import org.example.employeeservice.exception.UnauthorizedException;
 import org.example.employeeservice.oauth2.dto.request.GoogleLoginRequest;
 import org.example.employeeservice.oauth2.service.GoogleOAuth2Service;
+import org.example.employeeservice.repository.AccountRepository;
+import org.example.employeeservice.service.RefreshTokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +32,15 @@ class GoogleAuthControllerTest {
 
     @Mock
     private GoogleOAuth2Service googleOAuth2Service;
+
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
+    @Mock
+    private AccountRepository accountRepository;
+
+    @Mock
+    private JwtProperties jwtProperties;
 
     @InjectMocks
     private GoogleAuthController googleAuthController;
@@ -62,11 +74,21 @@ class GoogleAuthControllerTest {
                 .build();
 
         when(googleOAuth2Service.loginWithGoogle(any(GoogleLoginRequest.class))).thenReturn(loginResponse);
+        
+        org.example.employeeservice.entity.Account mockAccount = org.example.employeeservice.entity.Account.builder()
+                .id(1)
+                .username("cuongle")
+                .build();
+        when(accountRepository.findByUsername("cuongle")).thenReturn(java.util.Optional.of(mockAccount));
+        when(refreshTokenService.createRefreshToken(mockAccount, true)).thenReturn("raw-google-refresh-token-999");
+        when(jwtProperties.getRefreshExpiration()).thenReturn(604800000L);
+        when(jwtProperties.isCookieSecure()).thenReturn(false);
 
         mockMvc.perform(post("/api/auth/oauth2/google")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
+                .andExpect(header().string(org.springframework.http.HttpHeaders.SET_COOKIE, org.hamcrest.Matchers.containsString("internhub_refresh_token=raw-google-refresh-token-999")))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Đăng nhập bằng tài khoản Google thành công"))
                 .andExpect(jsonPath("$.data.accessToken").value("mock-jwt-token"))

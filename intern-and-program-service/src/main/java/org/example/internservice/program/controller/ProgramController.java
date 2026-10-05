@@ -144,6 +144,25 @@ public class ProgramController {
         return ResponseEntity.ok(ApiResponse.success(200, "Xóa chương trình thực tập thành công", null));
     }
 
+    @Operation(summary = "Lấy tổng quan năng lực tiếp nhận phòng ban (Bento Hub)")
+    @GetMapping("/departments/capacity-overview")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<org.example.internservice.program.dto.response.DepartmentCapacityOverviewResponse>> getCapacityOverview() {
+        return ResponseEntity.ok(ApiResponse.success(programService.getCapacityOverview()));
+    }
+
+    @Operation(summary = "Cập nhật chỉ tiêu năng lực phòng ban (HR/Admin)")
+    @PutMapping("/departments/{id}/quota")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> updateDepartmentQuota(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, Integer> payload
+    ) {
+        Integer quota = payload.get("plannedCapacityQuota");
+        programService.updateDepartmentQuota(id, quota);
+        return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật chỉ tiêu tiếp nhận thành công", null));
+    }
+
     @Operation(summary = "Thêm Mentor vào Chương trình thực tập (HR/Admin)")
     @PostMapping("/programs/{id}/mentors/{mentorId}")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")

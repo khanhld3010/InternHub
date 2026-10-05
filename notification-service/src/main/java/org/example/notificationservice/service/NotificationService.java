@@ -99,7 +99,7 @@ public class NotificationService {
     public void dispatchSecurityCommand(org.example.notificationservice.dto.SecurityCommandMessage command) {
         try {
             redisTemplate.convertAndSend(RedisConfig.TOPIC_SECURITY_COMMANDS, command);
-            log.info("Dispatched security command via Redis Pub/Sub: action={}, userId={}", command.getAction(), command.getUserId());
+            log.info("Dispatched security command via Redis Pub/Sub: action={}, userId={}, role={}", command.getAction(), command.getUserId(), command.getRole());
         } catch (Exception e) {
             log.error("Failed to publish security command to Redis Pub/Sub: {}", e.getMessage(), e);
         }

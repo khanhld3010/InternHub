@@ -35,11 +35,45 @@ public class WebSocketSessionRegistry {
     public List<WebSocketSessionMeta> getSessionsByUserId(Long userId) {
         List<WebSocketSessionMeta> list = new ArrayList<>();
         for (WebSocketSessionMeta meta : activeSessions.values()) {
-            if (meta.getUserId().equals(userId)) {
+            if (meta.getUserId() != null && meta.getUserId().equals(userId)) {
                 list.add(meta);
             }
         }
         return list;
+    }
+
+    public List<WebSocketSessionMeta> getSessionsByRole(String role) {
+        if (role == null) {
+            return Collections.emptyList();
+        }
+        String cleanRole = role.replace("ROLE_", "");
+        List<WebSocketSessionMeta> list = new ArrayList<>();
+        for (WebSocketSessionMeta meta : activeSessions.values()) {
+            if (meta.getRole() != null) {
+                String metaRole = meta.getRole().replace("ROLE_", "");
+                if (metaRole.equalsIgnoreCase(cleanRole)) {
+                    list.add(meta);
+                }
+            }
+        }
+        return list;
+    }
+
+    public Set<Long> getDistinctUserIdsByRole(String role) {
+        if (role == null) {
+            return Collections.emptySet();
+        }
+        String cleanRole = role.replace("ROLE_", "");
+        Set<Long> userIds = new HashSet<>();
+        for (WebSocketSessionMeta meta : activeSessions.values()) {
+            if (meta.getRole() != null && meta.getUserId() != null) {
+                String metaRole = meta.getRole().replace("ROLE_", "");
+                if (metaRole.equalsIgnoreCase(cleanRole)) {
+                    userIds.add(meta.getUserId());
+                }
+            }
+        }
+        return userIds;
     }
 
     @EventListener

@@ -37,4 +37,9 @@ uploads/
 .agents/
 SKILLS_GUIDE.md
 skills-lock.json
+AGENTS.md
+SESSION_HANDOFF.md
+CHAT_HISTORY.log
+*.log
+
 

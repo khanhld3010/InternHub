@@ -17,6 +17,7 @@
 | **v1.1** | 2026-09-30 | Senior Backend AI Pair-Programmer | `TM-30` | Siết chặt an toàn bảo mật (Privacy Policy) | Bổ sung chính sách phòng vệ đa tầng (Defense-in-Depth) chống lộ lọt Token và thông tin nhạy cảm trên DevTools (Network tab, Console, URL bar, Browser History) và hệ thống log kiểm toán máy chủ theo chỉ thị người dùng. |
 | **v1.2** | 2026-09-30 | Senior Backend AI Pair-Programmer | `TM-30` | Áp dụng Rule #12 (Zero-Access `.env`) | Bổ sung ràng buộc tuân thủ Rule #12: Tuyệt đối nghiêm cấm AI đọc, sửa, phân tích file `.env`. Biến `GOOGLE_CLIENT_ID` nạp qua Spring `@Value` với fallback an toàn; người dùng tự quản lý file `.env` cá nhân. |
 | **v1.3** | 2026-09-30 | Senior Backend AI Pair-Programmer | `TM-30` | Triển khai hoàn tất & Kiểm thử đạt 100% | Hoàn tất cài đặt các thành phần Google OAuth2 (`GoogleAuthController`, `GoogleOAuth2Service`, `GoogleTokenVerifierService`, `Account` Entity, `AuditLogAspect`) và chạy thành công 100% 11 Unit & Controller Tests. |
+| **v1.4** | 2026-10-03 | Senior Backend AI Pair-Programmer | `TM-30` | Nâng cấp UX Silent Refresh Token Cookie | Bổ sung cấp phát HttpOnly Refresh Token Cookie (`internhub_refresh_token`) tự động khi đăng nhập bằng Google OAuth2 thành công, tương thích 100% với cơ chế Silent Refresh của SPA Client, giúp người dùng không bị gián đoạn phiên làm việc sau 15 phút. |
 
 ---
 

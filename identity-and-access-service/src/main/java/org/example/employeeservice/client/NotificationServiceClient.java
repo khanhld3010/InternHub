@@ -54,4 +54,27 @@ public class NotificationServiceClient {
             log.warn("Non-blocking failure: Unable to dispatch security command for userId={}: {}", userId, e.getMessage());
         }
     }
+
+    @Async
+    public void dispatchRolePermissionUpdated(String role, Integer roleId) {
+        String url = notificationServiceUrl + "/api/notifications/internal/security-command";
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Token", internalServiceToken);
+
+            Map<String, Object> commandPayload = new HashMap<>();
+            commandPayload.put("action", "PERMISSION_UPDATED");
+            commandPayload.put("role", role);
+            commandPayload.put("roleId", roleId);
+            commandPayload.put("reason", "Phân quyền vai trò đã được quản trị viên cập nhật");
+            commandPayload.put("message", "Quyền hạn của vai trò " + role + " đã được cập nhật.");
+
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(commandPayload, headers);
+            restTemplate.exchange(url, HttpMethod.POST, requestEntity, Map.class);
+            log.info("Dispatched PERMISSION_UPDATED security command for role [{}] (id={}) to notification-service", role, roleId);
+        } catch (Exception e) {
+            log.warn("Non-blocking failure: Unable to dispatch PERMISSION_UPDATED for role {}: {}", role, e.getMessage());
+        }
+    }
 }

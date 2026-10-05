@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
+import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -25,6 +26,31 @@ public class StorageService {
 
     private static final long DEFAULT_UPLOAD_EXPIRE_SECONDS = 900; // 15 phút
     private static final int DEFAULT_VIEW_EXPIRE_MINUTES = 30;     // 30 phút
+
+    @PostConstruct
+    public void initBucket() {
+        String bucket = props.getBucketName();
+        try {
+            s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
+            log.info("S3 Bucket '{}' already exists and is accessible.", bucket);
+        } catch (NoSuchBucketException e) {
+            log.warn("S3 Bucket '{}' does not exist. Auto-creating...", bucket);
+            try {
+                s3Client.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+                log.info("S3 Bucket '{}' created successfully (Self-Healing).", bucket);
+            } catch (Exception createEx) {
+                log.error("Failed to auto-create S3 Bucket '{}': {}", bucket, createEx.getMessage());
+            }
+        } catch (Exception e) {
+            log.warn("Could not verify S3 Bucket '{}' during startup (will attempt create): {}", bucket, e.getMessage());
+            try {
+                s3Client.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+                log.info("S3 Bucket '{}' created successfully.", bucket);
+            } catch (Exception createEx) {
+                log.debug("Bucket '{}' may already exist or cannot be created: {}", bucket, createEx.getMessage());
+            }
+        }
+    }
 
     public PresignedUploadResponse createPresignedUpload(PresignedUploadRequest request) {
         String prefix = (request.getPrefix() != null && !request.getPrefix().isBlank()) 
