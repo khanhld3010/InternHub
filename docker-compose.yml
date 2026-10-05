@@ -216,6 +216,15 @@ services:
       - "9090:9090"   # HTTP S3 API Endpoint
       - "9191:9191"   # HTTPS S3 API Endpoint
     environment:
+      # S3Mock 5.x+ Configuration
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /data
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${STORAGE_BUCKET_NAME:-internhub-documents}
+      # Spring Boot Standard Properties
+      s3mock.root: /data
+      s3mock.retainFilesOnExit: "true"
+      s3mock.initialBuckets: ${STORAGE_BUCKET_NAME:-internhub-documents}
+      # Legacy Configuration (Pre-5.x)
       initialBuckets: ${STORAGE_BUCKET_NAME:-internhub-documents}
       retainFilesOnExit: "true"
       root: /data
