@@ -126,6 +126,11 @@ spring:
               uri: lb://intern-and-program-service
               predicates:
                 - Path=/api/evaluations, /api/evaluations/**
+            # Route cho phân hệ Chấm công TM-25
+            - id: attendance-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/attendances, /api/v1/attendances/**
 
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups

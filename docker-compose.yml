@@ -118,6 +118,7 @@ services:
     restart: unless-stopped
     environment:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:5173}
     ports:
       - "8082:8082"
     depends_on:
