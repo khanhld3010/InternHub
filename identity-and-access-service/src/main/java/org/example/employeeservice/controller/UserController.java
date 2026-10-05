@@ -78,26 +78,4 @@ public class UserController {
         UserResponse user = userService.toggleUserStatus(id);
         return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật trạng thái tài khoản thành công", user));
     }
-
-    @Operation(summary = "Lấy thông tin tài khoản cá nhân của chính mình (Self-service)")
-    @GetMapping("/me")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserResponse>> getMyProfile(org.springframework.security.core.Authentication authentication) {
-        String username = authentication.getName();
-        log.info("API: Lấy thông tin cá nhân của user: {}", username);
-        UserResponse response = userService.getCurrentUserProfile(username);
-        return ResponseEntity.ok(ApiResponse.success(200, "Lấy thông tin tài khoản thành công", response));
-    }
-
-    @Operation(summary = "Cập nhật thông tin hồ sơ cá nhân (Self-service, áp dụng chung cả 4 role)")
-    @PutMapping("/me")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserResponse>> updateOwnProfile(
-            @jakarta.validation.Valid @RequestBody org.example.employeeservice.dto.request.UpdateProfileRequest request,
-            org.springframework.security.core.Authentication authentication) {
-        String username = authentication.getName();
-        log.info("API: Cập nhật thông tin cá nhân cho user: {}", username);
-        UserResponse response = userService.updateOwnProfile(username, request);
-        return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật thông tin cá nhân thành công", response));
-    }
 }

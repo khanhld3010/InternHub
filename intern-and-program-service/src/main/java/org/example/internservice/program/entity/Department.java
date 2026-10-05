@@ -31,4 +31,14 @@ public class Department extends BaseEntity {
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private String status = "ACTIVE";
+
+    @Column(name = "planned_capacity_quota")
+    @Builder.Default
+    private Integer plannedCapacityQuota = 10;
+
+    @Column(name = "lead_mentor_id")
+    private Long leadMentorId;
+
+    @Column(name = "lead_mentor_name", length = 150)
+    private String leadMentorName;
 }

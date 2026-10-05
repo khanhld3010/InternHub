@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -54,6 +56,12 @@ public class JwtTokenProvider {
             return Long.valueOf(userIdObj.toString());
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getPermissionsFromToken(String token) {
+        List<String> permissions = getClaimsFromToken(token).get("permissions", List.class);
+        return permissions != null ? permissions : Collections.emptyList();
     }
 
     public Claims getClaimsFromToken(String token) {

@@ -33,4 +33,8 @@ public interface InternshipProgramService {
     ProgramDetailResponse toggleRecruitment(Long id);
 
     void deleteProgram(Long id);
+
+    org.example.internservice.program.dto.response.DepartmentCapacityOverviewResponse getCapacityOverview();
+
+    void updateDepartmentQuota(Long departmentId, Integer plannedCapacityQuota);
 }

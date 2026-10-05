@@ -37,6 +37,7 @@ public class RoleManagementServiceImpl implements RoleManagementService {
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final AccountRepository accountRepository;
+    private final org.example.employeeservice.client.NotificationServiceClient notificationServiceClient;
 
     @Override
     public List<RoleResponse> getAllRoles() {
@@ -131,12 +132,35 @@ public class RoleManagementServiceImpl implements RoleManagementService {
 
         if (request.getPermissionCodes() != null) {
             Set<Permission> newPermissions = resolvePermissions(request.getPermissionCodes());
+
+            // Chốt chặn bảo mật Backend: Ngăn chặn tự khóa tài khoản Admin (Root Admin Lockout Guard)
+            if ("ADMIN".equalsIgnoreCase(role.getName())) {
+                Set<String> newCodes = newPermissions.stream().map(Permission::getCode).collect(Collectors.toSet());
+                List<String> requiredAdminPerms = List.of("ROLE_MANAGE", "ROLE_VIEW", "USER_MANAGE", "USER_VIEW");
+                List<String> missingRootPerms = requiredAdminPerms.stream()
+                        .filter(code -> !newCodes.contains(code))
+                        .collect(Collectors.toList());
+
+                if (!missingRootPerms.isEmpty()) {
+                    throw new BadRequestException("Không thể gỡ bỏ các đặc quyền quản trị cốt lõi của vai trò ADMIN: " 
+                            + String.join(", ", missingRootPerms));
+                }
+            }
+
             role.getPermissions().clear();
             role.getPermissions().addAll(newPermissions);
         }
 
         Role updated = roleRepository.save(role);
         log.info("Đã cập nhật thành công vai trò ID={}", updated.getId());
+
+        // Phát tín hiệu Real-Time RBAC Sync tới notification-service qua Redis Pub/Sub
+        try {
+            notificationServiceClient.dispatchRolePermissionUpdated(updated.getName(), updated.getId());
+        } catch (Exception e) {
+            log.warn("Không thể phát sự kiện PERMISSION_UPDATED cho role {}: {}", updated.getName(), e.getMessage());
+        }
+
         return mapToDetailResponse(updated);
     }
 

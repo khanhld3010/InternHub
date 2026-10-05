@@ -92,7 +92,7 @@ public class InternContractController {
 
     @Operation(summary = "Lấy danh sách TOÀN BỘ hợp đồng trong công ty dành cho HR (Contract Hub)")
     @GetMapping("/contracts/all")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CONTRACT_VIEW')")
     public ResponseEntity<ApiResponse<List<ContractResponse>>> getAllContracts() {
         log.info("API HR Lấy danh sách toàn bộ hợp đồng công ty");
         List<ContractResponse> contracts = internContractService.getAllContracts();

@@ -182,11 +182,17 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.builder().code("ROLE_MANAGE").name("Quản lý vai trò & quyền").module("ROLE").description("Tạo, sửa, xóa vai trò và gán quyền cho vai trò").build(),
 
                 // INTERN
-                Permission.builder().code("INTERN_VIEW").name("Xem hồ sơ thực tập sinh").module("INTERN").description("Xem danh sách, tìm kiếm và chi tiết hồ sơ thực tập sinh").build(),
+                Permission.builder().code("INTERN_VIEW_ALL").name("Xem toàn bộ hồ sơ TTS").module("INTERN").description("Xem danh sách toàn bộ hồ sơ thực tập sinh toàn công ty").build(),
+                Permission.builder().code("INTERN_VIEW_OWN").name("Xem TTS được phân công").module("INTERN").description("Xem và theo dõi nhóm thực tập sinh do mình phụ trách").build(),
+                Permission.builder().code("INTERN_VIEW_OWN_PROFILE").name("Xem hồ sơ thực tập cá nhân").module("INTERN").description("Thực tập sinh xem tiến độ và bảng điểm cá nhân").build(),
                 Permission.builder().code("INTERN_CREATE").name("Tạo hồ sơ thực tập sinh").module("INTERN").description("Thêm mới hồ sơ thực tập sinh vào hệ thống").build(),
                 Permission.builder().code("INTERN_EDIT").name("Chỉnh sửa hồ sơ thực tập sinh").module("INTERN").description("Cập nhật thông tin thực tập sinh").build(),
-                Permission.builder().code("INTERN_APPROVE").name("Phê duyệt/Từ chối hồ sơ").module("INTERN").description("Phê duyệt hoặc từ chối hồ sơ ứng tuyển thực tập").build(),
+                Permission.builder().code("INTERN_APPROVE").name("Phê duyệt đánh giá cuối kỳ").module("INTERN").description("Ký duyệt đánh giá kết quả thực tập và hoàn thành kỳ").build(),
                 Permission.builder().code("INTERN_ASSIGN_MENTOR").name("Phân công mentor").module("INTERN").description("Gán người hướng dẫn phụ trách cho thực tập sinh").build(),
+
+                // MENTOR
+                Permission.builder().code("MENTOR_VIEW").name("Xem danh sách mentor").module("MENTOR").description("Xem danh sách đội ngũ mentor và phân bổ phòng ban").build(),
+                Permission.builder().code("MENTOR_CREATE").name("Thêm mới mentor").module("MENTOR").description("Thêm mới thông tin người hướng dẫn vào hệ thống").build(),
 
                 // PROGRAM
                 Permission.builder().code("PROGRAM_VIEW").name("Xem chương trình thực tập").module("PROGRAM").description("Xem danh sách chương trình đào tạo đang mở tuyển").build(),
@@ -197,8 +203,13 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.builder().code("CONTRACT_MANAGE").name("Quản lý hợp đồng thực tập").module("CONTRACT").description("Tải lên hợp đồng, cập nhật đãi ngộ và xác nhận ký").build(),
 
                 // DOCUMENT
-                Permission.builder().code("DOCUMENT_VIEW").name("Xem tài liệu & CV").module("DOCUMENT").description("Xem CV và các giấy tờ đính kèm của thực tập sinh").build(),
-                Permission.builder().code("DOCUMENT_REVIEW").name("Phê duyệt tài liệu").module("DOCUMENT").description("Duyệt hoặc từ chối CV và tài liệu nộp").build(),
+                Permission.builder().code("DOCUMENT_VIEW").name("Xem tài liệu & CV chung").module("DOCUMENT").description("Xem CV và các giấy tờ đính kèm của thực tập sinh").build(),
+                Permission.builder().code("DOCUMENT_REVIEW").name("Phê duyệt tài liệu & CV").module("DOCUMENT").description("Duyệt hoặc từ chối CV và tài liệu nộp").build(),
+                Permission.builder().code("MENTOR_VIEW_OWN_DOCS").name("Xem tài liệu hướng dẫn mentor").module("DOCUMENT").description("Tài liệu bàn giao và quy trình kèm cặp thực tập").build(),
+                Permission.builder().code("INTERN_VIEW_OWN_DOCUMENTS").name("Quản lý tài liệu TTS cá nhân").module("DOCUMENT").description("Xem và nộp tài liệu/báo cáo thực tập cá nhân").build(),
+
+                // PROFILE
+                Permission.builder().code("PROFILE_VIEW_OWN").name("Xem hồ sơ tài khoản cá nhân").module("PROFILE").description("Truy cập trang hồ sơ cá nhân và đổi mật khẩu").build(),
 
                 // SYSTEM
                 Permission.builder().code("SYSTEM_BACKUP").name("Quản trị sao lưu dữ liệu").module("SYSTEM").description("Kích hoạt sao lưu toàn diện và khôi phục dữ liệu").build(),
@@ -230,30 +241,33 @@ public class DataInitializer implements CommandLineRunner {
             log.info("-> Đã gán toàn bộ {} quyền cho vai trò Admin", allPermissions.size());
         }
 
-        // 2. HR: Quyền về intern, program, contract, document và user view
-        if (hrRole.getPermissions() == null || hrRole.getPermissions().isEmpty()) {
+        // 2. HR: Quyền về intern_all, mentor, program, contract, document, user view, profile
+        if (hrRole.getPermissions() == null || hrRole.getPermissions().isEmpty() || hrRole.getPermissions().size() < 10) {
             Set<Permission> hrPerms = allPermissions.stream()
-                    .filter(p -> List.of("INTERN", "PROGRAM", "CONTRACT", "DOCUMENT").contains(p.getModule()) || "USER_VIEW".equals(p.getCode()))
+                    .filter(p -> List.of("INTERN_VIEW_ALL", "INTERN_CREATE", "INTERN_EDIT", "INTERN_APPROVE", "INTERN_ASSIGN_MENTOR",
+                                         "MENTOR_VIEW", "MENTOR_CREATE", "PROGRAM_VIEW", "PROGRAM_MANAGE",
+                                         "CONTRACT_VIEW", "CONTRACT_MANAGE", "DOCUMENT_VIEW", "DOCUMENT_REVIEW",
+                                         "USER_VIEW", "PROFILE_VIEW_OWN").contains(p.getCode()))
                     .collect(Collectors.toSet());
             hrRole.setPermissions(hrPerms);
             roleRepository.save(hrRole);
             log.info("-> Đã gán {} quyền cho vai trò HR", hrPerms.size());
         }
 
-        // 3. Mentor: Quyền xem intern, document, program
-        if (mentorRole.getPermissions() == null || mentorRole.getPermissions().isEmpty()) {
+        // 3. Mentor: Quyền xem intern_own, mentor_docs, program_view, profile
+        if (mentorRole.getPermissions() == null || mentorRole.getPermissions().isEmpty() || mentorRole.getPermissions().size() < 4) {
             Set<Permission> mentorPerms = allPermissions.stream()
-                    .filter(p -> List.of("INTERN_VIEW", "DOCUMENT_VIEW", "PROGRAM_VIEW").contains(p.getCode()))
+                    .filter(p -> List.of("INTERN_VIEW_OWN", "MENTOR_VIEW_OWN_DOCS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN").contains(p.getCode()))
                     .collect(Collectors.toSet());
             mentorRole.setPermissions(mentorPerms);
             roleRepository.save(mentorRole);
             log.info("-> Đã gán {} quyền cho vai trò Mentor", mentorPerms.size());
         }
 
-        // 4. Intern: Quyền xem intern, document, contract, program
-        if (internRole.getPermissions() == null || internRole.getPermissions().isEmpty()) {
+        // 4. Intern: Quyền xem intern_own_profile, intern_own_docs, program_view, profile
+        if (internRole.getPermissions() == null || internRole.getPermissions().isEmpty() || internRole.getPermissions().size() < 4) {
             Set<Permission> internPerms = allPermissions.stream()
-                    .filter(p -> List.of("INTERN_VIEW", "DOCUMENT_VIEW", "CONTRACT_VIEW", "PROGRAM_VIEW").contains(p.getCode()))
+                    .filter(p -> List.of("INTERN_VIEW_OWN_PROFILE", "INTERN_VIEW_OWN_DOCUMENTS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN").contains(p.getCode()))
                     .collect(Collectors.toSet());
             internRole.setPermissions(internPerms);
             roleRepository.save(internRole);

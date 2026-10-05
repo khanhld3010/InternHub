@@ -28,9 +28,11 @@ public class PermissionCatalogServiceImpl implements PermissionCatalogService {
             "USER", "Quản Lý Người Dùng & Tài Khoản",
             "ROLE", "Quản Lý Vai Trò & Phân Quyền",
             "INTERN", "Quản Lý Hồ Sơ Thực Tập Sinh",
+            "MENTOR", "Quản Lý Đội Ngũ Người Hướng Dẫn",
             "PROGRAM", "Quản Lý Chương Trình Thực Tập",
             "CONTRACT", "Quản Lý Hợp Đồng & Đãi Ngộ",
             "DOCUMENT", "Quản Lý Tài Liệu & Hồ Sơ Đính Kèm",
+            "PROFILE", "Hồ Sơ Cá Nhân & Tài Khoản",
             "SYSTEM", "Quản Trị Hệ Thống, Sao Lưu & Nhật Ký",
             "REPORT", "Báo Cáo & Thống Kê"
     );
