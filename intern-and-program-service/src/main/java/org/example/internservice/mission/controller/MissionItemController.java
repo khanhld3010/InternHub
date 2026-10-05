@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MissionItemController {
 
     private final MissionItemService missionItemService;
+    private final org.example.internservice.mission.service.InternMissionService internMissionService;
 
     @Operation(summary = "Tạo mục công việc chi tiết trong Bảng nhiệm vụ (Chọn 1 hoặc nhiều TTS)")
     @PostMapping("/api/mission-boards/{boardId}/items")
@@ -61,14 +62,29 @@ public class MissionItemController {
 
     @Operation(summary = "Cập nhật trạng thái công việc (TODO - Chưa làm, IN_PROGRESS - Đang làm, COMPLETED - Hoàn thiện)")
     @PatchMapping("/api/mission-items/{itemId}/status")
-    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN', 'INTERN')")
     public ResponseEntity<ApiResponse<MissionItemResponse>> updateItemStatus(
             @PathVariable Long itemId,
             @Valid @RequestBody UpdateItemStatusRequest request,
             Authentication authentication
     ) {
         CustomUserDetails userDetails = extractUserDetails(authentication);
-        MissionItemResponse response = missionItemService.updateItemStatus(itemId, request, userDetails);
+        boolean isInternOnly = userDetails != null && userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_INTERN"))
+                && userDetails.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_MENTOR") || a.getAuthority().equals("ROLE_HR") || a.getAuthority().equals("ROLE_ADMIN"));
+
+        MissionItemResponse response;
+        if (isInternOnly) {
+            response = internMissionService.updateKanbanStatus(itemId,
+                    org.example.internservice.mission.dto.request.UpdateKanbanStatusRequest.builder()
+                            .status(request.getStatus())
+                            .submissionUrl(request.getSubmissionUrl())
+                            .completionNote(request.getCompletionNote())
+                            .build(),
+                    userDetails);
+        } else {
+            response = missionItemService.updateItemStatus(itemId, request, userDetails);
+        }
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Cập nhật trạng thái công việc thành công", response));
     }
 
