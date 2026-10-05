@@ -161,6 +161,8 @@ public class ProgramController {
         Integer quota = payload.get("plannedCapacityQuota");
         programService.updateDepartmentQuota(id, quota);
         return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật chỉ tiêu tiếp nhận thành công", null));
+    }
+
     @Operation(summary = "Thêm Mentor vào Chương trình thực tập (HR/Admin)")
     @PostMapping("/programs/{id}/mentors/{mentorId}")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
