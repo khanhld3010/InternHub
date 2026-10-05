@@ -3,6 +3,7 @@
 > [!CAUTION]
 > ### CHỈ THỊ BẮT BUỘC CHO MỌI AI AGENT TRONG MỌI PHIÊN LÀM VIỆC (MANDATORY DIRECTIVE)
 > 
+> - **QUÉT DỰ ÁN & TÁI SỬ DỤNG TỐI ĐA (PROJECT SCAN & REUSE FIRST)**: **ĐẢM BẢO SẼ QUÉT DỰ ÁN, TRÁNH VIỆC TẠO THÊM CODE MỚI KHÔNG CẦN THIẾT, SỬ DỤNG TỐI ĐA NHỮNG GÌ ĐÃ CÓ ĐỂ PHÁT TRIỂN**. Trước khi tạo mới bất kỳ Entity, Table, DTO, Service, Component hay hàm helper nào, bắt buộc phải quét toàn diện mã nguồn hiện có để tái sử dụng, kế thừa hoặc mở rộng.
 > - **BẮT BUỘC ĐỌC QUY TẮC TRƯỚC KHI THAO TÁC (MANDATORY CONTEXT PRE-READING)**: Bất kỳ khi nào thực hiện cập nhật hoặc viết code cho Backend, AI Agent **BẮT BUỘC PHẢI ĐỌC VÀ TUÂN THỦ TOÀN BỘ QUY TẮC** trong thư mục [`.agents/`](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/). Ngược lại, nếu làm việc với Frontend (`InternHub-Frontend/`), cũng **BẮT BUỘC PHẢI ĐỌC KỸ QUY TẮC CỦA FRONTEND** ([`InternHub-Frontend/.agents/`](file:///d:/Certificate_CodeGym/Module%206/InternHub-Frontend/.agents/)) trước khi code. Tuyệt đối không tự ý suy diễn hoặc code tắt khi chưa nạp ngữ cảnh.
 
 ---
@@ -15,7 +16,7 @@ Nhiệm vụ của bạn là hỗ trợ người dùng xây dựng, tối ưu h�
 
 ---
 
-## 2. Toàn Bộ 30 Nguyên Tắc Bất Biến (30 Non-Negotiable Rules)
+## 2. Toàn Bộ 31 Nguyên Tắc Bất Biến (31 Non-Negotiable Rules)
 
 ### 🏛️ Trụ Cột I: Giao Thức Phối Hợp Người - AI
 1. **KHÔNG TỰ Ý ĐƯA RA QUYẾT ĐỊNH**: Mọi thay đổi về cấu trúc package, thêm thư viện `build.gradle`, logic nghiệp vụ hay can thiệp mã nguồn đều phải thông qua sự phê duyệt của người dùng.
@@ -63,6 +64,11 @@ Nhiệm vụ của bạn là hỗ trợ người dùng xây dựng, tối ưu h�
       + **Bắt buộc cập nhật tài liệu Spec tương ứng** để phản ánh đúng hiện trạng hệ thống.
       + **Bắt buộc ghi nhận một dòng giải trình** vào bảng **Nhật Ký Thay Đổi & Giải Trình Kỹ Thuật (Revision History)** ở đầu file Spec, chỉ rõ: *Phiên bản*, *Ngày*, *Người/Agent thực hiện*, *Mã task Jira `TM`*, *Nội dung thay đổi*, và *Lý do kỹ thuật/nghiệp vụ (Rationale)* vì sao cần thay đổi.
     - **Quy tắc Đồng bộ nguyên tử (Atomic Spec-Code Sync)**: Tuyệt đối không hoàn tất hoặc phê duyệt bất kỳ thay đổi logic nào nếu mã nguồn và tài liệu Spec chưa được đồng bộ cùng nhau trong cùng một task. Ngoại lệ: chỉ miễn trừ cập nhật Spec đối với tác vụ vi mô L1 (sửa lỗi chính tả log/comment, format code dưới 10 dòng).
+31. **QUÉT DỰ ÁN & TỐI ĐA TÁI SỬ DỤNG MÃ NGUỒN, SCHEMA CSDL (REUSE FIRST, ZERO UNNECESSARY REDUNDANCY)**:
+    - **Chỉ thị cốt lõi**: **"ĐẢM BẢO SẼ QUÉT DỰ ÁN, TRÁNH VIỆC TẠO THÊM CODE MỚI KHÔNG CẦN THIẾT, SỬ DỤNG TỐI ĐA NHỮNG GÌ ĐÃ CÓ ĐỂ PHÁT TRIỂN"**.
+    - **Quét toàn diện trước khi code**: Trước khi thiết kế hoặc tạo mới bất kỳ Entity, Bảng CSDL, DTO, Repository, Service hay Utility method nào, AI Agent **BẮT BUỘC PHẢI QUÉT VÀ KHẢO SÁT TOÀN DIỆN MÃ NGUỒN VÀ DATABASE SCHEMA ĐANG TỒN TẠI** trong toàn bộ 6 microservices và các tài liệu đặc tả (`specs`) đã có.
+    - **Tuyệt đối cấm tạo mới tùy tiện, trùng lặp hoặc chồng chéo**: Nếu bài toán nghiệp vụ đã có Entity/Bảng CSDL tương ứng (ví dụ: `mentor_profiles`, `intern_mentor_assignments`, `departments`, `intern_profiles`), Enum tương đương hoặc hàm helper có sẵn, bắt buộc phải ưu tiên tái sử dụng, liên kết khóa ngoại hoặc kế thừa/mở rộng thay vì tự ý sinh ra các thực thể mới song song gây phân mảnh dữ liệu và phân rã kiến trúc.
+    - **Nghĩa vụ giải trình trong Kế hoạch**: Trong mọi Kế hoạch (`Plan`), Agent **bắt buộc phải có phần "Khảo Sát Hiện Trạng & Đánh Giá Tái Sử Dụng"** chứng minh đã rà soát kỹ lưỡng và giải trình cụ thể lý do vì sao một thành phần mới bắt buộc phải tạo thay vì tái sử dụng.
 
 ---
 

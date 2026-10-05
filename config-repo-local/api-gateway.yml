@@ -13,7 +13,7 @@ spring:
     gateway:
       globalcors:
         cors-configurations:
-          '[/**]':
+          "[/**]":
             allowedOrigins:
               - "http://localhost:5173"
               - "http://localhost:3000"
@@ -131,6 +131,11 @@ spring:
               uri: lb://intern-and-program-service
               predicates:
                 - Path=/api/v1/attendances, /api/v1/attendances/**
+
+            - id: mission-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/mission-boards, /api/mission-boards/**, /api/mission-items, /api/mission-items/**, /api/mentor, /api/mentor/**, /api/intern/mission-items, /api/intern/mission-items/**
 
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
