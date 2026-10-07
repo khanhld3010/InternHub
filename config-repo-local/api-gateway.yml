@@ -132,6 +132,12 @@ spring:
               predicates:
                 - Path=/api/v1/attendances, /api/v1/attendances/**
 
+            # Route cho phân hệ Nghỉ phép TM-28
+            - id: leave-request-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/leave-requests, /api/v1/leave-requests/**
+
             - id: mission-service
               uri: lb://intern-and-program-service
               predicates:
