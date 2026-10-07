@@ -83,6 +83,9 @@ public class InternWeeklyReportServiceImpl implements InternWeeklyReportService 
                 if (assessment != null) {
                     status = "REVIEWED";
                     statusDisplayName = "Đã được đánh giá";
+                } else if (report.getStatus() == WeeklyReportStatus.REVISION_REQUESTED) {
+                    status = "REVISION_REQUESTED";
+                    statusDisplayName = "Yêu cầu chỉnh sửa lại";
                 } else if (report.getStatus() == WeeklyReportStatus.SUBMITTED) {
                     status = "SUBMITTED";
                     statusDisplayName = "Đã nộp, chờ đánh giá";
@@ -324,7 +327,8 @@ public class InternWeeklyReportServiceImpl implements InternWeeklyReportService 
                 .findByInternCodeAndWeekNumber(report.getInternCode(), report.getWeekNumber());
 
         WeeklyReportDetailResponse.MentorAssessmentSummary mentorSummary = null;
-        String displayStatus = report.getStatus() == WeeklyReportStatus.DRAFT ? "Bản nháp" : "Đã nộp, chờ đánh giá";
+        String displayStatus = report.getStatus() == WeeklyReportStatus.DRAFT ? "Bản nháp" :
+                (report.getStatus() == WeeklyReportStatus.REVISION_REQUESTED ? "Yêu cầu chỉnh sửa lại" : "Đã nộp, chờ đánh giá");
 
         if (assessmentOpt.isPresent() && assessmentOpt.get().getStatus() == InternWeeklyAssessment.AssessmentStatus.PUBLISHED) {
             InternWeeklyAssessment a = assessmentOpt.get();
@@ -371,6 +375,7 @@ public class InternWeeklyReportServiceImpl implements InternWeeklyReportService 
                 .learningsAndKnowledge(report.getLearningsAndKnowledge())
                 .nextWeekPlan(report.getNextWeekPlan())
                 .reportAttachmentUrl(report.getReportAttachmentUrl())
+                .revisionNote(report.getRevisionNote())
                 .submittedAt(report.getSubmittedAt())
                 .createdAt(report.getCreatedAt())
                 .updatedAt(report.getUpdatedAt())

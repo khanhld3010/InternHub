@@ -16,21 +16,30 @@ public class InternProfileSpecification {
     }
 
     public static Specification<InternProfile> getSpecification(InternFilterRequest request) {
-        return getSpecification(request, null);
+        return getSpecification(request, (List<Long>) null);
     }
 
     public static Specification<InternProfile> getSpecification(InternFilterRequest request, Long enforceMentorId) {
+        return getSpecification(request, enforceMentorId != null ? List.of(enforceMentorId) : null);
+    }
+
+    public static Specification<InternProfile> getSpecification(InternFilterRequest request, List<Long> enforceMentorIds) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // Ràng buộc bảo mật tối thượng: Nếu có enforceMentorId thì bắt buộc phải khớp mentorId
-            if (enforceMentorId != null) {
-                predicates.add(criteriaBuilder.equal(root.get("mentorId"), enforceMentorId));
+            // Ràng buộc bảo mật tối thượng: Nếu có danh sách enforceMentorIds thì bắt buộc phải khớp một trong các mentorId
+            if (enforceMentorIds != null && !enforceMentorIds.isEmpty()) {
+                if (enforceMentorIds.size() == 1) {
+                    predicates.add(criteriaBuilder.equal(root.get("mentorId"), enforceMentorIds.get(0)));
+                } else {
+                    predicates.add(root.get("mentorId").in(enforceMentorIds));
+                }
             }
 
             if (request == null) {
                 return predicates.isEmpty() ? criteriaBuilder.conjunction() : criteriaBuilder.and(predicates.toArray(new Predicate[0]));
             }
+
 
             // 1. Keyword search (fullName, email, phone, internCode) with OR
             if (StringUtils.hasText(request.getKeyword())) {
