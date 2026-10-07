@@ -23,7 +23,8 @@ import java.time.LocalDateTime;
         @Index(name = "idx_intern_user_program", columnList = "user_id, program_id"),
         @Index(name = "idx_intern_email_program", columnList = "email, program_id"),
         @Index(name = "idx_intern_code", columnList = "intern_code"),
-        @Index(name = "idx_intern_status", columnList = "status")
+        @Index(name = "idx_intern_status", columnList = "status"),
+        @Index(name = "idx_intern_group_program", columnList = "group_id, program_id")
 })
 @Getter
 @Setter
@@ -94,6 +95,10 @@ public class InternProfile extends BaseEntity {
     @jakarta.persistence.ManyToOne(fetch = jakarta.persistence.FetchType.LAZY)
     @jakarta.persistence.JoinColumn(name = "program_id")
     private org.example.internservice.program.entity.InternshipProgram program;
+
+    @jakarta.persistence.ManyToOne(fetch = jakarta.persistence.FetchType.LAZY)
+    @jakarta.persistence.JoinColumn(name = "group_id")
+    private org.example.internservice.program.entity.InternGroup group;
 
     @Column(name = "mentor_id")
     private Long mentorId;

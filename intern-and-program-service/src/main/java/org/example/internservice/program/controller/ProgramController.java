@@ -187,6 +187,8 @@ public class ProgramController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách Mentor của chương trình thành công", response));
     }
 
+    private final org.example.internservice.intern.service.InternProfileService internProfileService;
+
     @Operation(summary = "Xóa Mentor khỏi Chương trình thực tập (HR/Admin)")
     @DeleteMapping("/programs/{id}/mentors/{mentorId}")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
@@ -196,5 +198,16 @@ public class ProgramController {
     ) {
         missionBoardService.removeMentorFromProgram(id, mentorId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ Mentor khỏi chương trình thành công", null));
+    }
+
+    @Operation(summary = "Gỡ Thực tập sinh khỏi Chương trình thực tập (HR/Admin, Áp dụng 3-Layer Defense)")
+    @DeleteMapping("/programs/{id}/members/{internId}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> removeInternFromProgram(
+            @PathVariable Long id,
+            @PathVariable Long internId
+    ) {
+        internProfileService.removeInternFromProgram(id, internId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ thực tập sinh khỏi chương trình thành công", null));
     }
 }

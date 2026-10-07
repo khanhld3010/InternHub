@@ -54,4 +54,10 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
     java.util.List<InternProfile> findByProgramIdAndStatusAndMentorIdIsNotNull(Long programId, InternStatus status);
 
     java.util.List<InternProfile> findByMentorId(Long mentorId);
+
+    java.util.List<InternProfile> findByGroupId(Long groupId);
+
+    long countByGroupId(Long groupId);
+
+    java.util.List<InternProfile> findByProgramIdAndGroupIsNull(Long programId);
 }
