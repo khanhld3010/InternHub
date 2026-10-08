@@ -138,6 +138,12 @@ spring:
               predicates:
                 - Path=/api/v1/leave-requests, /api/v1/leave-requests/**
 
+            # Route cho phân hệ Hợp đồng điện tử động
+            - id: dynamic-contract-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/contracts, /api/v1/contracts/**, /api/v1/contract-templates, /api/v1/contract-templates/**
+
             - id: mission-service
               uri: lb://intern-and-program-service
               predicates:

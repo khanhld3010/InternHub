@@ -39,6 +39,10 @@ dependencies {
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.zxing:javase:3.5.3'
+    // PDF Rendering Engine (HTML to PDF) - OpenPDF & Flying Saucer & Jsoup
+    implementation 'com.github.librepdf:openpdf:2.0.3'
+    implementation 'org.xhtmlrenderer:flying-saucer-pdf-openpdf:9.1.22'
+    implementation 'org.jsoup:jsoup:1.18.3'
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'com.mysql:mysql-connector-j'
