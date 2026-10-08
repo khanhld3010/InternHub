@@ -74,8 +74,11 @@ public class InternWeeklyReport extends BaseEntity {
     @Column(name = "report_attachment_url", length = 500)
     private String reportAttachmentUrl;
 
+    @Column(name = "revision_note", columnDefinition = "TEXT")
+    private String revisionNote;
+
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 30)
     @Builder.Default
     private WeeklyReportStatus status = WeeklyReportStatus.DRAFT;
 
