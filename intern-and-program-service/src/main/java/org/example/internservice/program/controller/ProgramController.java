@@ -14,6 +14,7 @@ import org.example.internservice.program.dto.request.UpdateProgramRequest;
 import org.example.internservice.program.dto.response.DepartmentResponse;
 import org.example.internservice.program.dto.response.ProgramDetailResponse;
 import org.example.internservice.program.dto.response.ProgramSummaryResponse;
+import org.example.internservice.intern.service.InternProfileService;
 import org.example.internservice.program.service.InternshipProgramService;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -44,6 +45,7 @@ public class ProgramController {
 
     private final InternshipProgramService programService;
     private final org.example.internservice.mission.service.MissionBoardService missionBoardService;
+    private final InternProfileService internProfileService;
 
     @Operation(summary = "Lấy danh mục phòng ban (Dành cho Dropdown)")
     @GetMapping("/departments")
@@ -219,5 +221,16 @@ public class ProgramController {
     ) {
         List<org.example.internservice.intern.dto.response.InternResponse> response = programService.getProgramInterns(id);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách thực tập sinh của chương trình thành công", response));
+    }
+
+    @Operation(summary = "Gỡ Thực tập sinh khỏi Chương trình thực tập (HR/Admin, Áp dụng 3-Layer Defense)")
+    @DeleteMapping("/programs/{id}/members/{internId}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> removeInternFromProgram(
+            @PathVariable Long id,
+            @PathVariable Long internId
+    ) {
+        internProfileService.removeInternFromProgram(id, internId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ thực tập sinh khỏi chương trình thành công", null));
     }
 }

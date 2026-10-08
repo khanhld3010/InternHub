@@ -120,7 +120,7 @@ spring:
             - id: mentor-service
               uri: lb://intern-and-program-service
               predicates:
-                - Path=/api/mentors, /api/mentors/**
+                - Path=/api/mentor, /api/mentor/**, /api/mentors, /api/mentors/**
 
             - id: evaluation-service
               uri: lb://intern-and-program-service
@@ -138,10 +138,16 @@ spring:
               predicates:
                 - Path=/api/v1/leave-requests, /api/v1/leave-requests/**
 
+            # Route cho phân hệ Hợp đồng điện tử động
+            - id: dynamic-contract-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/contracts, /api/v1/contracts/**, /api/v1/contract-templates, /api/v1/contract-templates/**
+
             - id: mission-service
               uri: lb://intern-and-program-service
               predicates:
-                - Path=/api/mission-boards, /api/mission-boards/**, /api/mission-items, /api/mission-items/**, /api/mentor, /api/mentor/**, /api/intern/mission-items, /api/intern/mission-items/**
+                - Path=/api/mission-boards, /api/mission-boards/**, /api/mission-items, /api/mission-items/**, /api/intern/mission-items, /api/intern/mission-items/**
 
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
@@ -172,7 +178,15 @@ spring:
               predicates:
                 - Path=/api/notifications, /api/notifications/**
 
-            # 5. Identity fallback cho /api/employees/**
+            # 5. File Service (Actuator Health Probe – bảo vệ bởi file-service SecurityFilterChain)
+            - id: file-actuator
+              uri: lb://file-service
+              predicates:
+                - Path=/api/files/actuator/**
+              filters:
+                - RewritePath=/api/files/actuator(?<segment>/?.*), /actuator${segment}
+
+            # 6. Identity fallback cho /api/employees/**
             - id: identity-employees
               uri: lb://identity-and-access-service
               predicates:

@@ -58,6 +58,8 @@ public class InternProfileServiceImpl implements InternProfileService {
     private final org.example.internservice.program.repository.ProgramMentorRepository programMentorRepository;
     private final org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
     private final org.example.internservice.intern.repository.MentorProfileRepository mentorProfileRepository;
+    private final org.example.internservice.intern.repository.InternWeeklyAssessmentRepository weeklyAssessmentRepository;
+    private final org.example.internservice.intern.repository.InternEvaluationRepository evaluationRepository;
     private final org.example.internservice.intern.client.IntegrationEmailClient integrationEmailClient;
     private final org.example.internservice.intern.service.OnboardingTokenService onboardingTokenService;
     private final ApplicationEventPublisher eventPublisher;
@@ -401,7 +403,49 @@ public class InternProfileServiceImpl implements InternProfileService {
     }
 
     private InternResponse mapToResponse(InternProfile profile) {
-        return InternResponse.fromEntity(profile);
+        return InternResponse.builder()
+                .id(profile.getId())
+                .userId(profile.getUserId())
+                .internCode(profile.getInternCode())
+                .fullName(profile.getFullName())
+                .email(profile.getEmail())
+                .phone(profile.getPhone())
+                .dateOfBirth(profile.getDateOfBirth())
+                .gender(profile.getGender())
+                .address(profile.getAddress())
+                .university(profile.getUniversity())
+                .major(profile.getMajor())
+                .academicYear(profile.getAcademicYear())
+                .appliedPosition(profile.getAppliedPosition())
+                .startDate(profile.getStartDate() != null ? profile.getStartDate() : (profile.getProgram() != null ? profile.getProgram().getStartDate() : null))
+                .endDate(profile.getEndDate() != null ? profile.getEndDate() : (profile.getProgram() != null ? profile.getProgram().getEndDate() : null))
+                .status(profile.getStatus())
+                .notes(profile.getNotes())
+                .rejectionReason(profile.getRejectionReason())
+                .reviewedBy(profile.getReviewedBy())
+                .reviewedAt(profile.getReviewedAt())
+                .emailStatus(profile.getEmailStatus())
+                .emailSentAt(profile.getEmailSentAt())
+                .emailRetryCount(profile.getEmailRetryCount())
+                .lastEmailSentAt(profile.getLastEmailSentAt())
+                .programId(profile.getProgram() != null ? profile.getProgram().getId() : null)
+                .programCode(profile.getProgram() != null ? profile.getProgram().getProgramCode() : null)
+                .programName(profile.getProgram() != null ? profile.getProgram().getName() : null)
+                .candidateType(profile.getCandidateType())
+                .desiredDepartmentId(profile.getDesiredDepartmentId())
+                .desiredDepartmentName(profile.getDesiredDepartmentName())
+                .mentorId(profile.getMentorId())
+                .mentorName(profile.getMentorName())
+                .mentorEmail(profile.getMentorEmail())
+                .needsReassignment(profile.getNeedsReassignment())
+                .reassignmentReason(profile.getReassignmentReason())
+                .needsMentorReassignment(profile.getNeedsMentorReassignment())
+                .mentorReassignmentReason(profile.getMentorReassignmentReason())
+                .groupId(profile.getGroup() != null ? profile.getGroup().getId() : null)
+                .groupName(profile.getGroup() != null ? profile.getGroup().getName() : null)
+                .createdAt(profile.getCreatedAt())
+                .updatedAt(profile.getUpdatedAt())
+                .build();
     }
 
     @Override
@@ -926,6 +970,43 @@ public class InternProfileServiceImpl implements InternProfileService {
         return internProfileRepository.findByMentorId(mentorId).stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void removeInternFromProgram(Long programId, Long internId) {
+        log.info("Yêu cầu gỡ thực tập sinh ID: {} khỏi chương trình ID: {}", internId, programId);
+
+        InternProfile intern = internProfileRepository.findById(internId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thực tập sinh với ID: " + internId));
+
+        if (intern.getProgram() == null || !intern.getProgram().getId().equals(programId)) {
+            throw new BadRequestException("Thực tập sinh ID " + internId + " không thuộc chương trình ID " + programId);
+        }
+
+        // 3-Layer Defense Guards:
+        // 1. Kiểm tra Mentor
+        if (intern.getMentorId() != null) {
+            throw new BadRequestException("Thực tập sinh đã được gán Mentor hướng dẫn. Vui lòng dùng chức năng 'Chuyển chương trình' hoặc 'Chấm dứt thực tập' thay vì gỡ trực tiếp.");
+        }
+
+        // 2. Kiểm tra Đánh giá quá trình
+        boolean hasWeekly = !weeklyAssessmentRepository.findByInternCodeOrderByWeekNumberDesc(intern.getInternCode()).isEmpty();
+        boolean hasEvaluation = !evaluationRepository.findByInternCode(intern.getInternCode()).isEmpty();
+        if (hasWeekly || hasEvaluation) {
+            throw new BadRequestException("Thực tập sinh đã có dữ liệu đánh giá quá trình. Vui lòng dùng chức năng 'Chuyển chương trình' hoặc 'Chấm dứt thực tập' thay vì gỡ trực tiếp.");
+        }
+
+        // 3. Kiểm tra Trạng thái hợp lệ (chỉ cho phép khi PENDING hoặc APPROVED)
+        if (intern.getStatus() != InternStatus.PENDING && intern.getStatus() != InternStatus.APPROVED) {
+            throw new BadRequestException("Không thể gỡ trực tiếp thực tập sinh ở trạng thái " + intern.getStatus().name() + ". Vui lòng dùng chức năng 'Chuyển chương trình' hoặc 'Chấm dứt thực tập'.");
+        }
+
+        // Reset liên kết chương trình và nhóm
+        intern.setProgram(null);
+        intern.setGroup(null);
+        internProfileRepository.save(intern);
+        log.info("Đã gỡ thành công thực tập sinh ID: {} khỏi chương trình ID: {}", internId, programId);
     }
 }
 
