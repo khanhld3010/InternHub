@@ -55,6 +55,8 @@ public class InternResponse {
     private String reassignmentReason;
     private Boolean needsMentorReassignment;
     private String mentorReassignmentReason;
+    private Long groupId;
+    private String groupName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

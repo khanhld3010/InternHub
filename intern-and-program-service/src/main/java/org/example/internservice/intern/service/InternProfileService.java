@@ -40,5 +40,7 @@ public interface InternProfileService {
     org.example.internservice.intern.dto.response.MentorOptionResponse createMentor(org.example.internservice.intern.dto.request.CreateMentorRequest request);
 
     java.util.Map<String, Object> resendMentorInvitation(Long mentorId);
+
+    void removeInternFromProgram(Long programId, Long internId);
 }
 
