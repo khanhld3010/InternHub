@@ -197,4 +197,27 @@ public class ProgramController {
         missionBoardService.removeMentorFromProgram(id, mentorId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ Mentor khỏi chương trình thành công", null));
     }
+
+    @Operation(summary = "Tiếp nhận danh sách thực tập sinh vào chương trình thực tập (HR/Admin)")
+    @PostMapping("/programs/{id}/enroll")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ProgramDetailResponse>> enrollInterns(
+            @PathVariable Long id,
+            @Valid @RequestBody org.example.internservice.program.dto.request.EnrollInternsRequest request,
+            Authentication authentication
+    ) {
+        String reviewerUsername = authentication != null ? authentication.getName() : "system";
+        ProgramDetailResponse response = programService.enrollInterns(id, request, reviewerUsername);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Tiếp nhận thực tập sinh vào chương trình thành công", response));
+    }
+
+    @Operation(summary = "Lấy danh sách thực tập sinh thuộc chương trình thực tập")
+    @GetMapping("/programs/{id}/interns")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<List<org.example.internservice.intern.dto.response.InternResponse>>> getProgramInterns(
+            @PathVariable Long id
+    ) {
+        List<org.example.internservice.intern.dto.response.InternResponse> response = programService.getProgramInterns(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách thực tập sinh của chương trình thành công", response));
+    }
 }

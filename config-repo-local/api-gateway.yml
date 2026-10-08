@@ -6,8 +6,8 @@ spring:
     name: api-gateway
   data:
     redis:
-      host: ${REDIS_HOST:internhub-redis-broker}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST:${SPRING_DATA_REDIS_HOST:internhub-redis-broker}}
+      port: ${REDIS_PORT:${SPRING_DATA_REDIS_PORT:6379}}
       timeout: 2000ms
   cloud:
     gateway:
