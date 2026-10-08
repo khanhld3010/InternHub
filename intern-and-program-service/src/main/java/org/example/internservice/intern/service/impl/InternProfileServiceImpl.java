@@ -880,22 +880,35 @@ public class InternProfileServiceImpl implements InternProfileService {
         log.info("Tim kiem va loc ho so thuc tap sinh");
         Pageable sanitizedPageable = sanitizePageable(pageable);
 
-        // Bảo mật cấp API: Tự động ép lọc theo mentorId nếu người gọi là ROLE_MENTOR
-        Long enforceMentorId = null;
+        // Bảo mật cấp API: Tự động ép lọc theo tập hợp mentorIds nếu người gọi là ROLE_MENTOR
+        List<Long> enforceMentorIds = null;
         org.springframework.security.core.Authentication authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof org.example.internservice.security.CustomUserDetails userDetails) {
             boolean isMentor = userDetails.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_MENTOR") || a.getAuthority().equalsIgnoreCase("MENTOR"));
             if (isMentor) {
-                enforceMentorId = userDetails.getUserId();
-                log.info("Phát hiện tài khoản Mentor [id={}, user={}]. Tự động giới hạn dữ liệu chỉ hiển thị TTS do mentor này phụ trách.",
-                        enforceMentorId, userDetails.getUsername());
+                final List<Long> mentorIds = new ArrayList<>();
+                mentorIds.add(userDetails.getUserId());
+                mentorProfileRepository.findByUserId(userDetails.getUserId())
+                        .ifPresent(mp -> mentorIds.add(mp.getId()));
+                if (userDetails.getUsername() != null && !userDetails.getUsername().isBlank()) {
+                    mentorProfileRepository.findByEmail(userDetails.getUsername())
+                            .ifPresent(mp -> {
+                                if (!mentorIds.contains(mp.getId())) {
+                                    mentorIds.add(mp.getId());
+                                }
+                            });
+                }
+                log.info("Phát hiện tài khoản Mentor [user={}, mentorIds={}]. Tự động giới hạn dữ liệu chỉ hiển thị TTS do mentor này phụ trách.",
+                        userDetails.getUsername(), mentorIds);
+                enforceMentorIds = mentorIds;
             }
         }
 
-        Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request, enforceMentorId);
+        Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request, enforceMentorIds);
         Page<InternProfile> internPage = internProfileRepository.findAll(spec, sanitizedPageable);
         return PageResponse.from(internPage, this::mapToResponse);
+
     }
 
     private Pageable sanitizePageable(Pageable pageable) {

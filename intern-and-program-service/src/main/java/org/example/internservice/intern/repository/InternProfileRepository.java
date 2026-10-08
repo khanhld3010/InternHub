@@ -60,4 +60,6 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
     long countByGroupId(Long groupId);
 
     java.util.List<InternProfile> findByProgramIdAndGroupIsNull(Long programId);
+    java.util.List<InternProfile> findByMentorIdIn(java.util.Collection<Long> mentorIds);
 }
+
