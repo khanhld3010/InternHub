@@ -263,6 +263,66 @@ Content-Type: application/json
 - [ ] **AC-4:** Khi phê duyệt (`APPROVED`), trường `rejectionReason` được reset về `null` và `status` chuyển thành `APPROVED`.
 - [ ] **AC-5:** Hệ thống ghi nhận chính xác username của người xét duyệt (`reviewedBy`) và thời gian xét duyệt (`reviewedAt`).
 - [ ] **AC-6:** Thao tác xét duyệt sinh ra bản ghi Audit Log với hành động `CHANGE_INTERN_STATUS`.
-- [ ] **AC-7:** Chặn người dùng không có quyền (Chưa đăng nhập $\rightarrow$ 401, Sinh viên/Mentor $\rightarrow$ 403).
-- [ ] **AC-8:** Chặn chuyển đổi trạng thái không hợp lệ (ví dụ hồ sơ đã `COMPLETED` không được chuyển sang `APPROVED` hay `REJECTED`).
-- [ ] **AC-9:** Có đầy đủ Unit Tests và Controller Tests bao phủ toàn bộ các kịch bản thành công và ngoại lệ.
+- [x] **AC-7:** Chặn người dùng không có quyền (Chưa đăng nhập $\rightarrow$ 401, Sinh viên/Mentor $\rightarrow$ 403).
+- [x] **AC-8:** Chặn chuyển đổi trạng thái không hợp lệ (ví dụ hồ sơ đã `COMPLETED` không được chuyển sang `APPROVED` hay `REJECTED`).
+- [x] **AC-9:** Có đầy đủ Unit Tests và Controller Tests bao phủ toàn bộ các kịch bản thành công và ngoại lệ.
+
+---
+
+## 12. Program-Centric Application Enrollment Extension (Mở Rộng Xét Duyệt & Tiếp Nhận Theo Kỳ)
+
+> [!IMPORTANT]
+> **Bổ sung cải tiến nghiệp vụ:** Thay vì xét duyệt hồ sơ rời rạc từng cá nhân trên Dashboard chung, hệ thống bổ sung luồng **Tiếp nhận & Xét duyệt hồ sơ tập trung theo Chương trình thực tập (Program-Centric Workflow)**. Quy trình này gắn liền hồ sơ ứng viên với kỳ thực tập mục tiêu, tự động tính toán chỉ tiêu tuyển dụng và cập nhật số lượng hồ sơ đang chờ duyệt.
+
+### 12.1. Danh mục Endpoints Bổ Sung
+
+#### 1. API Tiếp Nhận Danh Sách Thực Tập Sinh Vào Chương Trình (Enroll Interns)
+- **Endpoint:** `POST /api/programs/{id}/enroll`
+- **Quyền hạn:** `ROLE_HR`, `ROLE_ADMIN`
+- **Request Body (`EnrollInternsRequest`):**
+  ```json
+  {
+    "internIds": [12, 15, 23]
+  }
+  ```
+- **Business Logic:**
+  1. Kiểm tra chương trình thực tập tồn tại, trạng thái hợp lệ (`PLANNING` hoặc `OPEN`), và cổng nhận hồ sơ đang mở (`isRecruitmentOpen == true`).
+  2. Kiểm tra chỉ tiêu tối đa (`maxParticipants`): Nếu số lượng tiếp nhận vượt quá sức chứa còn lại, bắn ngoại lệ `BadRequestException`.
+  3. Lặp qua danh sách `internIds`:
+     - Kiểm tra hồ sơ ở trạng thái `PENDING` (hoặc `APPROVED` chưa có chương trình).
+     - Gán hồ sơ vào chương trình: `profile.setProgram(program)`.
+     - Cập nhật trạng thái sang `APPROVED`.
+     - Lưu thông tin người duyệt: `reviewedBy = reviewerUsername`, `reviewedAt = LocalDateTime.now()`.
+     - Ghi nhận `startDate` và `endDate` theo ngày của kỳ thực tập nếu hồ sơ chưa thiết lập.
+     - Kích hoạt sự kiện `InternDecisionProcessedEvent` thông qua RabbitMQ/Spring Event để gửi thông báo kết quả cho ứng viên.
+  4. Cập nhật số lượng tham gia thực tế `currentParticipants` của chương trình.
+- **Response:** `200 OK` kèm `ProgramDetailResponse`.
+
+#### 2. API Lấy Danh Sách Thực Tập Sinh Thuộc Chương Trình (Get Program Interns)
+- **Endpoint:** `GET /api/programs/{id}/interns`
+- **Quyền hạn:** `ROLE_HR`, `ROLE_ADMIN`, `ROLE_MENTOR`
+- **Response:** `200 OK` kèm `List<InternResponse>` của tất cả thực tập sinh đã được gán vào chương trình thực tập `id`.
+
+#### 3. Bổ sung Chỉ Số Đơn Chờ Xét Duyệt (`pendingApplicationsCount`)
+- **Đối tượng:** `ProgramDetailResponse` và `ProgramSummaryResponse`.
+- **Định nghĩa:** Số lượng hồ sơ thực tập sinh ở trạng thái `PENDING` có mong muốn tham gia chương trình này (`desiredDepartmentId` khớp với phòng ban của chương trình hoặc có `programId` trùng khớp).
+- **Mục đích:** Hiển thị trực quan thanh tiến độ / huy hiệu thông báo số lượng ứng viên đang chờ HR xét duyệt ngay trên giao diện danh sách chương trình.
+
+### 12.2. Ma Trận Quyền Hạn Cập Nhật
+
+| Endpoint | Method | Public | ROLE_INTERN | ROLE_MENTOR | ROLE_HR | ROLE_ADMIN |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `/api/interns/{id}/decision` | `PATCH` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/programs/{id}/enroll` | `POST` | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `/api/programs/{id}/interns` | `GET` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `/api/programs/{id}/members/{internId}` | `DELETE` | ❌ | ❌ | ❌ | ✅ | ✅ |
+
+### 12.3. Tiêu Chí Nghiệm Thu Bổ Sung (Acceptance Criteria - Extension)
+
+- [x] **AC-10:** HR/Admin có thể gửi danh sách nhiều `internIds` qua `POST /api/programs/{id}/enroll` để tiếp nhận hàng loạt vào chương trình.
+- [x] **AC-11:** Hệ thống tự động chuyển đổi trạng thái của tất cả ứng viên được tiếp nhận sang `APPROVED`, cập nhật `reviewedBy`, `reviewedAt` và gắn quan hệ `program_id`.
+- [x] **AC-12:** Hệ thống chặn và báo lỗi nếu tổng số lượng thực tập sinh tiếp nhận vượt quá sức chứa `maxParticipants` của chương trình.
+- [x] **AC-13:** API `GET /api/programs/{id}/interns` trả về đầy đủ danh sách TTS của chương trình kèm thông tin nhóm (`groupId`, `groupName`).
+- [x] **AC-14:** Cung cấp trường `pendingApplicationsCount` trong response của chương trình thực tập để Frontend hiển thị thanh số lượng đơn chờ.
+- [x] **AC-15:** Hỗ trợ gỡ thực tập sinh khỏi kỳ qua `DELETE /api/programs/{id}/members/{internId}` với 3-layer defense guards (chặn gỡ khi đã có Mentor, có báo cáo tuần hoặc có đánh giá).
+

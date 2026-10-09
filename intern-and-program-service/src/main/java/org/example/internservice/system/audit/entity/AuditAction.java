@@ -11,6 +11,8 @@ public enum AuditAction {
     UPDATE_INTERN,
     CHANGE_INTERN_STATUS,
     APPLY_INTERN,
+    IMPORT_INTERNS_EXCEL,
+    ASSIGN_MENTOR_TO_PROGRAM,
 
     // Document actions
     UPLOAD_DOCUMENT,
