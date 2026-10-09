@@ -35,11 +35,30 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.example.internservice.intern.client.IdentityServiceClient;
+import org.example.internservice.intern.entity.InternMentorAssignment;
+import org.example.internservice.intern.entity.MentorProfile;
+import org.example.internservice.intern.entity.enums.MentorAssignmentStatus;
+import org.example.internservice.intern.event.InternMentorAssignedEvent;
+import org.example.internservice.intern.repository.InternMentorAssignmentRepository;
+import org.example.internservice.intern.repository.MentorProfileRepository;
+import org.example.internservice.program.dto.request.AssignMentorToProgramRequest;
+import org.example.internservice.program.dto.response.AssignMentorToProgramResponse;
+import org.example.internservice.program.entity.ProgramMentor;
+import org.example.internservice.program.repository.ProgramMentorRepository;
+import org.example.internservice.system.audit.entity.AuditAction;
+import org.example.internservice.system.audit.entity.AuditModule;
+import org.example.internservice.system.audit.entity.AuditStatus;
+import org.example.internservice.system.audit.event.AuditLogEvent;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -50,7 +69,10 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
     private final DepartmentRepository departmentRepository;
     private final ProgramCodeSequenceRepository sequenceRepository;
     private final InternProfileRepository internProfileRepository;
-    private final org.example.internservice.intern.repository.MentorProfileRepository mentorProfileRepository;
+    private final MentorProfileRepository mentorProfileRepository;
+    private final ProgramMentorRepository programMentorRepository;
+    private final InternMentorAssignmentRepository internMentorAssignmentRepository;
+    private final IdentityServiceClient identityServiceClient;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     private static final List<InternStatus> ACTIVE_INTERN_STATUSES = List.of(
@@ -453,6 +475,10 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        List<ProgramMentor> programMentors = programMentorRepository.findByProgramId(programId);
+        MentorProfile defaultMentor = programMentors.isEmpty() ? null : programMentors.get(programMentors.size() - 1).getMentor();
+        List<InternMentorAssignment> newAssignments = new ArrayList<>();
+
         for (InternProfile intern : interns) {
             intern.setProgram(program);
             intern.setStatus(InternStatus.APPROVED);
@@ -460,8 +486,30 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
             intern.setReviewedAt(now);
             intern.setNeedsReassignment(false);
             intern.setReassignmentReason(null);
+
+            if (defaultMentor != null) {
+                intern.setMentorId(defaultMentor.getId());
+                intern.setMentorName(defaultMentor.getFullName());
+                intern.setMentorEmail(defaultMentor.getEmail());
+                if (program.getStatus() == ProgramStatus.ONGOING) {
+                    intern.setStatus(InternStatus.INTERNING);
+                }
+                newAssignments.add(InternMentorAssignment.builder()
+                        .intern(intern)
+                        .mentorId(defaultMentor.getId())
+                        .mentorName(defaultMentor.getFullName())
+                        .mentorEmail(defaultMentor.getEmail())
+                        .assignedBy(reviewerUsername)
+                        .assignedAt(now)
+                        .status(MentorAssignmentStatus.ACTIVE)
+                        .notes("Tự động kế thừa Mentor của chương trình: " + program.getName())
+                        .build());
+            }
         }
 
+        if (!newAssignments.isEmpty()) {
+            internMentorAssignmentRepository.saveAll(newAssignments);
+        }
         internProfileRepository.saveAll(interns);
 
         if (eventPublisher != null) {
@@ -491,5 +539,238 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
         return internProfileRepository.findByProgramId(programId).stream()
                 .map(org.example.internservice.intern.dto.response.InternResponse::fromEntity)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public AssignMentorToProgramResponse assignMentorToProgram(
+            Long programId,
+            AssignMentorToProgramRequest request,
+            String assignedBy
+    ) {
+        log.info("HR {} thực hiện phân công Mentor ID={} cho toàn bộ kỳ thực tập ID={}", assignedBy, request.getMentorId(), programId);
+
+        InternshipProgram program = programRepository.findById(programId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + programId));
+
+        Long targetMentorId = request.getMentorId();
+
+        // 1. Tìm thông tin Mentor từ MentorProfile hoặc fallback sang Identity Service
+        MentorProfile mentorProfile = mentorProfileRepository.findById(targetMentorId)
+                .or(() -> mentorProfileRepository.findByUserId(targetMentorId))
+                .orElse(null);
+
+        String mentorFullName;
+        String mentorEmail;
+
+        if (mentorProfile != null) {
+            if (!"ACTIVE".equalsIgnoreCase(mentorProfile.getStatus())) {
+                throw new BadRequestException("Người hướng dẫn này chưa kích hoạt tài khoản. Vui lòng yêu cầu Mentor kích hoạt trước khi phân công.");
+            }
+            mentorFullName = mentorProfile.getFullName();
+            mentorEmail = mentorProfile.getEmail();
+        } else {
+            List<Map<String, Object>> users = identityServiceClient.getAllUsers();
+            Map<String, Object> mentorUser = users.stream()
+                    .filter(u -> {
+                        Object uid = u.get("id");
+                        return uid != null && Long.valueOf(uid.toString()).equals(targetMentorId);
+                    })
+                    .findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông tin Mentor với ID: " + targetMentorId));
+
+            String mentorRole = mentorUser.get("role") != null ? mentorUser.get("role").toString() : "";
+            String mentorStatus = mentorUser.get("status") != null ? mentorUser.get("status").toString() : "";
+            boolean isMentorRole = "MENTOR".equalsIgnoreCase(mentorRole)
+                    || "ROLE_MENTOR".equalsIgnoreCase(mentorRole)
+                    || mentorRole.toUpperCase().contains("MENTOR");
+            if (!isMentorRole) {
+                throw new IllegalArgumentException("Người dùng được chọn không có vai trò MENTOR");
+            }
+            if (!mentorStatus.isBlank() && !"ACTIVE".equalsIgnoreCase(mentorStatus)) {
+                throw new BadRequestException("Tài khoản Mentor đang bị vô hiệu hóa hoặc chưa kích hoạt");
+            }
+
+            mentorFullName = mentorUser.get("fullName") != null ? mentorUser.get("fullName").toString() : ("Mentor " + targetMentorId);
+            mentorEmail = mentorUser.get("email") != null ? mentorUser.get("email").toString() : ("mentor" + targetMentorId + "@internhub.vn");
+            String mentorPhone = mentorUser.get("phone") != null ? mentorUser.get("phone").toString()
+                    : (mentorUser.get("phoneNumber") != null ? mentorUser.get("phoneNumber").toString() : ("09" + (System.currentTimeMillis() % 100000000)));
+
+            try {
+                Department dept = program.getDepartment() != null
+                        ? program.getDepartment()
+                        : departmentRepository.findAll().stream().findFirst().orElse(null);
+
+                mentorProfile = MentorProfile.builder()
+                        .userId(targetMentorId)
+                        .fullName(mentorFullName)
+                        .email(mentorEmail)
+                        .phone(mentorPhone)
+                        .department(dept)
+                        .status("ACTIVE")
+                        .build();
+                mentorProfile = mentorProfileRepository.save(mentorProfile);
+                log.info("Tự động tạo mới MentorProfile ID={} cho Mentor userId={}", mentorProfile.getId(), targetMentorId);
+            } catch (Exception e) {
+                log.warn("Lỗi khi tự tạo MentorProfile: {}", e.getMessage());
+                mentorProfile = mentorProfileRepository.findByEmail(mentorEmail).orElse(null);
+            }
+        }
+
+        if (mentorFullName == null || mentorFullName.isBlank()) {
+            mentorFullName = "Mentor " + targetMentorId;
+        }
+        if (mentorEmail == null || mentorEmail.isBlank()) {
+            mentorEmail = "mentor" + targetMentorId + "@internhub.vn";
+        }
+
+        // 2. Gán ProgramMentor để đồng bộ quan hệ chương trình và mentor
+        if (mentorProfile != null) {
+            boolean existsInProgram = programMentorRepository.existsByProgramIdAndMentorIdentifier(program.getId(), mentorProfile.getId())
+                    || (mentorProfile.getUserId() != null && programMentorRepository.existsByProgramIdAndMentorIdentifier(program.getId(), mentorProfile.getUserId()));
+            if (!existsInProgram) {
+                ProgramMentor pm = ProgramMentor.builder()
+                        .program(program)
+                        .mentor(mentorProfile)
+                        .assignedBy(assignedBy)
+                        .assignedAt(LocalDateTime.now())
+                        .build();
+                programMentorRepository.save(pm);
+                log.info("Gán Mentor ID={} vào Program ID={}", mentorProfile.getId(), program.getId());
+            }
+        }
+
+        // 3. Tìm toàn bộ TTS có trạng thái APPROVED hoặc INTERNING thuộc chương trình
+        List<InternProfile> interns = internProfileRepository.findByProgramIdAndStatusIn(
+                programId,
+                List.of(InternStatus.APPROVED, InternStatus.INTERNING)
+        );
+
+        int replacedCount = 0;
+        List<String> affectedInternCodes = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        if (!interns.isEmpty()) {
+            List<Long> internIds = interns.stream().map(InternProfile::getId).toList();
+            List<InternMentorAssignment> activeAssignments = internMentorAssignmentRepository.findByInternIdInAndStatus(
+                    internIds,
+                    MentorAssignmentStatus.ACTIVE
+            );
+            Map<Long, InternMentorAssignment> activeAssignmentsMap = activeAssignments.stream()
+                    .collect(Collectors.toMap(a -> a.getIntern().getId(), a -> a, (first, second) -> first));
+
+            List<InternMentorAssignment> assignmentsToUpdate = new ArrayList<>();
+            List<InternMentorAssignment> assignmentsToCreate = new ArrayList<>();
+
+            for (InternProfile intern : interns) {
+                affectedInternCodes.add(intern.getInternCode());
+                Long oldMentorId = intern.getMentorId();
+                String oldMentorName = intern.getMentorName();
+                String oldMentorEmail = intern.getMentorEmail();
+                boolean isReplacing = oldMentorId != null && !oldMentorId.equals(targetMentorId);
+
+                if (isReplacing) {
+                    replacedCount++;
+                    InternMentorAssignment oldAssignment = activeAssignmentsMap.get(intern.getId());
+                    if (oldAssignment != null) {
+                        oldAssignment.setStatus(MentorAssignmentStatus.REPLACED);
+                        oldAssignment.setRevokedAt(now);
+                        oldAssignment.setRevocationReason("Thay thế người hướng dẫn theo kỳ thực tập (" + program.getName() + ")");
+                        assignmentsToUpdate.add(oldAssignment);
+                    }
+                }
+
+                // Cập nhật thông tin Mentor trên hồ sơ TTS
+                intern.setMentorId(mentorProfile != null ? mentorProfile.getId() : targetMentorId);
+                intern.setMentorName(mentorFullName);
+                intern.setMentorEmail(mentorEmail);
+                intern.setNeedsMentorReassignment(false);
+                intern.setMentorReassignmentReason(null);
+
+                // Cơ chế điều kiện kép: Chuyển APPROVED sang INTERNING nếu Program đã ONGOING
+                if (intern.getStatus() == InternStatus.APPROVED && program.getStatus() == ProgramStatus.ONGOING) {
+                    intern.setStatus(InternStatus.INTERNING);
+                    log.info("TTS {} ({}) chuyển APPROVED -> INTERNING theo kỳ {}", intern.getFullName(), intern.getInternCode(), program.getName());
+                }
+
+                // Tạo mới bản ghi phân công ACTIVE
+                InternMentorAssignment newAssignment = InternMentorAssignment.builder()
+                        .intern(intern)
+                        .mentorId(mentorProfile != null ? mentorProfile.getId() : targetMentorId)
+                        .mentorName(mentorFullName)
+                        .mentorEmail(mentorEmail)
+                        .assignedBy(assignedBy)
+                        .assignedAt(now)
+                        .status(MentorAssignmentStatus.ACTIVE)
+                        .notes(request.getNotes() != null && !request.getNotes().isBlank()
+                                ? request.getNotes()
+                                : ("Gán Mentor theo kỳ thực tập: " + program.getName()))
+                        .build();
+                assignmentsToCreate.add(newAssignment);
+
+                // Gửi event email 3 chiều
+                if (eventPublisher != null) {
+                    try {
+                        eventPublisher.publishEvent(new InternMentorAssignedEvent(
+                                this,
+                                intern.getId(),
+                                intern.getInternCode(),
+                                intern.getFullName(),
+                                intern.getEmail(),
+                                program.getName(),
+                                intern.getAppliedPosition(),
+                                isReplacing ? "REPLACED" : "ASSIGNED",
+                                mentorProfile != null ? mentorProfile.getId() : targetMentorId,
+                                mentorFullName,
+                                mentorEmail,
+                                oldMentorId,
+                                oldMentorName,
+                                oldMentorEmail,
+                                "Gán Mentor cho toàn bộ kỳ thực tập",
+                                request.getNotes(),
+                                assignedBy
+                        ));
+                    } catch (Exception e) {
+                        log.warn("Không thể phát sự kiện phân công mentor cho TTS {}: {}", intern.getId(), e.getMessage());
+                    }
+                }
+            }
+
+            if (!assignmentsToUpdate.isEmpty()) {
+                internMentorAssignmentRepository.saveAll(assignmentsToUpdate);
+            }
+            if (!assignmentsToCreate.isEmpty()) {
+                internMentorAssignmentRepository.saveAll(assignmentsToCreate);
+            }
+            internProfileRepository.saveAll(interns);
+        }
+
+        // Bắn AuditLogEvent
+        if (eventPublisher != null) {
+            try {
+                eventPublisher.publishEvent(AuditLogEvent.builder()
+                        .username(assignedBy)
+                        .action(AuditAction.ASSIGN_MENTOR_TO_PROGRAM)
+                        .module(AuditModule.INTERN)
+                        .description(String.format("Phân công Mentor %s cho kỳ %s (%d TTS, %d thay thế)",
+                                mentorFullName, program.getName(), interns.size(), replacedCount))
+                        .status(AuditStatus.SUCCESS)
+                        .build());
+            } catch (Exception e) {
+                log.warn("Không thể ghi log audit phân công mentor cho kỳ: {}", e.getMessage());
+            }
+        }
+
+        return AssignMentorToProgramResponse.builder()
+                .programId(program.getId())
+                .programName(program.getName())
+                .mentorId(mentorProfile != null ? mentorProfile.getId() : targetMentorId)
+                .mentorName(mentorFullName)
+                .mentorEmail(mentorEmail)
+                .totalAssignedInterns(interns.size())
+                .replacedMentorsCount(replacedCount)
+                .affectedInternCodes(affectedInternCodes)
+                .assignedAt(now)
+                .build();
     }
 }

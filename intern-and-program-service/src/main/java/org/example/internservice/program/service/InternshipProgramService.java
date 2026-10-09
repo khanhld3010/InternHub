@@ -41,4 +41,10 @@ public interface InternshipProgramService {
     ProgramDetailResponse enrollInterns(Long programId, org.example.internservice.program.dto.request.EnrollInternsRequest request, String reviewerUsername);
 
     List<org.example.internservice.intern.dto.response.InternResponse> getProgramInterns(Long programId);
+
+    org.example.internservice.program.dto.response.AssignMentorToProgramResponse assignMentorToProgram(
+            Long programId,
+            org.example.internservice.program.dto.request.AssignMentorToProgramRequest request,
+            String assignedBy
+    );
 }

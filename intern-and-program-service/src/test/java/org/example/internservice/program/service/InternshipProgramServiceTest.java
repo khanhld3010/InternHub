@@ -52,6 +52,21 @@ class InternshipProgramServiceTest {
     @Mock
     private InternProfileRepository internProfileRepository;
 
+    @Mock
+    private org.example.internservice.intern.repository.MentorProfileRepository mentorProfileRepository;
+
+    @Mock
+    private org.example.internservice.program.repository.ProgramMentorRepository programMentorRepository;
+
+    @Mock
+    private org.example.internservice.intern.repository.InternMentorAssignmentRepository internMentorAssignmentRepository;
+
+    @Mock
+    private org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
+
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private InternshipProgramServiceImpl programService;
 

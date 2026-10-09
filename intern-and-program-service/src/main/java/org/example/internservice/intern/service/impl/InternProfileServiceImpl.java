@@ -325,14 +325,47 @@ public class InternProfileServiceImpl implements InternProfileService {
             profile.setNeedsReassignment(false);
             profile.setReassignmentReason(null);
 
+            // Tự động kế thừa Mentor của chương trình nếu chương trình đã có Mentor
+            try {
+                List<org.example.internservice.program.entity.ProgramMentor> programMentors = programMentorRepository.findByProgramId(program.getId());
+                if (!programMentors.isEmpty()) {
+                    org.example.internservice.intern.entity.MentorProfile defaultMentor = programMentors.get(programMentors.size() - 1).getMentor();
+                    if (defaultMentor != null) {
+                        profile.setMentorId(defaultMentor.getId());
+                        profile.setMentorName(defaultMentor.getFullName());
+                        profile.setMentorEmail(defaultMentor.getEmail());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Không thể tự động kế thừa Mentor của chương trình cho TTS ID={}: {}", profile.getId(), e.getMessage());
+            }
+
             program.setCurrentInterns((int) (currentActive + 1));
             programRepository.save(program);
         }
 
         profile.applyDecision(request.getDecision(), request.getTrimmedRejectionReason(), reviewerUsername);
 
+        if (profile.getStatus() == InternStatus.APPROVED && profile.getMentorId() != null 
+                && profile.getProgram() != null && profile.getProgram().getStatus() == org.example.internservice.program.entity.enums.ProgramStatus.ONGOING) {
+            profile.setStatus(InternStatus.INTERNING);
+        }
+
         InternProfile savedProfile = internProfileRepository.save(profile);
         log.info("Xu ly quyet dinh {} thanh cong cho ho so ID: {}", savedProfile.getStatus(), savedProfile.getId());
+
+        if (request.getDecision() == InternStatus.APPROVED && savedProfile.getMentorId() != null) {
+            internMentorAssignmentRepository.save(org.example.internservice.intern.entity.InternMentorAssignment.builder()
+                    .intern(savedProfile)
+                    .mentorId(savedProfile.getMentorId())
+                    .mentorName(savedProfile.getMentorName())
+                    .mentorEmail(savedProfile.getMentorEmail())
+                    .assignedBy(reviewerUsername)
+                    .assignedAt(LocalDateTime.now())
+                    .status(org.example.internservice.intern.entity.enums.MentorAssignmentStatus.ACTIVE)
+                    .notes("Tự động kế thừa Mentor của chương trình khi duyệt hồ sơ")
+                    .build());
+        }
 
         eventPublisher.publishEvent(new InternDecisionProcessedEvent(this, savedProfile));
 

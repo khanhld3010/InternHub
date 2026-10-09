@@ -7,19 +7,26 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.dto.response.ApiResponse;
 import org.example.internservice.common.dto.response.PageResponse;
+import org.example.internservice.program.dto.request.AssignMentorToProgramRequest;
 import org.example.internservice.program.dto.request.ChangeProgramStatusRequest;
 import org.example.internservice.program.dto.request.CreateProgramRequest;
 import org.example.internservice.program.dto.request.ProgramFilterRequest;
 import org.example.internservice.program.dto.request.UpdateProgramRequest;
+import org.example.internservice.program.dto.response.AssignMentorToProgramResponse;
 import org.example.internservice.program.dto.response.DepartmentResponse;
 import org.example.internservice.program.dto.response.ProgramDetailResponse;
 import org.example.internservice.program.dto.response.ProgramSummaryResponse;
 import org.example.internservice.intern.service.InternProfileService;
+import org.example.internservice.program.dto.response.ExcelImportPreviewResponse;
+import org.example.internservice.program.dto.response.ExcelImportResultResponse;
+import org.example.internservice.program.service.InternExcelImportService;
 import org.example.internservice.program.service.InternshipProgramService;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -32,7 +39,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -46,6 +56,7 @@ public class ProgramController {
     private final InternshipProgramService programService;
     private final org.example.internservice.mission.service.MissionBoardService missionBoardService;
     private final InternProfileService internProfileService;
+    private final InternExcelImportService excelImportService;
 
     @Operation(summary = "Lấy danh mục phòng ban (Dành cho Dropdown)")
     @GetMapping("/departments")
@@ -200,6 +211,19 @@ public class ProgramController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ Mentor khỏi chương trình thành công", null));
     }
 
+    @Operation(summary = "Phân công Mentor cho toàn bộ chương trình thực tập (HR/Admin, Batch Cascade)")
+    @PostMapping("/programs/{id}/assign-mentor")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<AssignMentorToProgramResponse>> assignMentorToProgram(
+            @PathVariable Long id,
+            @Valid @RequestBody AssignMentorToProgramRequest request,
+            Authentication authentication
+    ) {
+        String assignedBy = authentication != null ? authentication.getName() : "HR";
+        AssignMentorToProgramResponse response = programService.assignMentorToProgram(id, request, assignedBy);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Phân công Mentor cho chương trình thành công", response));
+    }
+
     @Operation(summary = "Tiếp nhận danh sách thực tập sinh vào chương trình thực tập (HR/Admin)")
     @PostMapping("/programs/{id}/enroll")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
@@ -232,5 +256,42 @@ public class ProgramController {
     ) {
         internProfileService.removeInternFromProgram(id, internId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ thực tập sinh khỏi chương trình thành công", null));
+    }
+
+    @Operation(summary = "Tải tệp Excel mẫu để nhập danh sách thực tập sinh (HR/Admin)")
+    @GetMapping("/programs/import-template")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<byte[]> downloadImportTemplate() {
+        byte[] fileBytes = excelImportService.generateExcelTemplate();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"mau_nhap_thuc_tap_sinh.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(fileBytes);
+    }
+
+    @Operation(summary = "Kiểm tra trước tính hợp lệ của tệp Excel nhập TTS (HR/Admin, Preview)")
+    @PostMapping(value = "/programs/{id}/import-interns/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ExcelImportPreviewResponse>> previewImportInterns(
+            @PathVariable Long id,
+            @RequestPart("file") MultipartFile file
+    ) {
+        ExcelImportPreviewResponse response = excelImportService.previewExcelImport(id, file);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Kiểm tra tệp Excel hoàn tất", response));
+    }
+
+    @Operation(summary = "Nhập danh sách thực tập sinh từ Excel vào chương trình (HR/Admin, Batch Import)")
+    @PostMapping(value = "/programs/{id}/import-interns", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ExcelImportResultResponse>> importInternsFromExcel(
+            @PathVariable Long id,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(value = "status", defaultValue = "APPROVED") String status,
+            Authentication authentication
+    ) {
+        String importedBy = authentication != null ? authentication.getName() : "system";
+        ExcelImportResultResponse response = excelImportService.importInternsFromExcel(id, file, status, importedBy);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Nhập danh sách thực tập sinh thành công", response));
     }
 }

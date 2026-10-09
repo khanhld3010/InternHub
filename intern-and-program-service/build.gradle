@@ -43,6 +43,8 @@ dependencies {
     implementation 'com.github.librepdf:openpdf:2.0.3'
     implementation 'org.xhtmlrenderer:flying-saucer-pdf-openpdf:9.1.22'
     implementation 'org.jsoup:jsoup:1.18.3'
+    // Excel Processing Engine (XLSX Import/Export) - Apache POI
+    implementation 'org.apache.poi:poi-ooxml:5.3.0'
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'com.mysql:mysql-connector-j'
