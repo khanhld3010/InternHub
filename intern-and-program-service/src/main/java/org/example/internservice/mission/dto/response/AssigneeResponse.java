@@ -20,4 +20,8 @@ public class AssigneeResponse {
     private String email;
     private String phone;
     private String appliedPosition;
+    private Long groupId;
+    private String groupName;
+    private Integer activeTaskCount;
+    private Integer completedTaskCount;
 }
