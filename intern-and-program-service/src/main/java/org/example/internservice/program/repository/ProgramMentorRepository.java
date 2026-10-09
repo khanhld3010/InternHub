@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,4 +24,7 @@ public interface ProgramMentorRepository extends JpaRepository<ProgramMentor, Lo
     List<ProgramMentor> findByProgramId(Long programId);
 
     Optional<ProgramMentor> findByProgramIdAndMentorId(Long programId, Long mentorId);
+
+    @Query("SELECT pm.program.id, COUNT(pm) FROM ProgramMentor pm WHERE pm.program.id IN :programIds GROUP BY pm.program.id")
+    List<Object[]> countMentorsByProgramIds(@Param("programIds") Collection<Long> programIds);
 }

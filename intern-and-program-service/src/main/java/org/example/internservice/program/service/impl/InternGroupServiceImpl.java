@@ -6,6 +6,8 @@ import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.repository.InternProfileRepository;
+import org.example.internservice.intern.entity.MentorProfile;
+import org.example.internservice.intern.repository.MentorProfileRepository;
 import org.example.internservice.program.dto.request.BatchApplyGroupsRequest;
 import org.example.internservice.program.dto.request.CreateGroupRequest;
 import org.example.internservice.program.dto.response.InternGroupResponse;
@@ -13,7 +15,12 @@ import org.example.internservice.program.entity.InternGroup;
 import org.example.internservice.program.entity.InternshipProgram;
 import org.example.internservice.program.repository.InternGroupRepository;
 import org.example.internservice.program.repository.InternshipProgramRepository;
+import org.example.internservice.program.repository.ProgramMentorRepository;
 import org.example.internservice.program.service.InternGroupService;
+import org.example.internservice.security.CustomUserDetails;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,10 +38,13 @@ public class InternGroupServiceImpl implements InternGroupService {
     private final InternGroupRepository internGroupRepository;
     private final InternshipProgramRepository programRepository;
     private final InternProfileRepository internProfileRepository;
+    private final ProgramMentorRepository programMentorRepository;
+    private final MentorProfileRepository mentorProfileRepository;
 
     @Override
     public List<InternGroupResponse> getGroupsByProgramId(Long programId) {
         log.info("Lấy danh sách nhóm thực tập cho chương trình ID: {}", programId);
+        verifyAccess(programId);
         List<InternGroup> groups = internGroupRepository.findByProgramId(programId);
         return groups.stream().map(this::mapToResponse).toList();
     }
@@ -43,6 +53,7 @@ public class InternGroupServiceImpl implements InternGroupService {
     @Transactional
     public InternGroupResponse createGroup(Long programId, CreateGroupRequest request) {
         log.info("Tạo nhóm mới '{}' cho chương trình ID: {}", request.getName(), programId);
+        verifyAccess(programId);
         InternshipProgram program = getProgramOrThrow(programId);
 
         if (internGroupRepository.existsByProgramIdAndName(programId, request.getName().trim())) {
@@ -64,6 +75,7 @@ public class InternGroupServiceImpl implements InternGroupService {
     @Transactional
     public InternGroupResponse updateGroup(Long programId, Long groupId, CreateGroupRequest request) {
         log.info("Cập nhật thông tin nhóm ID: {} trong chương trình ID: {}", groupId, programId);
+        verifyAccess(programId);
         getProgramOrThrow(programId);
         InternGroup group = internGroupRepository.findByIdAndProgramId(groupId, programId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy nhóm với ID: " + groupId + " trong chương trình này"));
@@ -87,6 +99,7 @@ public class InternGroupServiceImpl implements InternGroupService {
     @Transactional
     public void disbandGroup(Long programId, Long groupId) {
         log.info("Giải tán nhóm ID: {} trong chương trình ID: {}", groupId, programId);
+        verifyAccess(programId);
         getProgramOrThrow(programId);
         InternGroup group = internGroupRepository.findByIdAndProgramId(groupId, programId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy nhóm với ID: " + groupId + " trong chương trình này"));
@@ -107,6 +120,7 @@ public class InternGroupServiceImpl implements InternGroupService {
     @Transactional
     public List<InternGroupResponse> batchApplyGroups(Long programId, BatchApplyGroupsRequest request) {
         log.info("Bắt đầu áp dụng chia nhóm hàng loạt cho chương trình ID: {}", programId);
+        verifyAccess(programId);
         InternshipProgram program = getProgramOrThrow(programId);
 
         // Validate payload
@@ -173,6 +187,7 @@ public class InternGroupServiceImpl implements InternGroupService {
     @Transactional
     public void addMemberToGroup(Long programId, Long groupId, Long internId) {
         log.info("Thêm thực tập sinh ID: {} vào nhóm ID: {} của chương trình ID: {}", internId, groupId, programId);
+        verifyAccess(programId);
         getProgramOrThrow(programId);
         InternGroup group = internGroupRepository.findByIdAndProgramId(groupId, programId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy nhóm với ID: " + groupId + " trong chương trình này"));
@@ -192,6 +207,7 @@ public class InternGroupServiceImpl implements InternGroupService {
     @Transactional
     public void removeMemberFromGroup(Long programId, Long groupId, Long internId) {
         log.info("Gỡ thực tập sinh ID: {} khỏi nhóm ID: {} của chương trình ID: {}", internId, groupId, programId);
+        verifyAccess(programId);
         getProgramOrThrow(programId);
         internGroupRepository.findByIdAndProgramId(groupId, programId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy nhóm với ID: " + groupId + " trong chương trình này"));
@@ -202,6 +218,39 @@ public class InternGroupServiceImpl implements InternGroupService {
         if (intern.getGroup() != null && intern.getGroup().getId().equals(groupId)) {
             intern.setGroup(null);
             internProfileRepository.save(intern);
+        }
+    }
+
+    private void verifyAccess(Long programId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return;
+        }
+        boolean isHrOrAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_HR") || a.getAuthority().equals("ROLE_ADMIN"));
+        if (isHrOrAdmin) {
+            return;
+        }
+        CustomUserDetails userDetails = (auth.getPrincipal() instanceof CustomUserDetails ud) ? ud : null;
+        if (userDetails != null) {
+            Long mentorIdentifier = (userDetails.getUserId() != null)
+                    ? mentorProfileRepository.findByUserId(userDetails.getUserId()).map(MentorProfile::getId).orElse(userDetails.getUserId())
+                    : null;
+            Long userId = userDetails.getUserId();
+            if (mentorIdentifier != null) {
+                if (programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, mentorIdentifier)) {
+                    return;
+                }
+                if (userId != null && programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, userId)) {
+                    return;
+                }
+                boolean hasIntern = internProfileRepository.findByProgramId(programId).stream()
+                        .anyMatch(i -> (i.getMentorId() != null && (i.getMentorId().equals(mentorIdentifier) || (userId != null && i.getMentorId().equals(userId)))));
+                if (hasIntern) {
+                    return;
+                }
+                throw new AccessDeniedException("Bạn không được phân công phụ trách chương trình thực tập này");
+            }
         }
     }
 

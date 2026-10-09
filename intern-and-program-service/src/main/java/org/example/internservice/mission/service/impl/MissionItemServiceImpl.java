@@ -174,8 +174,21 @@ public class MissionItemServiceImpl implements MissionItemService {
         Long mentorIdentifier = (userDetails != null && userDetails.getUserId() != null)
                 ? mentorProfileRepository.findByUserId(userDetails.getUserId()).map(MentorProfile::getId).orElse(userDetails.getUserId())
                 : null;
+        Long userId = userDetails != null ? userDetails.getUserId() : null;
 
-        if (mentorIdentifier != null && !programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, mentorIdentifier)) {
+        if (mentorIdentifier != null) {
+            if (programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, mentorIdentifier)) {
+                return;
+            }
+            if (userId != null && programMentorRepository.existsByProgramIdAndMentorIdentifier(programId, userId)) {
+                return;
+            }
+            // Smart Fallback: Cho phép nếu có bất kỳ InternProfile nào trong Program này được phân công cho Mentor
+            boolean hasInternInProgram = internProfileRepository.findByProgramId(programId).stream()
+                    .anyMatch(i -> (i.getMentorId() != null && (i.getMentorId().equals(mentorIdentifier) || (userId != null && i.getMentorId().equals(userId)))));
+            if (hasInternInProgram) {
+                return;
+            }
             throw new AccessDeniedException("Bạn không được phân công phụ trách chương trình thực tập này");
         }
     }

@@ -43,9 +43,9 @@ public class ProgramGroupController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @Operation(summary = "Tạo một nhóm thực tập mới (HR/Admin)")
+    @Operation(summary = "Tạo một nhóm thực tập mới (HR/Admin/Mentor)")
     @PostMapping
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
     public ResponseEntity<ApiResponse<InternGroupResponse>> createGroup(
             @PathVariable Long programId,
             @Valid @RequestBody CreateGroupRequest request
@@ -55,9 +55,9 @@ public class ProgramGroupController {
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Tạo nhóm thực tập thành công", response));
     }
 
-    @Operation(summary = "Cập nhật thông tin nhóm thực tập (HR/Admin)")
+    @Operation(summary = "Cập nhật thông tin nhóm thực tập (HR/Admin/Mentor)")
     @PutMapping("/{groupId}")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
     public ResponseEntity<ApiResponse<InternGroupResponse>> updateGroup(
             @PathVariable Long programId,
             @PathVariable Long groupId,
@@ -67,9 +67,9 @@ public class ProgramGroupController {
         return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật nhóm thực tập thành công", response));
     }
 
-    @Operation(summary = "Giải tán nhóm thực tập (HR/Admin)")
+    @Operation(summary = "Giải tán nhóm thực tập (HR/Admin/Mentor)")
     @DeleteMapping("/{groupId}")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
     public ResponseEntity<ApiResponse<Void>> disbandGroup(
             @PathVariable Long programId,
             @PathVariable Long groupId
@@ -78,9 +78,9 @@ public class ProgramGroupController {
         return ResponseEntity.ok(ApiResponse.success(200, "Giải tán nhóm thực tập thành công", null));
     }
 
-    @Operation(summary = "Áp dụng chia nhóm tự động hàng loạt từ Preview (HR/Admin)")
+    @Operation(summary = "Áp dụng chia nhóm tự động hàng loạt từ Preview (HR/Admin/Mentor)")
     @PostMapping("/batch")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
     public ResponseEntity<ApiResponse<List<InternGroupResponse>>> batchApplyGroups(
             @PathVariable Long programId,
             @Valid @RequestBody BatchApplyGroupsRequest request
@@ -90,9 +90,9 @@ public class ProgramGroupController {
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Áp dụng chia nhóm tự động thành công", response));
     }
 
-    @Operation(summary = "Thêm một thực tập sinh vào nhóm (HR/Admin)")
+    @Operation(summary = "Thêm một thực tập sinh vào nhóm (HR/Admin/Mentor)")
     @PostMapping("/{groupId}/members/{internId}")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
     public ResponseEntity<ApiResponse<Void>> addMember(
             @PathVariable Long programId,
             @PathVariable Long groupId,
@@ -103,9 +103,9 @@ public class ProgramGroupController {
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Thêm thành viên vào nhóm thành công", null));
     }
 
-    @Operation(summary = "Gỡ một thực tập sinh khỏi nhóm (HR/Admin)")
+    @Operation(summary = "Gỡ một thực tập sinh khỏi nhóm (HR/Admin/Mentor)")
     @DeleteMapping("/{groupId}/members/{internId}")
-    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
     public ResponseEntity<ApiResponse<Void>> removeMember(
             @PathVariable Long programId,
             @PathVariable Long groupId,
