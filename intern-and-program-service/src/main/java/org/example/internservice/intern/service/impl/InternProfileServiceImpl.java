@@ -78,6 +78,19 @@ public class InternProfileServiceImpl implements InternProfileService {
             throw new DuplicateResourceException("Số điện thoại '" + request.getPhone() + "' đã tồn tại trong hệ thống");
         }
 
+        org.example.internservice.program.entity.InternshipProgram program = null;
+        if (request.getProgramId() != null) {
+            program = programRepository.findById(request.getProgramId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + request.getProgramId()));
+            if (program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.PLANNING 
+                    && program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.OPEN) {
+                throw new BadRequestException("Chương trình thực tập không ở trạng thái nhận hồ sơ (" + program.getStatus().getDisplayName() + ")");
+            }
+            if (!Boolean.TRUE.equals(program.getIsRecruitmentOpen())) {
+                throw new BadRequestException("Chương trình thực tập hiện đang tạm dừng nhận hồ sơ tuyển sinh");
+            }
+        }
+
         String internCode = generateInternCode();
 
         InternProfile internProfile = InternProfile.builder()
@@ -95,6 +108,7 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
                 .status(InternStatus.PENDING)
+                .program(program)
                 .notes(request.getNotes())
                 .build();
 
@@ -310,6 +324,9 @@ public class InternProfileServiceImpl implements InternProfileService {
             profile.setProgram(program);
             profile.setNeedsReassignment(false);
             profile.setReassignmentReason(null);
+
+            program.setCurrentInterns((int) (currentActive + 1));
+            programRepository.save(program);
         }
 
         profile.applyDecision(request.getDecision(), request.getTrimmedRejectionReason(), reviewerUsername);

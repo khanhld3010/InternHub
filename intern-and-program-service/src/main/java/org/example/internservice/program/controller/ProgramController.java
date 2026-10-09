@@ -14,6 +14,7 @@ import org.example.internservice.program.dto.request.UpdateProgramRequest;
 import org.example.internservice.program.dto.response.DepartmentResponse;
 import org.example.internservice.program.dto.response.ProgramDetailResponse;
 import org.example.internservice.program.dto.response.ProgramSummaryResponse;
+import org.example.internservice.intern.service.InternProfileService;
 import org.example.internservice.program.service.InternshipProgramService;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -44,6 +45,7 @@ public class ProgramController {
 
     private final InternshipProgramService programService;
     private final org.example.internservice.mission.service.MissionBoardService missionBoardService;
+    private final InternProfileService internProfileService;
 
     @Operation(summary = "Lấy danh mục phòng ban (Dành cho Dropdown)")
     @GetMapping("/departments")
@@ -187,8 +189,6 @@ public class ProgramController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách Mentor của chương trình thành công", response));
     }
 
-    private final org.example.internservice.intern.service.InternProfileService internProfileService;
-
     @Operation(summary = "Xóa Mentor khỏi Chương trình thực tập (HR/Admin)")
     @DeleteMapping("/programs/{id}/mentors/{mentorId}")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
@@ -198,6 +198,29 @@ public class ProgramController {
     ) {
         missionBoardService.removeMentorFromProgram(id, mentorId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gỡ Mentor khỏi chương trình thành công", null));
+    }
+
+    @Operation(summary = "Tiếp nhận danh sách thực tập sinh vào chương trình thực tập (HR/Admin)")
+    @PostMapping("/programs/{id}/enroll")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ProgramDetailResponse>> enrollInterns(
+            @PathVariable Long id,
+            @Valid @RequestBody org.example.internservice.program.dto.request.EnrollInternsRequest request,
+            Authentication authentication
+    ) {
+        String reviewerUsername = authentication != null ? authentication.getName() : "system";
+        ProgramDetailResponse response = programService.enrollInterns(id, request, reviewerUsername);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Tiếp nhận thực tập sinh vào chương trình thành công", response));
+    }
+
+    @Operation(summary = "Lấy danh sách thực tập sinh thuộc chương trình thực tập")
+    @GetMapping("/programs/{id}/interns")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<List<org.example.internservice.intern.dto.response.InternResponse>>> getProgramInterns(
+            @PathVariable Long id
+    ) {
+        List<org.example.internservice.intern.dto.response.InternResponse> response = programService.getProgramInterns(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách thực tập sinh của chương trình thành công", response));
     }
 
     @Operation(summary = "Gỡ Thực tập sinh khỏi Chương trình thực tập (HR/Admin, Áp dụng 3-Layer Defense)")

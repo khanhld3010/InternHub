@@ -7,9 +7,11 @@ import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
+import org.example.internservice.intern.dto.response.InternResponse;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.program.dto.request.ChangeProgramStatusRequest;
 import org.example.internservice.program.dto.request.CreateProgramRequest;
+import org.example.internservice.program.dto.request.EnrollInternsRequest;
 import org.example.internservice.program.dto.request.ProgramFilterRequest;
 import org.example.internservice.program.dto.request.UpdateProgramRequest;
 import org.example.internservice.program.dto.response.DepartmentResponse;
@@ -49,6 +51,7 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
     private final ProgramCodeSequenceRepository sequenceRepository;
     private final InternProfileRepository internProfileRepository;
     private final org.example.internservice.intern.repository.MentorProfileRepository mentorProfileRepository;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     private static final List<InternStatus> ACTIVE_INTERN_STATUSES = List.of(
             InternStatus.APPROVED, InternStatus.INTERNING, InternStatus.COMPLETED
@@ -206,7 +209,8 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
         Page<InternshipProgram> page = programRepository.findAll(spec, pageable);
         return PageResponse.from(page, program -> {
             long activeCount = internProfileRepository.countByProgramIdAndStatusIn(program.getId(), ACTIVE_INTERN_STATUSES);
-            return ProgramDetailResponse.fromEntity(program, activeCount);
+            long pendingCount = internProfileRepository.countByProgramIdAndStatusIn(program.getId(), List.of(InternStatus.PENDING));
+            return ProgramDetailResponse.fromEntity(program, activeCount, pendingCount);
         });
     }
 
@@ -216,7 +220,8 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
         InternshipProgram program = programRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + id));
         long activeCount = internProfileRepository.countByProgramIdAndStatusIn(id, ACTIVE_INTERN_STATUSES);
-        return ProgramDetailResponse.fromEntity(program, activeCount);
+        long pendingCount = internProfileRepository.countByProgramIdAndStatusIn(id, List.of(InternStatus.PENDING));
+        return ProgramDetailResponse.fromEntity(program, activeCount, pendingCount);
     }
 
     @Override
@@ -224,7 +229,8 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
     public ProgramSummaryResponse getProgramSummaryById(Long id) {
         InternshipProgram program = programRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + id));
-        return ProgramSummaryResponse.fromEntity(program);
+        long pendingCount = internProfileRepository.countByProgramIdAndStatusIn(id, List.of(InternStatus.PENDING));
+        return ProgramSummaryResponse.fromEntity(program, pendingCount);
     }
 
     @Override
@@ -234,7 +240,10 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
         List<ProgramStatus> openStatuses = List.of(ProgramStatus.PLANNING, ProgramStatus.OPEN);
         List<InternshipProgram> openPrograms = programRepository.findOpenProgramsWithDepartment(openStatuses);
         return openPrograms.stream()
-                .map(ProgramSummaryResponse::fromEntity)
+                .map(program -> {
+                    long pendingCount = internProfileRepository.countByProgramIdAndStatusIn(program.getId(), List.of(InternStatus.PENDING));
+                    return ProgramSummaryResponse.fromEntity(program, pendingCount);
+                })
                 .toList();
     }
 
@@ -409,5 +418,78 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
         dept.setPlannedCapacityQuota(plannedCapacityQuota);
         departmentRepository.save(dept);
         log.info("Cập nhật chỉ tiêu năng lực phòng ban ID={} lên mức {}", departmentId, plannedCapacityQuota);
+    }
+
+    @Override
+    @Transactional
+    public ProgramDetailResponse enrollInterns(Long programId, org.example.internservice.program.dto.request.EnrollInternsRequest request, String reviewerUsername) {
+        log.info("HR {} thực hiện tiếp nhận danh sách TTS vào chương trình ID: {}", reviewerUsername, programId);
+
+        InternshipProgram program = programRepository.findByIdWithLock(programId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + programId));
+
+        if (program.getStatus() != ProgramStatus.PLANNING && program.getStatus() != ProgramStatus.OPEN) {
+            throw new BadRequestException("Chương trình thực tập không ở trạng thái nhận hồ sơ (" + program.getStatus().getDisplayName() + ")");
+        }
+
+        if (!Boolean.TRUE.equals(program.getIsRecruitmentOpen())) {
+            throw new BadRequestException("Chương trình thực tập hiện đang tạm dừng nhận hồ sơ tuyển sinh");
+        }
+
+        List<Long> internIds = request.getInternIds();
+        if (internIds == null || internIds.isEmpty()) {
+            throw new BadRequestException("Danh sách ID thực tập sinh không được để trống");
+        }
+
+        long activeCount = internProfileRepository.countByProgramIdAndStatusIn(programId, ACTIVE_INTERN_STATUSES);
+        if (activeCount + internIds.size() > program.getMaxInterns()) {
+            throw new BadRequestException(String.format("Không thể tiếp nhận %d TTS. Chương trình chỉ còn %d chỉ tiêu trống (%d/%d).",
+                    internIds.size(), Math.max(0, program.getMaxInterns() - activeCount), activeCount, program.getMaxInterns()));
+        }
+
+        List<InternProfile> interns = internProfileRepository.findAllById(internIds);
+        if (interns.size() != internIds.size()) {
+            throw new ResourceNotFoundException("Một số hồ sơ thực tập sinh không tồn tại trong hệ thống");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        for (InternProfile intern : interns) {
+            intern.setProgram(program);
+            intern.setStatus(InternStatus.APPROVED);
+            intern.setReviewedBy(reviewerUsername);
+            intern.setReviewedAt(now);
+            intern.setNeedsReassignment(false);
+            intern.setReassignmentReason(null);
+        }
+
+        internProfileRepository.saveAll(interns);
+
+        if (eventPublisher != null) {
+            for (InternProfile intern : interns) {
+                try {
+                    eventPublisher.publishEvent(new org.example.internservice.intern.event.InternDecisionProcessedEvent(this, intern));
+                } catch (Exception e) {
+                    log.warn("Không thể phát sự kiện duyệt hồ sơ cho TTS ID={}: {}", intern.getId(), e.getMessage());
+                }
+            }
+        }
+
+        long newActiveCount = internProfileRepository.countByProgramIdAndStatusIn(programId, ACTIVE_INTERN_STATUSES);
+        long pendingCount = internProfileRepository.countByProgramIdAndStatusIn(programId, List.of(InternStatus.PENDING));
+        program.setCurrentInterns((int) newActiveCount);
+        InternshipProgram saved = programRepository.save(program);
+
+        return ProgramDetailResponse.fromEntity(saved, newActiveCount, pendingCount);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<org.example.internservice.intern.dto.response.InternResponse> getProgramInterns(Long programId) {
+        if (!programRepository.existsById(programId)) {
+            throw new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + programId);
+        }
+        return internProfileRepository.findByProgramId(programId).stream()
+                .map(org.example.internservice.intern.dto.response.InternResponse::fromEntity)
+                .toList();
     }
 }
