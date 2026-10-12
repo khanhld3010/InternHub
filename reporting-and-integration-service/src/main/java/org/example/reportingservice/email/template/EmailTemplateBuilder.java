@@ -456,6 +456,77 @@ public class EmailTemplateBuilder {
         return wrapEmail("Thông báo hợp đồng", "HỢP ĐỒNG", "#4F46E5", "#EEF2FF", "<p>Thông báo hợp đồng: " + escapeHtml(contractNumber) + "</p>");
     }
 
+    /**
+     * Template email thông báo lịch họp chuyên nghiệp cho Thực tập sinh
+     */
+    public String buildMeetingNotificationHtml(org.example.reportingservice.email.dto.request.SendMeetingEmailRequest req) {
+        String actionType = req.getActionType() != null ? req.getActionType().toUpperCase() : "SCHEDULED";
+        boolean isCancel = "CANCELLED".equals(actionType);
+        boolean isUpdate = "UPDATED".equals(actionType);
+
+        String badgeText = isCancel ? "HỦY LỊCH HỌP" : (isUpdate ? "CẬP NHẬT LỊCH HỌP" : "LỊCH HỌP MỚI");
+        String badgeColor = isCancel ? "#DC2626" : (isUpdate ? "#D97706" : "#4F46E5");
+        String badgeBg = isCancel ? "#FEF2F2" : (isUpdate ? "#FFFBEB" : "#EEF2FF");
+
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH:mm - dd/MM/yyyy");
+        String timeStr = req.getStartTime() != null ? req.getStartTime().format(dtf) : "Chưa xác định";
+        if (req.getEndTime() != null) {
+            timeStr += " đến " + req.getEndTime().format(DateTimeFormatter.ofPattern("HH:mm"));
+        }
+
+        boolean isOnline = "ONLINE".equalsIgnoreCase(req.getMeetingType());
+        String locationDisplay = isOnline
+                ? ("Trực tuyến (Online)" + (req.getLocationOrUrl() != null && !req.getLocationOrUrl().isBlank() ? ": <a href=\"" + escapeHtml(req.getLocationOrUrl()) + "\" style=\"color:#4F46E5; text-decoration:underline;\">" + escapeHtml(req.getLocationOrUrl()) + "</a>" : ""))
+                : ("Trực tiếp tại văn phòng" + (req.getLocationOrUrl() != null && !req.getLocationOrUrl().isBlank() ? ": <strong>" + escapeHtml(req.getLocationOrUrl()) + "</strong>" : ""));
+
+        StringBuilder body = new StringBuilder();
+        body.append("<h1 style=\"margin:0 0 16px 0; font-size:22px; line-height:30px; font-weight:800; color:#12141C;\">")
+                .append(isCancel ? "Thông Báo Hủy Cuộc Họp" : (isUpdate ? "Cập Nhật Thông Tin Cuộc Họp" : "Thư Mời Tham Gia Cuộc Họp"))
+                .append("</h1>")
+                .append("<p style=\"margin:0 0 16px 0; font-size:14px; line-height:22px; color:#5B6072;\">")
+                .append("Chào <strong>").append(escapeHtml(req.getInternName())).append("</strong>,</p>")
+                .append("<p style=\"margin:0 0 20px 0; font-size:14px; line-height:22px; color:#5B6072;\">")
+                .append(isCancel
+                        ? "Cuộc họp sau đây đã được hủy bởi <strong>" + escapeHtml(req.getOrganizerName()) + "</strong> (" + escapeHtml(req.getOrganizerRole()) + "). Vui lòng lưu ý để sắp xếp lại kế hoạch làm việc."
+                        : "Bạn có một lịch hẹn cuộc họp được sắp xếp bởi <strong>" + escapeHtml(req.getOrganizerName()) + "</strong> (" + escapeHtml(req.getOrganizerRole()) + "). Dưới đây là thông tin chi tiết:")
+                .append("</p>");
+
+        // Hộp thông tin chi tiết cuộc họp
+        body.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:20px; margin-bottom:24px;\">")
+                .append("<tr><td style=\"padding:6px 0; font-size:14px; color:#64748B; width:130px;\"><strong>Chủ đề:</strong></td>")
+                .append("<td style=\"padding:6px 0; font-size:15px; color:#0F172A; font-weight:700;\">").append(escapeHtml(req.getTitle())).append("</td></tr>")
+                .append("<tr><td style=\"padding:6px 0; font-size:14px; color:#64748B;\"><strong>Thời gian:</strong></td>")
+                .append("<td style=\"padding:6px 0; font-size:14px; color:#0F172A; font-weight:600;\">").append(timeStr).append("</td></tr>")
+                .append("<tr><td style=\"padding:6px 0; font-size:14px; color:#64748B;\"><strong>Hình thức:</strong></td>")
+                .append("<td style=\"padding:6px 0; font-size:14px; color:#0F172A;\">").append(locationDisplay).append("</td></tr>");
+
+        if (req.getDescription() != null && !req.getDescription().isBlank()) {
+            body.append("<tr><td style=\"padding:6px 0; font-size:14px; color:#64748B; vertical-align:top;\"><strong>Nội dung:</strong></td>")
+                    .append("<td style=\"padding:6px 0; font-size:14px; color:#334155; line-height:22px;\">").append(escapeHtml(req.getDescription())).append("</td></tr>");
+        }
+        body.append("</table>");
+
+        if (!isCancel) {
+            String targetUrl = isOnline && req.getLocationOrUrl() != null && req.getLocationOrUrl().startsWith("http")
+                    ? req.getLocationOrUrl()
+                    : frontendUrl + "/intern/dashboard";
+            String btnText = isOnline && req.getLocationOrUrl() != null && req.getLocationOrUrl().startsWith("http")
+                    ? "Vào Phòng Họp Trực Tuyến"
+                    : "Xem Lịch Trình Trên Hệ Thống";
+            body.append(buildButton(targetUrl, btnText));
+        }
+
+        body.append("<p style=\"margin:24px 0 0 0; font-size:13px; line-height:20px; color:#94A3B8;\">")
+                .append("Vui lòng chuẩn bị tài liệu hoặc có mặt trước giờ họp 5 phút để buổi trao đổi diễn ra hiệu quả nhất.")
+                .append("</p>");
+
+        return wrapEmail(
+                (isCancel ? "[HỦY HỌP] " : "") + req.getTitle() + " - " + timeStr,
+                badgeText, badgeColor, badgeBg,
+                body.toString()
+        );
+    }
+
     private String escapeHtml(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;")

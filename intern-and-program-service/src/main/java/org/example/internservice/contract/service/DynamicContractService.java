@@ -20,6 +20,7 @@ public interface DynamicContractService {
     DynamicContractResponse createRevision(Long contractId, CreateContractDraftRequest request, String hrUsername);
     java.util.List<DynamicContractResponse> getAllContracts();
     byte[] getContractPdfBytes(Long contractId, Long revisionId, Long internUserId);
+    byte[] getContractPdfBytesForHr(Long contractId);
     byte[] getMyContractPdfBytes(Long internUserId);
     String getContractPdfViewUrl(Long contractId, Long revisionId, Long internUserId);
 }

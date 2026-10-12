@@ -16,4 +16,6 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
     boolean existsByInternIdAndWorkDate(Long internId, LocalDate workDate);
 
     List<Attendance> findByInternIdAndWorkDateBetweenOrderByWorkDateAsc(Long internId, LocalDate startDate, LocalDate endDate);
+
+    List<Attendance> findByWorkDateAndCheckInTimeIsNotNullAndCheckOutTimeIsNull(LocalDate workDate);
 }

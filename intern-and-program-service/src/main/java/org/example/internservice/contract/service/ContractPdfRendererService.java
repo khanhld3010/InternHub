@@ -66,46 +66,63 @@ public class ContractPdfRendererService {
         }
     }
 
-    private String injectSignatureIntoHtml(String html, String signatureDataUrl, String internFullName) {
-        if (signatureDataUrl == null || signatureDataUrl.isBlank()) {
+    /**
+     * Nhúng con dấu mộc đỏ Bên A và chữ ký vẽ điện tử Bên B trực tiếp vào HTML (hỗ trợ cả preview và render PDF)
+     */
+    public String injectSignatureIntoHtml(String html, String signatureDataUrl, String internFullName) {
+        if (html == null || html.isBlank()) {
             return html;
         }
 
-        // Tạo thẻ img chứa chữ ký số Base64
-        String signatureImgTag = String.format(
-                "<div style=\"margin-top: 8px; margin-bottom: 8px;\">" +
-                "<img src=\"%s\" style=\"max-height: 70px; max-width: 180px; object-fit: contain; display: block; margin: 0 auto;\" alt=\"Chữ ký điện tử TTS\" />" +
-                "</div>",
-                signatureDataUrl
-        );
+        try {
+            Document doc = Jsoup.parse(html, "UTF-8");
 
-        // Con dấu điện tử doanh nghiệp bên A (Digital Seal)
-        String companyDigitalStamp = 
-                "<div style=\"margin-top: 8px; margin-bottom: 8px; border: 1.5px dashed #059669; padding: 4px; display: inline-block; border-radius: 4px; background-color: #f0fdf4;\">" +
-                "<div style=\"font-size: 11px; font-weight: bold; color: #047857; text-transform: uppercase;\">ĐÃ KÝ ĐIỆN TỬ BỞI CÔNG TY</div>" +
-                "<div style=\"font-size: 9px; color: #065f46;\">InternHub Enterprise Verified</div>" +
-                "</div>";
+            // 1. Tạo con dấu mộc đỏ Bên A chuẩn doanh nghiệp (Red Stamp Badge)
+            String companyRedStampHtml = """
+                <div style="margin: 6px auto; width: 130px; height: 130px; border: 2.5px solid #dc2626; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #dc2626; transform: rotate(-5deg); background-color: rgba(254, 242, 242, 0.6); box-sizing: border-box; padding: 6px;">
+                    <div style="font-size: 8px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase;">CÔNG TY CP INTERNHUB</div>
+                    <div style="font-size: 16px; margin: 2px 0;">★ ★ ★</div>
+                    <div style="font-size: 9px; font-weight: bold; border-top: 1px dashed #dc2626; border-bottom: 1px dashed #dc2626; padding: 2px 0; width: 90%;">ĐÃ KÝ ĐIỆN TỬ</div>
+                    <div style="font-size: 7.5px; margin-top: 2px; color: #b91c1c;">HỆ THỐNG XÁC THỰC</div>
+                </div>
+            """;
 
-        String modifiedHtml = html;
+            // 2. Chèn con dấu Bên A: Tìm thẻ chứa 'ĐẠI DIỆN BÊN A'
+            var benAElements = doc.getElementsContainingOwnText("ĐẠI DIỆN BÊN A");
+            if (!benAElements.isEmpty()) {
+                var benAElement = benAElements.first();
+                // Xóa hoặc giảm bớt margin trống
+                benAElement.attr("style", "font-weight: bold; margin-bottom: 4px;");
+                // Kiểm tra xem đã có stamp chưa để tránh duplicate
+                if (benAElement.parent() != null && benAElement.parent().select(".company-stamp").isEmpty()) {
+                    benAElement.after("<div class=\"company-stamp\" style=\"display: block; text-align: center;\">" + companyRedStampHtml + "</div>");
+                }
+            }
 
-        // Ghép chữ ký TTS vào vùng Bên B
-        if (modifiedHtml.contains("ĐẠI DIỆN BÊN B")) {
-            // Thay thế khoảng trống margin-bottom: 60px hoặc chèn trước tên TTS
-            modifiedHtml = modifiedHtml.replace(
-                    "<p style=\"font-weight: bold; margin-bottom: 60px;\">ĐẠI DIỆN BÊN B</p>",
-                    "<p style=\"font-weight: bold; margin-bottom: 5px;\">ĐẠI DIỆN BÊN B</p>" + signatureImgTag
-            );
+            // 3. Chèn chữ ký TTS Bên B (nếu có dữ liệu nét vẽ)
+            if (signatureDataUrl != null && !signatureDataUrl.isBlank()) {
+                String signatureImgTag = String.format(
+                        "<div class=\"intern-signature-box\" style=\"margin-top: 6px; margin-bottom: 6px; text-align: center;\">" +
+                        "<img src=\"%s\" style=\"max-height: 70px; max-width: 170px; object-fit: contain; display: block; margin: 0 auto;\" alt=\"Chữ ký điện tử TTS\" />" +
+                        "</div>",
+                        signatureDataUrl
+                );
+
+                var benBElements = doc.getElementsContainingOwnText("ĐẠI DIỆN BÊN B");
+                if (!benBElements.isEmpty()) {
+                    var benBElement = benBElements.first();
+                    benBElement.attr("style", "font-weight: bold; margin-bottom: 4px;");
+                    if (benBElement.parent() != null && benBElement.parent().select(".intern-signature-box").isEmpty()) {
+                        benBElement.after(signatureImgTag);
+                    }
+                }
+            }
+
+            return doc.body().html();
+        } catch (Exception e) {
+            log.warn("Lỗi khi dùng Jsoup inject con dấu/chữ ký, giữ nguyên HTML gốc: {}", e.getMessage());
+            return html;
         }
-
-        // Ghép con dấu bên A
-        if (modifiedHtml.contains("ĐẠI DIỆN BÊN A")) {
-            modifiedHtml = modifiedHtml.replace(
-                    "<p style=\"font-weight: bold; margin-bottom: 60px;\">ĐẠI DIỆN BÊN A</p>",
-                    "<p style=\"font-weight: bold; margin-bottom: 5px;\">ĐẠI DIỆN BÊN A</p>" + companyDigitalStamp
-            );
-        }
-
-        return modifiedHtml;
     }
 
     private void ensurePrintStyles(Document doc) {

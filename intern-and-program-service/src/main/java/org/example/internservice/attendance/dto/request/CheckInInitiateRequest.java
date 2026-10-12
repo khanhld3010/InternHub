@@ -2,7 +2,6 @@ package org.example.internservice.attendance.dto.request;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,12 +16,10 @@ import lombok.Setter;
 @Builder
 public class CheckInInitiateRequest {
 
-    @NotNull(message = "Vĩ độ (latitude) không được để trống")
     @DecimalMin(value = "-90.0", message = "Vĩ độ không hợp lệ")
     @DecimalMax(value = "90.0", message = "Vĩ độ không hợp lệ")
     private Double latitude;
 
-    @NotNull(message = "Kinh độ (longitude) không được để trống")
     @DecimalMin(value = "-180.0", message = "Kinh độ không hợp lệ")
     @DecimalMax(value = "180.0", message = "Kinh độ không hợp lệ")
     private Double longitude;

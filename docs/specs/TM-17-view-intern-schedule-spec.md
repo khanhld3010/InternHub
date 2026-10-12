@@ -15,6 +15,7 @@
 | Phiên bản | Ngày | Người thực hiện | Task / Jira | Loại thay đổi | Lý do & Giải trình kỹ thuật (Rationale) |
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **v1.0** | 2026-09-26 | AI Agent & Developer | `TM-17` | Tạo mới | Thiết kế đặc tả kỹ thuật tính năng Xem Lịch Thực Tập Cá Nhân & Tiến Độ cho TTS theo thỏa thuận Brainstorming. |
+| **v1.1** | 2026-10-08 | Luong Anh Huy & Agent | `TM-17` | Nâng cấp | Tích hợp phân hệ Lịch Họp Hành Động (Actionable Meeting) kết nối phòng họp Jitsi/Google Meet, file `.ics` đính kèm và cảnh báo 15p theo [ADR 0002: Kiến Trúc MeetingProvider & Calendar Sync](file:///c:/Users/Luong%20Anh%20Huy/InternHub-Workspace/InternHub/docs/adr/0002-meeting-provider-and-calendar-sync.md). |
 
 ---
 

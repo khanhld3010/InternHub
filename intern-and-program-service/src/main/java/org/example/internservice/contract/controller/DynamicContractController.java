@@ -73,6 +73,21 @@ public class DynamicContractController {
         return ResponseEntity.ok(ApiResponse.success(200, "Lấy danh sách toàn bộ hợp đồng thành công", response));
     }
 
+    @GetMapping("/{id}/pdf")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<byte[]> downloadContractPdfForHr(@PathVariable Long id) {
+        byte[] pdfBytes = contractService.getContractPdfBytesForHr(id);
+
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(org.springframework.http.ContentDisposition.inline()
+                .filename("contract_" + id + ".pdf")
+                .build());
+        headers.setContentLength(pdfBytes.length);
+
+        return new ResponseEntity<>(pdfBytes, headers, org.springframework.http.HttpStatus.OK);
+    }
+
     // --- INTERN ENDPOINTS ---
 
     @GetMapping("/intern/me")

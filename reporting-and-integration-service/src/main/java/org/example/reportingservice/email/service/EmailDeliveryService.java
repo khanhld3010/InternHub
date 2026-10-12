@@ -262,4 +262,99 @@ public class EmailDeliveryService {
                 request.getContractId()
         );
     }
+
+    private final ICalendarBuilderService iCalendarBuilderService;
+
+    /**
+     * Gửi email thông báo lịch họp (Tạo mới, Cập nhật, Hủy lịch) cho Thực tập sinh
+     * Tuân thủ ADR 0002:
+     * - GOOGLE_MEET: Không đính kèm .ics (để Google tự mời, tránh trùng lịch).
+     * - JITSI / CUSTOM_MANUAL: Đính kèm .ics chuẩn ical4j.
+     */
+    @Async
+    public void sendMeetingScheduleEmailAsync(org.example.reportingservice.email.dto.request.SendMeetingEmailRequest request) {
+        log.info("Bat dau gui email thong bao lich hop async: meetingId={}, action={}, provider={}, to={}",
+                request.getMeetingId(), request.getActionType(), request.getProvider(), request.getInternEmail());
+
+        String actionType = request.getActionType() != null ? request.getActionType().toUpperCase() : "SCHEDULED";
+        String subject;
+        String templateCode = "MEETING_" + actionType;
+
+        if ("CANCELLED".equals(actionType)) {
+            subject = "[InternHub - HỦY LỊCH HỌP] " + request.getTitle();
+        } else if ("UPDATED".equals(actionType)) {
+            subject = "[InternHub - CẬP NHẬT LỊCH HỌP] " + request.getTitle();
+        } else if ("REMINDER".equals(actionType)) {
+            subject = "[InternHub - NHẮC HẸN] Cuộc họp sắp diễn ra trong 15 phút: " + request.getTitle();
+        } else {
+            subject = "[InternHub - THƯ MỜI HỌP] " + request.getTitle();
+        }
+
+        String htmlContent = emailTemplateBuilder.buildMeetingNotificationHtml(request);
+
+        boolean attachIcs = !"GOOGLE_MEET".equalsIgnoreCase(request.getProvider());
+        byte[] icsAttachment = attachIcs ? iCalendarBuilderService.generateIcsBytes(request) : null;
+
+        sendSingleEmailWithAttachment(
+                request.getInternEmail(),
+                request.getInternName(),
+                subject,
+                templateCode,
+                htmlContent,
+                request.getMeetingId(),
+                icsAttachment,
+                "invite.ics"
+        );
+    }
+
+    private void sendSingleEmailWithAttachment(
+            String to,
+            String toName,
+            String subject,
+            String templateCode,
+            String htmlContent,
+            Long refId,
+            byte[] attachmentBytes,
+            String attachmentName
+    ) {
+        EmailLog emailLog = EmailLog.builder()
+                .referenceId(refId)
+                .recipientEmail(to)
+                .recipientName(toName)
+                .subject(subject)
+                .templateCode(templateCode)
+                .status(EmailStatus.PENDING)
+                .build();
+        emailLog = emailLogRepository.save(emailLog);
+
+        try {
+            if (mockMode || fromEmail == null || fromEmail.isBlank()) {
+                log.info("[MOCK EMAIL SENDER] Gui email (attachment: {}) toi {}. Subject: '{}'",
+                        attachmentBytes != null ? attachmentName : "none", to, subject);
+                Thread.sleep(300);
+            } else {
+                MimeMessage message = mailSender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+                helper.setFrom(fromEmail, companyName);
+                helper.setTo(to);
+                helper.setSubject(subject);
+                helper.setText(htmlContent, true);
+
+                if (attachmentBytes != null && attachmentBytes.length > 0) {
+                    helper.addAttachment(attachmentName, new org.springframework.core.io.ByteArrayResource(attachmentBytes), "text/calendar; charset=UTF-8");
+                }
+
+                mailSender.send(message);
+                log.info("Gui email SMTP thanh cong toi {}", to);
+            }
+            emailLog.setStatus(EmailStatus.SENT);
+            emailLog.setSentAt(LocalDateTime.now());
+            emailLogRepository.save(emailLog);
+        } catch (Exception e) {
+            log.error("Loi khi gui email toi {}: {}", to, e.getMessage());
+            emailLog.setStatus(EmailStatus.FAILED);
+            emailLog.setErrorMessage(e.getMessage());
+            emailLogRepository.save(emailLog);
+        }
+    }
 }
