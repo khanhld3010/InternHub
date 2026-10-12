@@ -192,6 +192,12 @@ spring:
               predicates:
                 - Path=/api/employees/**
 
+            # 7. AI Service (Screening TM-103)
+            - id: service-ai-screening
+              uri: lb://service-ai
+              predicates:
+                - Path=/api/ai, /api/ai/**
+
 eureka:
   client:
     service-url:

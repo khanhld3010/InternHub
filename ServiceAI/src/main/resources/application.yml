@@ -1,0 +1,68 @@
+server:
+  port: ${SERVER_PORT:8086}
+
+spring:
+  application:
+    name: service-ai
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://config-server:8888}
+  cloud:
+    config:
+      fail-fast: false
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3307}/${DB_NAME:internhub_db}?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+
+# Google Gemini API & Screening Configuration
+gemini:
+  api-key: ${GEMINI_API_KEY:mock-key}
+  model: ${GEMINI_MODEL:gemini-1.5-flash}
+  mock-mode: ${GEMINI_MOCK_MODE:true}
+  connect-timeout-seconds: 10
+  read-timeout-seconds: 30
+
+# Inter-service Feign URLs
+services:
+  intern-service:
+    url: ${INTERN_SERVICE_URL:http://localhost:8082}
+  file-service:
+    url: ${FILE_SERVICE_URL:http://localhost:8084}
+
+# Thread Pool Configuration
+ai:
+  async:
+    core-pool-size: 4
+    max-pool-size: 10
+    queue-capacity: 200
+    thread-name-prefix: "ai-screener-"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
