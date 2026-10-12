@@ -8,14 +8,13 @@ import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.client.NotificationEventDispatcher;
 import org.example.internservice.intern.client.dto.CreateNotificationInternalRequest;
-import org.example.internservice.intern.entity.InternMentorAssignment;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
-import org.example.internservice.intern.entity.enums.MentorAssignmentStatus;
-import org.example.internservice.intern.repository.InternMentorAssignmentRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
+import org.example.internservice.intern.service.MentorAccessHelper;
 import org.example.internservice.leave.dto.request.ApproveLeaveRequest;
 import org.example.internservice.leave.dto.request.CreateLeaveRequest;
+import org.example.internservice.leave.dto.request.LeaveRequestFilterRequest;
 import org.example.internservice.leave.dto.request.RejectLeaveRequest;
 import org.example.internservice.leave.dto.response.LeaveRequestResponse;
 import org.example.internservice.leave.dto.response.LeaveRequestSummaryResponse;
@@ -23,18 +22,22 @@ import org.example.internservice.leave.entity.LeaveRequest;
 import org.example.internservice.leave.entity.enums.LeaveStatus;
 import org.example.internservice.leave.entity.enums.LeaveType;
 import org.example.internservice.leave.repository.LeaveRequestRepository;
+import org.example.internservice.leave.repository.specification.LeaveRequestSpecification;
 import org.example.internservice.leave.service.LeaveRequestService;
 import org.example.internservice.leave.util.WorkdayCalculator;
 import org.example.internservice.security.CustomUserDetails;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -46,9 +49,9 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
 
     private final LeaveRequestRepository leaveRequestRepository;
     private final InternProfileRepository internProfileRepository;
-    private final InternMentorAssignmentRepository internMentorAssignmentRepository;
     private final WorkdayCalculator workdayCalculator;
     private final NotificationEventDispatcher notificationEventDispatcher;
+    private final MentorAccessHelper mentorAccessHelper;
 
     @Override
     @Transactional
@@ -125,8 +128,9 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
 
         boolean isHrOrAdmin = roles.stream().anyMatch(r -> r.contains("HR") || r.contains("ADMIN"));
         if (!isHrOrAdmin) {
-            boolean isOwner = leaveRequest.getIntern().getUserId().equals(userId);
-            boolean isMentor = isMentorAssignedToIntern(userId, leaveRequest.getIntern().getId());
+            boolean isOwner = leaveRequest.getIntern().getUserId() != null && leaveRequest.getIntern().getUserId().equals(userId);
+            boolean isMentor = mentorAccessHelper.isInternManagedByMentor(leaveRequest.getIntern().getId(),
+                    CustomUserDetails.builder().userId(userId).build());
             if (!isOwner && !isMentor) {
                 throw new AccessDeniedException("Bạn không có quyền xem chi tiết đơn xin nghỉ phép này");
             }
@@ -145,17 +149,30 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
             return PageResponse.from(allPending, this::mapToSummaryResponse);
         }
 
-        List<Long> internIds = internMentorAssignmentRepository.findByMentorIdAndStatus(userDetails.getUserId(), MentorAssignmentStatus.ACTIVE)
-                .stream()
-                .map(assignment -> assignment.getIntern().getId())
-                .toList();
-
-        if (internIds.isEmpty()) {
+        Set<Long> managedInternIds = mentorAccessHelper.getManagedInternIds(userDetails);
+        if (managedInternIds.isEmpty()) {
             return PageResponse.from(Page.empty(pageable), this::mapToSummaryResponse);
         }
 
-        Page<LeaveRequest> pendingForMentor = leaveRequestRepository.findPendingByInternIds(internIds, pageable);
+        Page<LeaveRequest> pendingForMentor = leaveRequestRepository.findPendingByInternIds(new ArrayList<>(managedInternIds), pageable);
         return PageResponse.from(pendingForMentor, this::mapToSummaryResponse);
+    }
+
+    @Override
+    public PageResponse<LeaveRequestSummaryResponse> getLeaveRequests(LeaveRequestFilterRequest filter, CustomUserDetails userDetails, Pageable pageable) {
+        boolean isHrOrAdmin = userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().contains("HR") || a.getAuthority().contains("ADMIN"));
+
+        Specification<LeaveRequest> spec;
+        if (isHrOrAdmin) {
+            spec = LeaveRequestSpecification.getSpecification(filter, null);
+        } else {
+            Set<Long> managedInternIds = mentorAccessHelper.getManagedInternIds(userDetails);
+            spec = LeaveRequestSpecification.getSpecification(filter, managedInternIds);
+        }
+
+        Page<LeaveRequest> page = leaveRequestRepository.findAll(spec, pageable);
+        return PageResponse.from(page, this::mapToSummaryResponse);
     }
 
     @Override
@@ -235,18 +252,12 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn xin nghỉ phép với mã ID: " + id));
     }
 
-    private boolean isMentorAssignedToIntern(Long mentorUserId, Long internId) {
-        return internMentorAssignmentRepository.findByInternIdAndStatus(internId, MentorAssignmentStatus.ACTIVE)
-                .map(a -> a.getMentorId().equals(mentorUserId))
-                .orElse(false);
-    }
-
     private void verifyApproverAuthority(CustomUserDetails approverDetails, LeaveRequest leaveRequest) {
         boolean isHrOrAdmin = approverDetails.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().contains("HR") || a.getAuthority().contains("ADMIN"));
 
         if (!isHrOrAdmin) {
-            boolean isMentor = isMentorAssignedToIntern(approverDetails.getUserId(), leaveRequest.getIntern().getId());
+            boolean isMentor = mentorAccessHelper.isInternManagedByMentor(leaveRequest.getIntern(), approverDetails);
             if (!isMentor) {
                 throw new AccessDeniedException("Bạn không phải Mentor phụ trách thực tập sinh này, không có quyền duyệt/từ chối đơn");
             }
@@ -254,12 +265,7 @@ public class LeaveRequestServiceImpl implements LeaveRequestService {
     }
 
     private void notifyMentorOnNewRequest(InternProfile intern, LeaveRequest request, Long internUserId) {
-        Long mentorUserId = intern.getMentorId();
-        if (mentorUserId == null) {
-            mentorUserId = internMentorAssignmentRepository.findByInternIdAndStatus(intern.getId(), MentorAssignmentStatus.ACTIVE)
-                    .map(InternMentorAssignment::getMentorId)
-                    .orElse(null);
-        }
+        Long mentorUserId = mentorAccessHelper.getMentorNotificationRecipientId(intern);
 
         if (mentorUserId != null) {
             notificationEventDispatcher.dispatch(CreateNotificationInternalRequest.builder()

@@ -34,6 +34,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +63,7 @@ public class InternProfileServiceImpl implements InternProfileService {
     private final org.example.internservice.intern.service.OnboardingTokenService onboardingTokenService;
     private final ApplicationEventPublisher eventPublisher;
     private final org.example.internservice.intern.client.NotificationEventDispatcher notificationDispatcher;
+    private final org.example.internservice.intern.service.MentorAccessHelper mentorAccessHelper;
 
     @Override
     @Transactional
@@ -876,20 +878,24 @@ public class InternProfileServiceImpl implements InternProfileService {
         log.info("Tim kiem va loc ho so thuc tap sinh");
         Pageable sanitizedPageable = sanitizePageable(pageable);
 
-        // Bảo mật cấp API: Tự động ép lọc theo mentorId nếu người gọi là ROLE_MENTOR
-        Long enforceMentorId = null;
+        // Bảo mật cấp API: Tự động ép lọc theo danh sách intern do mentor phụ trách nếu người gọi là ROLE_MENTOR
+        Collection<Long> enforceInternIds = null;
         org.springframework.security.core.Authentication authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof org.example.internservice.security.CustomUserDetails userDetails) {
             boolean isMentor = userDetails.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_MENTOR") || a.getAuthority().equalsIgnoreCase("MENTOR"));
-            if (isMentor) {
-                enforceMentorId = userDetails.getUserId();
-                log.info("Phát hiện tài khoản Mentor [id={}, user={}]. Tự động giới hạn dữ liệu chỉ hiển thị TTS do mentor này phụ trách.",
-                        enforceMentorId, userDetails.getUsername());
+            boolean isHrOrAdmin = userDetails.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_HR") || a.getAuthority().equalsIgnoreCase("ROLE_ADMIN")
+                            || a.getAuthority().equalsIgnoreCase("HR") || a.getAuthority().equalsIgnoreCase("ADMIN"));
+            if (isMentor && !isHrOrAdmin) {
+                Set<Long> managedInternIds = mentorAccessHelper.getManagedInternIds(userDetails);
+                enforceInternIds = managedInternIds;
+                log.info("Phát hiện tài khoản Mentor [id={}, user={}]. Tự động giới hạn dữ liệu chỉ hiển thị {} TTS do mentor này phụ trách.",
+                        userDetails.getUserId(), userDetails.getUsername(), managedInternIds.size());
             }
         }
 
-        Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request, enforceMentorId);
+        Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request, enforceInternIds);
         Page<InternProfile> internPage = internProfileRepository.findAll(spec, sanitizedPageable);
         return PageResponse.from(internPage, this::mapToResponse);
     }
@@ -933,7 +939,11 @@ public class InternProfileServiceImpl implements InternProfileService {
     @Override
     public List<InternResponse> getInternsByMentorId(Long mentorId) {
         log.info("Lấy danh sách TTS được phân công cho Mentor ID: {}", mentorId);
-        return internProfileRepository.findByMentorId(mentorId).stream()
+        Set<Long> managedInternIds = mentorAccessHelper.getManagedInternIds(mentorId);
+        if (managedInternIds.isEmpty()) {
+            return List.of();
+        }
+        return internProfileRepository.findAllById(managedInternIds).stream()
                 .map(this::mapToResponse)
                 .toList();
     }

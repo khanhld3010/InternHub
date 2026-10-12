@@ -20,6 +20,7 @@
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **v1.0.0** | 2026-10-05 | AI Senior Pair-Programmer | `TM-28` | Tạo mới | Thiết kế tài liệu đặc tả kỹ thuật toàn diện 14 phần cho phân hệ Đăng ký xin nghỉ phép của Thực tập sinh (Intern Apply For Leave), bao gồm luồng nộp đơn, tính số ngày nghỉ làm việc trừ cuối tuần, chống trùng lặp thời gian nghỉ, hủy đơn PENDING, quy trình xét duyệt của Mentor/HR, và ma trận thông báo thời gian thực. |
 | **v1.1.0** | 2026-10-05 | AI Senior Pair-Programmer | `TM-28` | Triển khai mã nguồn | Hoàn tất cài đặt toàn bộ 5 Phase theo Plan: Enums, Entity, DTOs, Repository, Service, Controller, Gateway Route và Unit Tests đạt 100% Pass. |
+| **v1.2.0** | 2026-10-08 | AI Senior Pair-Programmer | `TM-28` / `TM-26` | Tinh chỉnh & Nâng cấp | Hoàn thiện luồng xét duyệt đơn xin nghỉ phép: Phân quyền rõ ràng (HR/Admin duyệt tất cả đơn, Mentor duyệt đơn của các Intern mà mình phụ trách qua `MentorAccessHelper` giải quyết triệt để vấn đề lệch ID giữa IAM `userId` và `mentor_profiles.id`); Bổ sung endpoint `GET /api/v1/leave-requests` hỗ trợ bộ lọc đa tiêu chí (`status`, `leaveType`, `startDate`, `endDate`, `internId`, `keyword`) và phân trang 0-indexed. |
 
 ---
 
@@ -101,12 +102,18 @@ Thực hiện rà soát toàn diện mã nguồn hiện có trong `intern-and-pr
 
 - **Phía Xét duyệt - Mentor & HR (`ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`):**
   - **Xem danh sách đơn chờ duyệt (`GET /api/v1/leave-requests/pending`):**
-    + Mentor xem danh sách đơn `PENDING` của các TTS do mình phụ trách.
+    + Mentor xem danh sách đơn `PENDING` của các TTS do mình phụ trách (phân giải định danh qua `MentorAccessHelper`).
     + HR / Admin xem danh sách đơn `PENDING` của toàn bộ hệ thống.
+  - **Tra cứu và lọc danh sách đơn xin nghỉ phép (`GET /api/v1/leave-requests`):**
+    + Hỗ trợ bộ lọc đa tiêu chí: `status`, `leaveType`, `startDate`, `endDate`, `internId`, `keyword` (tìm theo tên, mã intern, email), và phân trang 0-indexed (`page`, `size`, `sort`).
+    + Mentor: Tự động giới hạn kết quả chỉ trong phạm vi các Thực tập sinh mà Mentor đó phụ trách.
+    + HR / Admin: Truy vấn toàn bộ đơn trong hệ thống hoặc lọc theo Intern chỉ định.
   - **Phê duyệt đơn (`PATCH /api/v1/leave-requests/{id}/approve`):**
     + Duyệt đơn, cập nhật trạng thái sang `APPROVED`, lưu `approverId`, `approverName`, `approvedAt`, và ghi chú tùy chọn `approvalNote`.
+    + Mentor chỉ được duyệt đơn của TTS mình phụ trách; HR/Admin duyệt toàn quyền.
   - **Từ chối đơn (`PATCH /api/v1/leave-requests/{id}/reject`):**
     + Từ chối đơn, bắt buộc nhập lý do từ chối `rejectionReason` (tối thiểu 5 ký tự), cập nhật trạng thái sang `REJECTED`.
+    + Mentor chỉ được từ chối đơn của TTS mình phụ trách; HR/Admin từ chối toàn quyền.
 
 - **Tích hợp Thông báo (`NotificationEventDispatcher`):**
   - Gửi thông báo đến Mentor khi có đơn mới (`LEAVE_REQUEST_SUBMITTED`).
@@ -213,9 +220,12 @@ Thực hiện rà soát toàn diện mã nguồn hiện có trong `intern-and-pr
 - **BR-3 (Quy tắc chuyển trạng thái bất khả đảo ngược - State Transition Immutability):**
   - Chỉ đơn có trạng thái `PENDING` mới được phép chuyển sang `APPROVED`, `REJECTED`, hoặc `CANCELLED`.
   - Không cho phép bất kỳ thao tác thay đổi nào trên đơn đã ở trạng thái kết thúc (`APPROVED`, `REJECTED`, `CANCELLED`).
-- **BR-4 (Quy tắc phân quyền duyệt - Approval Authority):**
-  - `ROLE_MENTOR` chỉ được phép duyệt đơn của những Intern mà Mentor đó đang trực tiếp phụ trách (`InternMentorAssignment.status == ACTIVE` hoặc `InternProfile.mentorId == currentMentorId`).
-  - `ROLE_HR` và `ROLE_ADMIN` có toàn quyền duyệt đơn của bất kỳ Intern nào trong hệ thống.
+- **BR-4 (Quy tắc phân quyền duyệt & phân giải phạm vi Mentor - Approval Authority & Dual Mentor Resolution):**
+  - **`ROLE_HR` & `ROLE_ADMIN`:** Toàn quyền phê duyệt (`APPROVED`) hoặc từ chối (`REJECTED`) tất cả đơn xin nghỉ phép trong toàn bộ hệ thống mà không bị giới hạn phạm vi.
+  - **`ROLE_MENTOR`:** Chỉ được phép xem, phê duyệt hoặc từ chối đơn của các Thực tập sinh thuộc danh sách mình phụ trách. Nếu cố tình thao tác trên đơn của TTS khác, hệ thống lập tức ném `AccessDeniedException` (HTTP 403 Forbidden).
+  - **Cơ chế phân giải định danh Mentor (`MentorAccessHelper`):**
+    + Do hệ thống lưu trữ phân tách giữa IAM Account ID (`userId` trong JWT) và Khóa chính của bảng `mentor_profiles` (`id`), `MentorAccessHelper` tự động phân giải tập hợp candidate IDs (`{userId, mentorProfileId}`) và tổng hợp danh sách `managedInternIds` từ cả 2 nguồn: (1) Cột `intern_profiles.mentor_id` và (2) Bảng phân công `intern_mentor_assignments` ở trạng thái `ACTIVE`.
+    + Giải pháp này khắc phục triệt để lỗi giao diện Mentor không hiển thị đúng danh sách Intern phụ trách và đảm bảo tính nhất quán tuyệt đối giữa báo cáo chuyên cần TM-26 và luồng duyệt đơn TM-28.
 - **BR-5 (Quy tắc lý do từ chối - Rejection Reason Mandatory):**
   - Khi từ chối đơn (`REJECTED`), bắt buộc phải cung cấp `rejectionReason` với độ dài từ 5 đến 500 ký tự để phản hồi cho Thực tập sinh.
 
@@ -586,6 +596,63 @@ Tất cả các API tuân thủ chuẩn RESTful danh từ số nhiều `/api/v1/
 
 ---
 
+### 8.8. API 8: Tra cứu và lọc danh sách đơn xin nghỉ phép (`GET /api/v1/leave-requests`)
+
+- **Mục đích:** Hỗ trợ Mentor và HR tra cứu, tìm kiếm, lọc danh sách đơn xin nghỉ phép với nhiều tiêu chí kết hợp và phân trang.
+- **Phân quyền:** `@PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")`
+- **Query Parameters (`LeaveRequestFilterRequest.java`):**
+  - `status` (tùy chọn): `PENDING` / `APPROVED` / `REJECTED` / `CANCELLED`
+  - `leaveType` (tùy chọn): `SICK` / `PERSONAL` / `ACADEMIC_EXAM` / `BEREAVEMENT` / `OTHER`
+  - `startDate` (tùy chọn): Định dạng `YYYY-MM-DD`
+  - `endDate` (tùy chọn): Định dạng `YYYY-MM-DD`
+  - `internId` (tùy chọn, áp dụng cho HR): Lọc theo ID của Intern cụ thể
+  - `keyword` (tùy chọn): Từ khóa tìm kiếm theo họ tên, mã thực tập sinh hoặc email
+  - `page` (mặc định: `0`), `size` (mặc định: `10`), `sort` (mặc định: `createdAt,desc`)
+- **Quy tắc phân quyền phạm vi dữ liệu:**
+  - Nếu Caller là `ROLE_MENTOR`: Hệ thống gọi `mentorAccessHelper.getManagedInternIds(mentorUserId)` để xác định danh sách Intern do Mentor phụ trách. Nếu Mentor chưa phụ trách Intern nào, trả về danh sách rỗng (`totalItems = 0`). Nếu có, JPA Specification sẽ tự động áp điều kiện `intern.id IN (:managedInternIds)`.
+  - Nếu Caller là `ROLE_HR` hoặc `ROLE_ADMIN`: Xem được toàn bộ đơn trong hệ thống, hoặc lọc theo `internId` tùy chọn.
+- **Response Success (200 OK):** Trả về `ResponseEntity<ApiResponse<PageResponse<LeaveRequestResponse>>>`.
+  ```json
+  {
+    "code": 200,
+    "message": "Lấy danh sách đơn xin nghỉ phép thành công",
+    "data": {
+      "items": [
+        {
+          "id": 12,
+          "internId": 5,
+          "internCode": "INT-2026-0005",
+          "internName": "Nguyễn Văn An",
+          "internEmail": "an.nguyen@example.com",
+          "internPhone": "0987654321",
+          "leaveType": "ACADEMIC_EXAM",
+          "leaveTypeDescription": "Nghỉ thi cử / Đồ án",
+          "durationType": "FULL_DAY",
+          "startDate": "2026-10-15",
+          "endDate": "2026-10-16",
+          "totalDays": 2.0,
+          "reason": "Em xin phép nghỉ để tham gia kỳ thi vấn đáp tốt nghiệp...",
+          "status": "APPROVED",
+          "approverName": "Trần Thị Mai",
+          "approvedAt": "2026-10-05T15:00:00",
+          "createdAt": "2026-10-05T14:00:00"
+        }
+      ],
+      "currentPage": 0,
+      "pageSize": 10,
+      "totalItems": 1,
+      "totalPages": 1,
+      "isFirst": true,
+      "isLast": true,
+      "hasNext": false,
+      "hasPrevious": false
+    },
+    "timestamp": "2026-10-08T14:30:00"
+  }
+  ```
+
+---
+
 ## 9. Core Flow / Enforcement Flow (Luồng Xử Lý Cốt Lõi)
 
 ### 9.1. Sơ Đồ Trạng Thái Đơn Xin Nghỉ Phép (State Machine)
@@ -682,17 +749,20 @@ Intern (Web/App)           API Gateway            LeaveRequestService        Not
   - `org.example.internservice.leave.entity.enums.LeaveStatus`
 - [x] **Entity:**
   - `org.example.internservice.leave.entity.LeaveRequest` (Kế thừa `BaseEntity`)
-- [x] **Utility:**
+- [x] **Utility & Helper:**
   - `org.example.internservice.leave.util.WorkdayCalculator` (Tính toán số ngày làm việc loại trừ T7 & CN)
+  - `org.example.internservice.intern.service.MentorAccessHelper` (Phân giải định danh 2 chiều IAM userId và MentorProfile.id, tổng hợp danh sách TTS quản lý cho Mentor)
 - [x] **DTOs Request:**
   - `org.example.internservice.leave.dto.request.CreateLeaveRequest`
   - `org.example.internservice.leave.dto.request.ApproveLeaveRequest`
   - `org.example.internservice.leave.dto.request.RejectLeaveRequest`
+  - `org.example.internservice.leave.dto.request.LeaveRequestFilterRequest` (Bộ lọc đa tiêu chí kèm phân trang 0-indexed)
 - [x] **DTOs Response:**
   - `org.example.internservice.leave.dto.response.LeaveRequestResponse`
   - `org.example.internservice.leave.dto.response.LeaveRequestSummaryResponse`
-- [x] **Repository:**
+- [x] **Repository & Specification:**
   - `org.example.internservice.leave.repository.LeaveRequestRepository`
+  - `org.example.internservice.leave.repository.specification.LeaveRequestSpecification` (JPA Specification lọc theo trạng thái, loại nghỉ, ngày tháng, và phạm vi Intern được phép)
 - [x] **Service:**
   - `org.example.internservice.leave.service.LeaveRequestService`
   - `org.example.internservice.leave.service.impl.LeaveRequestServiceImpl`
@@ -702,5 +772,6 @@ Intern (Web/App)           API Gateway            LeaveRequestService        Not
   - Cập nhật route `leave-request-service` trong `config-repo-local/api-gateway.yml`
 - [x] **Tests:**
   - `org.example.internservice.leave.util.WorkdayCalculatorTest`
+  - `org.example.internservice.intern.service.MentorAccessHelperTest`
   - `org.example.internservice.leave.service.impl.LeaveRequestServiceImplTest`
   - `org.example.internservice.leave.controller.LeaveRequestControllerTest`
