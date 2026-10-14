@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 
-@FeignClient(name = "service-ai", url = "${services.ai-service.url:http://localhost:8086}")
+@FeignClient(name = "service-ai", url = "${services.ai-service.url:http://service-ai:8086}")
 public interface AiServiceClient {
 
     @PostMapping("/api/ai/quiz/generate")
