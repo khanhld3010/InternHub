@@ -293,7 +293,48 @@ services:
       start_period: 30s
 
   # -------------------------------------------------------------
-  # AI Service (Microservice Chatbot & Cấu hình AI)
+  # -------------------------------------------------------------
+  # Service AI (AI-powered Screening & Intelligence TM-103)
+  # -------------------------------------------------------------
+  service-ai:
+    build: ./ServiceAI
+    container_name: service-ai
+    restart: unless-stopped
+    ports:
+      - "8087:8086"
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+      SERVER_PORT: 8086
+      EUREKA_URI: "http://discovery-server:8761/eureka/"
+      CONFIG_SERVER_URL: "http://config-server:8888"
+      DB_HOST: "mysql-db"
+      DB_PORT: 3306
+      DB_NAME: "internhub_db"
+      DB_USERNAME: "root"
+      DB_PASSWORD: "123456"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-mock-key}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      GEMINI_MOCK_MODE: ${GEMINI_MOCK_MODE:-true}
+      INTERN_SERVICE_URL: "http://intern-and-program-service:8082"
+      FILE_SERVICE_URL: "http://file-service:8084"
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8086/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # -------------------------------------------------------------
+  # AI Service (Microservice Chatbot & Cấu hình AI C6)
   # -------------------------------------------------------------
   ai-service:
     build: ./ai-service

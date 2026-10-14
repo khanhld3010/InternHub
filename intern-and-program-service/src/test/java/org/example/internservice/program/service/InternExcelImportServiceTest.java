@@ -109,7 +109,6 @@ class InternExcelImportServiceTest {
         when(programRepository.findById(10L)).thenReturn(Optional.of(sampleProgram));
         when(internProfileRepository.countByProgramIdAndStatusIn(eq(10L), anyList())).thenReturn(5L);
         when(internProfileRepository.findAllByEmailIn(anyList())).thenReturn(Collections.emptyList());
-        when(internProfileRepository.findAllByPhoneIn(anyList())).thenReturn(Collections.emptyList());
 
         MockMultipartFile file = createExcelFile("test_interns.xlsx", List.of(
                 List.of("1", "Nguyễn Văn A", "a.nguyen@example.com", "+84912345678", "Nam", "15/05/2003", "Đại học Bách Khoa", "CNTT", "2021-2025", "Hà Nội", "", ""),
@@ -122,12 +121,15 @@ class InternExcelImportServiceTest {
         assertThat(response.getTotalRows()).isEqualTo(2);
         assertThat(response.getValidRowsCount()).isEqualTo(2);
         assertThat(response.getInvalidRowsCount()).isEqualTo(0);
+        assertThat(response.getNewCandidatesCount()).isEqualTo(2);
+        assertThat(response.getExistingCandidatesCount()).isEqualTo(0);
         assertThat(response.getAvailableSlots()).isEqualTo(15);
         assertThat(response.isQuotaExceeded()).isFalse();
         assertThat(response.getErrors()).isEmpty();
         assertThat(response.getPreviewRows()).hasSize(2);
         assertThat(response.getPreviewRows().get(0).getPhone()).isEqualTo("0912345678");
         assertThat(response.getPreviewRows().get(1).getPhone()).isEqualTo("0987654321");
+        assertThat(response.getPreviewRows().get(0).isExistingUser()).isFalse();
     }
 
     @Test
@@ -204,7 +206,6 @@ class InternExcelImportServiceTest {
                 .thenReturn(5L)  // Trước khi lưu: 5
                 .thenReturn(7L); // Sau khi lưu: 7
         when(internProfileRepository.findAllByEmailIn(anyList())).thenReturn(Collections.emptyList());
-        when(internProfileRepository.findAllByPhoneIn(anyList())).thenReturn(Collections.emptyList());
         when(internProfileRepository.countByCreatedAtBetween(any(), any())).thenReturn(10L);
 
         MockMultipartFile file = createExcelFile("valid_interns.xlsx", List.of(
@@ -216,11 +217,65 @@ class InternExcelImportServiceTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getImportedCount()).isEqualTo(2);
+        assertThat(result.getNewCandidatesCount()).isEqualTo(2);
+        assertThat(result.getExistingCandidatesCount()).isEqualTo(0);
         assertThat(result.getImportedInternCodes()).hasSize(2);
         assertThat(result.getImportedInternCodes().get(0)).contains("INT-");
 
         verify(internProfileRepository).saveAll(anyList());
         verify(programRepository).save(sampleProgram);
+    }
+
+    @Test
+    @DisplayName("UT-EXCEL-08: Multi-Program Re-enrollment - Ứng viên đã có ở kỳ khác hợp lệ và kế thừa userId")
+    void importInternsFromExcel_whenCandidateInAnotherProgram_shouldSucceedAndInheritUserId() throws Exception {
+        when(programRepository.findByIdWithLock(10L)).thenReturn(Optional.of(sampleProgram));
+        when(internProfileRepository.countByProgramIdAndStatusIn(eq(10L), anyList()))
+                .thenReturn(5L)
+                .thenReturn(6L);
+
+        // Giả lập ứng viên đã có hồ sơ từ kỳ trước với userId = 99L
+        InternProfile existingCandidateFromOldProgram = InternProfile.builder()
+                .email("re_enrolled@example.com")
+                .phone("0912345678")
+                .userId(99L)
+                .build();
+        when(internProfileRepository.findAllByEmailIn(anyList())).thenReturn(List.of(existingCandidateFromOldProgram));
+        when(internProfileRepository.findAllByProgramIdAndEmailIn(eq(10L), anyList())).thenReturn(Collections.emptyList());
+        when(internProfileRepository.findAllByProgramIdAndPhoneIn(eq(10L), anyList())).thenReturn(Collections.emptyList());
+        when(internProfileRepository.countByCreatedAtBetween(any(), any())).thenReturn(10L);
+
+        MockMultipartFile file = createExcelFile("multi_program.xlsx", List.of(
+                List.of("1", "Trần Tái Sinh", "re_enrolled@example.com", "0912345678", "Nam", "15/05/2003", "Bách Khoa", "CNTT", "", "", "", "")
+        ));
+
+        ExcelImportResultResponse result = excelImportService.importInternsFromExcel(10L, file, "APPROVED", "hr_admin");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getImportedCount()).isEqualTo(1);
+        assertThat(result.getNewCandidatesCount()).isEqualTo(0);
+        assertThat(result.getExistingCandidatesCount()).isEqualTo(1);
+        verify(internProfileRepository).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("UT-EXCEL-09: Bị chặn khi email đã tồn tại trong chính chương trình hiện tại (Program-Scoped Dup)")
+    void importInternsFromExcel_whenDuplicateEmailInSameProgram_shouldThrowBadRequestException() throws Exception {
+        when(programRepository.findByIdWithLock(10L)).thenReturn(Optional.of(sampleProgram));
+
+        InternProfile sameProgramCandidate = InternProfile.builder()
+                .email("same_program@example.com")
+                .phone("0912345678")
+                .build();
+        when(internProfileRepository.findAllByProgramIdAndEmailIn(eq(10L), anyList())).thenReturn(List.of(sameProgramCandidate));
+
+        MockMultipartFile file = createExcelFile("same_program_dup.xlsx", List.of(
+                List.of("1", "Nguyễn Đã Có", "same_program@example.com", "0912345678", "Nam", "15/05/2003", "Bách Khoa", "CNTT", "", "", "", "")
+        ));
+
+        assertThatThrownBy(() -> excelImportService.importInternsFromExcel(10L, file, "APPROVED", "hr_admin"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("đã tồn tại trong chương trình thực tập này");
     }
 
     private MockMultipartFile createExcelFile(String fileName, List<List<String>> rowsData) throws Exception {

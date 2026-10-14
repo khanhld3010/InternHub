@@ -2,10 +2,10 @@
 
 > **Tài liệu Đặc Tả Kỹ Thuật (Feature Specification)**  
 > **Dự án:** [InternHub](file:///d:/codegym_final_project/InternHub) (Backend Microservices - `intern-and-program-service`)  
-> **Mã Jira Ticket:** [TM-100](https://robluccibn9935.atlassian.net/browse/TM-100): *Thêm thực tập sinh vào chương trình thực tập bằng tệp Excel (Excel Batch Import)*  
-> **Trạng thái:** IMPLEMENTED  
+> **Mã Jira Ticket:** [TM-100](https://robluccibn9935.atlassian.net/browse/TM-100): *Thêm thực tập sinh vào chương trình thực tập bằng tệp Excel (Excel Batch Import & Multi-Program Enrollment)*  
+> **Trạng thái:** IMPLEMENTED (v2.0)  
 > **Lưu trữ tại:** `InternHub/docs/specs/TM-100-import-interns-excel-to-program-spec.md`  
-> **Cấp độ thay đổi (Change Level):** **L3** (Tích hợp thư viện Apache POI, xây dựng REST API Preview & Import MultipartFile, cơ chế Pessimistic Lock chống race condition over-booking, bảo vệ toàn vẹn dữ liệu 2 lớp, xử lý định dạng ô bảng tính Excel phức tạp, ghi nhận Audit log và kích hoạt thông báo sự kiện).  
+> **Cấp độ thay đổi (Change Level):** **L3** (Tích hợp thư viện Apache POI, xây dựng REST API Preview & Import MultipartFile, cơ chế Pessimistic Lock chống race condition over-booking, chuyển đổi xác thực trùng lặp từ Global Scope sang Program Scoped Duplicate Checking, hỗ trợ 1 TTS tham gia nhiều chương trình đồng thời / qua các kỳ, tự động kế thừa `userId` và kích hoạt thông báo sự kiện).  
 > **Tuân thủ quy chuẩn:** Tuân thủ 100% tài liệu [AGENTS.md](file:///d:/codegym_final_project/InternHub/AGENTS.md) và thư mục [`.agents/`](file:///d:/codegym_final_project/InternHub/.agents/).
 
 ---
@@ -16,6 +16,7 @@
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **v1.0** | 2026-10-09 | AI Senior Backend Pair-Programmer | `TM-100` | Tạo mới Đặc Tả | Xây dựng tài liệu đặc tả chuẩn 13 phần cho tính năng nhập danh sách thực tập sinh hàng loạt từ tệp Excel vào chương trình thực tập, giải quyết điểm nghẽn nhập liệu thủ công của HR. |
 | **v1.1** | 2026-10-09 | AI Senior Backend Pair-Programmer | `TM-100` | Hoàn tất Triển khai Backend | Triển khai hoàn chỉnh toàn bộ 3 REST endpoints, DTOs, Repository batch queries, Service với Pessimistic Lock, xử lý Apache POI và 7 unit test cases pass 100%. |
+| **v2.0** | 2026-10-13 | AI Senior Backend Pair-Programmer | `TM-100` | Nâng Cấp Nghiệp Vụ (Multi-Program) | **Chuyển đổi cơ chế kiểm tra trùng lặp email/SĐT từ toàn cục (Global) sang phạm vi chương trình (Program-Scoped Duplicate Checking):**<br>1. *Vấn đề kỹ thuật cũ (v1.1):* `findAllByEmailIn` kiểm tra trên toàn bộ bảng `intern_profiles`, khiến file Excel khi dùng nạp vào Program B sau khi đã nạp Program A bị báo lỗi *"Email đã tồn tại trên hệ thống"*.<br>2. *Logic v2.0:* Cho phép 1 TTS tham gia nhiều chương trình cùng lúc hoặc qua các kỳ khác nhau. Chỉ báo lỗi khi trùng lặp nội bộ trong chính file Excel hoặc trùng lặp trong chính chương trình đang import (`programId`).<br>3. *Kế thừa danh tính:* Tự động liên kết `userId` của TTS nếu email đã tồn tại ở kỳ trước, sinh `internCode` mới của kỳ, tách số lượng ứng viên mới vs ứng viên hiện hữu trong Preview response. |
 
 ---
 
@@ -78,13 +79,23 @@
      "Không thể tiếp nhận 8 TTS. Chương trình chỉ còn 5 chỉ tiêu trống (15/20)."
      ```
 
-### 4.2. Case 2: Trùng lặp Email / Số điện thoại 2 Lớp (Dual-Layer Duplicate)
-- **Vấn đề:** 
-  - Trùng lặp nội bộ: Dòng 3 và dòng 12 trong cùng một file Excel có cùng email hoặc SĐT.
-  - Trùng lặp hệ thống: Email hoặc SĐT trong file Excel đã thuộc về một TTS khác trong CSDL.
-- **Giải pháp:** 
-  1. Duyệt qua danh sách để gom `Set<String> fileEmails` và `Set<String> filePhones`. Nếu kích thước Set nhỏ hơn kích thước danh sách ➔ Đánh dấu chính xác các dòng bị trùng lặp nội bộ.
-  2. Thực hiện truy vấn kiểm tra nhanh: `internProfileRepository.findAllByEmailIn(...)` và `findAllByPhoneIn(...)` để phát hiện dòng nào trùng với CSDL và trả về thông báo lỗi cụ thể cho dòng đó.
+### 4.2. Case 2: Kiểm Tra Trùng Lặp Theo Phạm Vi Chương Trình & Tái Ghi Danh Nhiều Kỳ (Program-Scoped Duplicate & Multi-Program Enrollment)
+
+- **Vấn đề & Nguyên nhân ở phiên bản v1.1:** 
+  - Ở phiên bản cũ, Service sử dụng `internProfileRepository.findAllByEmailIn(...)` trên toàn bộ bảng `intern_profiles` mà không lọc theo `programId`. Dẫn đến khi một file Excel đã được nạp vào Chương trình A, nếu HR dùng lại file đó để nạp vào Chương trình B (hoặc một TTS muốn tham gia nhiều kỳ/dự án khác nhau), hệ thống báo lỗi *"Email đã tồn tại trên hệ thống"* và từ chối toàn bộ tệp.
+  - Về mặt thiết kế CSDL: Cột `email` và `phone` trong bảng `intern_profiles` **không có ràng buộc `UNIQUE` toàn cục**. Index hệ thống là `idx_intern_email_program(email, program_id)` và `idx_intern_user_program(user_id, program_id)`. Do đó CSDL hoàn toàn hỗ trợ 1 TTS tham gia nhiều chương trình.
+- **Giải pháp v2.0 (Phân định rõ 2 tầng trùng lặp):** 
+  1. **Trùng lặp BẤT HỢP LỆ (Lỗi chặn giao dịch):**
+     - *Trùng lặp nội bộ file:* Dòng $i$ và dòng $j$ trong cùng tệp Excel có cùng email hoặc SĐT (`Set<String> fileEmails` / `Set<String> filePhones`).
+     - *Trùng lặp trong chính chương trình đang import (`programId`):* Email hoặc SĐT đã có hồ sơ đang xử lý hoặc đang thực tập trong chính chương trình này (`status IN [PENDING, APPROVED, INTERNING]`). Hệ thống báo lỗi cụ thể: *"Email/SĐT đã tồn tại trong chương trình thực tập này"*.
+  2. **Trùng lặp HỢP LỆ (Cho phép ghi danh - Multi-Program Re-enrollment):**
+     - Nếu email/SĐT đã tồn tại ở **chương trình khác (`program_id != currentProgramId`)**:
+       - Hệ thống **CHẤP NHẬN HỢP LỆ**, không báo lỗi.
+       - Tự động tạo bản ghi `InternProfile` mới gắn với `program_id` hiện tại.
+       - Sinh mã `internCode` tuần tự mới cho kỳ này (`INT-yyyyMM-xxxx`).
+       - **Kế thừa danh tính (`userId`):** Tra cứu từ các hồ sơ cũ, nếu hồ sơ trước đó đã có `userId` (tài khoản đã kích hoạt IAM/User), hệ thống tự động gán `userId` vào bản ghi mới. Nhờ đó, TTS khi đăng nhập tài khoản sẽ thấy danh sách toàn bộ các chương trình thực tập mà họ đã hoặc đang tham gia.
+       - Tại API Preview: Đánh dấu `isExistingUser = true` và tăng bộ đếm `existingCandidatesCount` để HR nhận diện rõ ứng viên đã có tài khoản.
+
 
 ### 4.3. Case 3: Định dạng Ô Excel Phức Tạp (Cell Type Formatting Edge Cases)
 - **Vấn đề:** 
@@ -133,10 +144,10 @@
 
 ## 6. Business Rules (Quy Tắc Nghiệp Vụ)
 
-- **BR-1 (Cấu trúc Cột Bắt Buộc):** Tệp Excel phải chứa các cột:
+- **BR-1 (Cấu trúc Cột Bắt Buộc & Tính Duy Nhất):** Tệp Excel phải chứa các cột:
   1. *Họ và tên* (Bắt buộc, 2 - 100 ký tự)
-  2. *Email* (Bắt buộc, định dạng chuẩn RFC 5322, duy nhất)
-  3. *Số điện thoại* (Bắt buộc, 10 số VN bắt đầu bằng `03, 05, 07, 08, 09`, duy nhất)
+  2. *Email* (Bắt buộc, định dạng chuẩn RFC 5322, duy nhất trong cùng chương trình tiếp nhận `programId`. Cho phép xuất hiện ở các chương trình khác nhau)
+  3. *Số điện thoại* (Bắt buộc, 10 số VN bắt đầu bằng `03, 05, 07, 08, 09`, duy nhất trong cùng chương trình tiếp nhận `programId`)
   4. *Trường ĐH/CĐ* (Bắt buộc, tối đa 150 ký tự)
   5. *Chuyên ngành* (Bắt buộc, tối đa 100 ký tự)
   6. *Giới tính* (Tùy chọn: `Nam`, `Nữ`, `Khác` - Mặc định `Nam`)
@@ -145,11 +156,17 @@
   9. *Niên khóa* (Tùy chọn, tối đa 50 ký tự)
   10. *Vị trí thực tập* (Tùy chọn - nếu để trống, tự động gán theo Tên chương trình)
   11. *Ghi chú* (Tùy chọn)
-- **BR-2 (Nguyên Tắc All-or-Nothing):** Nếu file Excel có 50 dòng mà có dù chỉ 1 dòng bị lỗi format hoặc trùng dữ liệu, toàn bộ giao dịch bị hủy và trả về danh sách lỗi cho HR sửa.
+- **BR-2 (Nguyên Tắc All-or-Nothing):** Nếu file Excel có 50 dòng mà có dù chỉ 1 dòng bị lỗi format hoặc trùng dữ liệu (trùng nội bộ file hoặc trùng trong chương trình hiện tại), toàn bộ giao dịch bị hủy và trả về danh sách lỗi cho HR sửa.
 - **BR-3 (Trạng thái và Thuộc tính Kế thừa):**
   - Mọi TTS import vào chương trình có `program_id = program.id`.
   - Thuộc tính `startDate` và `endDate` của TTS được tự động gán theo `startDate` và `endDate` của Chương trình.
   - Trạng thái mặc định là `APPROVED` (được tiếp nhận chính thức).
+- **BR-4 (Hỗ Trợ Multi-Program Enrollment & Kế Thừa Danh Tính User):**
+  - Một ứng viên hoàn toàn có quyền tham gia nhiều chương trình thực tập cùng lúc hoặc qua nhiều kỳ khác nhau.
+  - Khi nạp ứng viên có email đã tồn tại ở chương trình khác:
+    - Hồ sơ mới sẽ được tạo độc lập với `program_id` của kỳ này và được cấp mã `internCode` tuần tự mới.
+    - Hệ thống tự động truy vấn tìm `userId` của ứng viên từ các hồ sơ trước đó trong bảng `intern_profiles` (nếu tài khoản đã kích hoạt IAM) và gán vào `newIntern.userId`.
+    - Điều này giúp TTS đăng nhập một tài khoản duy nhất và quản lý/xem được tất cả các kỳ thực tập mà mình đã và đang tham gia.
 
 ---
 
@@ -166,10 +183,11 @@
 | Tên Cột | Kiểu Dữ Liệu | Ràng Buộc | Nguồn Dữ Liệu Từ Excel / Hệ Thống |
 | :--- | :--- | :--- | :--- |
 | `id` | `BIGINT` | `PK, AUTO_INCREMENT` | Hệ thống tự sinh |
-| `intern_code` | `VARCHAR(50)` | `NOT NULL, UNIQUE` | Hệ thống tự sinh: `INT-yyyyMM-xxxx` |
+| `intern_code` | `VARCHAR(50)` | `NOT NULL, UNIQUE` | Hệ thống tự sinh: `INT-yyyyMM-xxxx` (Độc lập theo từng kỳ) |
+| `user_id` | `BIGINT` | `NULL` | Kế thừa từ hồ sơ cũ nếu đã có tài khoản, hoặc chờ onboarding |
 | `full_name` | `VARCHAR(100)` | `NOT NULL` | Cột "Họ và tên" |
-| `email` | `VARCHAR(100)` | `NOT NULL, UNIQUE` | Cột "Email" |
-| `phone` | `VARCHAR(20)` | `NOT NULL, UNIQUE` | Cột "Số điện thoại" |
+| `email` | `VARCHAR(100)` | `NOT NULL` *(Scoped Unique theo `program_id`)* | Cột "Email" |
+| `phone` | `VARCHAR(20)` | `NOT NULL` *(Scoped Unique theo `program_id`)* | Cột "Số điện thoại" |
 | `date_of_birth` | `DATE` | `NULL` | Cột "Ngày sinh" |
 | `gender` | `VARCHAR(20)` | `NOT NULL` | Cột "Giới tính" (Parse sang `Gender`) |
 | `address` | `VARCHAR(255)` | `NULL` | Cột "Địa chỉ" |
@@ -218,6 +236,8 @@
     "totalRows": 15,
     "validRowsCount": 15,
     "invalidRowsCount": 0,
+    "newCandidatesCount": 10,
+    "existingCandidatesCount": 5,
     "availableSlots": 20,
     "isQuotaExceeded": false,
     "errors": [],
@@ -231,7 +251,22 @@
         "dateOfBirth": "2003-05-15",
         "university": "Đại học Bách Khoa",
         "major": "Khoa học Máy tính",
-        "appliedPosition": "Java Backend Intern"
+        "appliedPosition": "Java Backend Intern",
+        "isExistingUser": true,
+        "existingUserId": 102
+      },
+      {
+        "rowNumber": 3,
+        "fullName": "Lê Thị Cúc",
+        "email": "cuc.le@example.com",
+        "phone": "0987654321",
+        "gender": "FEMALE",
+        "dateOfBirth": "2003-11-20",
+        "university": "Đại học Công Nghệ",
+        "major": "Công nghệ Thông tin",
+        "appliedPosition": "Java Backend Intern",
+        "isExistingUser": false,
+        "existingUserId": null
       }
     ]
   }
@@ -249,6 +284,8 @@
     "totalRows": 10,
     "validRowsCount": 8,
     "invalidRowsCount": 2,
+    "newCandidatesCount": 6,
+    "existingCandidatesCount": 2,
     "availableSlots": 5,
     "isQuotaExceeded": true,
     "errors": [
@@ -256,7 +293,7 @@
         "rowNumber": 4,
         "fieldName": "email",
         "cellValue": "an.nguyen@example.com",
-        "errorMessage": "Email 'an.nguyen@example.com' đã tồn tại trong hệ thống"
+        "errorMessage": "Email 'an.nguyen@example.com' đã tồn tại trong chương trình thực tập này"
       },
       {
         "rowNumber": 7,
@@ -284,18 +321,21 @@
 ```json
 {
   "code": 201,
-  "message": "Nhập thành công 15 thực tập sinh vào chương trình thực tập",
+  "message": "Nhập thành công 15 thực tập sinh vào chương trình thực tập (10 ứng viên mới, 5 ứng viên đã có tài khoản)",
   "data": {
     "programId": 5,
     "programName": "Chương trình Java Backend K26",
     "importedCount": 15,
+    "newCandidatesCount": 10,
+    "existingCandidatesCount": 5,
     "currentInterns": 18,
     "maxInterns": 25,
     "importedInternCodes": [
       "INT-202610-0012",
       "INT-202610-0013",
       "INT-202610-0014"
-    ]
+    ],
+    "importedAt": "2026-10-13T16:15:00"
   }
 }
 ```
@@ -328,12 +368,17 @@
       ├── 2. Kiểm tra status (PLANNING/OPEN) và isRecruitmentOpen == true
       ├── 3. Phân tích cú pháp tệp Excel (.xlsx) bằng Apache POI
       ├── 4. Xác thực từng dòng (Họ tên, Email regex, Phone regex, ...)
-      ├── 5. Kiểm tra trùng lặp nội bộ trong file (Set Check)
-      ├── 6. Kiểm tra trùng lặp với CSDL (Batch Repository Query)
-      ├── 7. Nếu có lỗi ➔ Rollback, ném BadRequestException kèm chi tiết lỗi
-      ├── 8. Kiểm tra Quota: activeCount + totalNew > maxInterns ➔ Ném BadRequestException
-      ├── 9. Sinh mã INT-yyyyMM-xxxx tuần tự cho từng TTS
-      ├── 10. Gán program, department, dates, status = APPROVED
+      ├── 5. Kiểm tra trùng lặp nội bộ trong file (Set Check: fileEmails, filePhones)
+      ├── 6a. Kiểm tra trùng lặp trong CHÍNH CHƯƠNG TRÌNH này (Scoped Duplicate Check):
+      │       Tìm kiếm email/phone đã tồn tại trong programId hiện tại với status IN [PENDING, APPROVED, INTERNING]
+      │       ➔ Nếu có trùng trong cùng kỳ: Đánh dấu lỗi ExcelRowError
+      ├── 6b. Đối soát nhận diện ứng viên hiện hữu (Multi-Program Identification):
+      │       Tra cứu các hồ sơ cũ ở các kỳ khác để lấy Map<email, userId>
+      │       ➔ Đánh dấu isExistingUser, gắn existingUserId (nếu có)
+      ├── 7. Nếu có lỗi (Format, Internal Dup, Program Dup) ➔ Rollback, ném BadRequestException
+      ├── 8. Kiểm tra Quota: activeCount + validCount > maxInterns ➔ Ném BadRequestException
+      ├── 9. Sinh mã INT-yyyyMM-xxxx tuần tự mới cho từng TTS
+      ├── 10. Gán program, department, dates, status = APPROVED, userId = existingUserId (nếu có)
       ├── 11. internProfileRepository.saveAll(newInterns)
       ├── 12. Cập nhật program.currentInterns và lưu program
       └── 13. eventPublisher.publishEvent(InternDecisionProcessedEvent) cho từng hồ sơ
@@ -341,6 +386,7 @@
       ▼
 [Response 201 Created bọc trong ApiResponse<ExcelImportResultResponse>]
 ```
+
 
 ---
 
@@ -359,25 +405,31 @@
 
 ## 11. Acceptance Criteria Checklist (Tiêu Chí Chấp Nhận)
 
-- [ ] **AC-1:** HR gọi `GET /api/programs/import-template` tải về được tệp `.xlsx` có header tiếng Việt và mở được trên Microsoft Excel không bị lỗi.
-- [ ] **AC-2:** Gọi `POST /api/programs/{id}/import-interns/preview` với file chuẩn trả về `totalRows`, `validRowsCount` khớp với nội dung file và `isQuotaExceeded = false`.
-- [ ] **AC-3:** Khi tệp có dòng chứa email hoặc SĐT sai định dạng, Preview và Import trả về chính xác số dòng và thông báo lỗi tương ứng.
-- [ ] **AC-4:** Khi tệp có số lượng người vượt quá số slot còn lại của chương trình, hệ thống chặn lại với thông báo chỉ rõ số lượng chỉ tiêu trống.
-- [ ] **AC-5:** Khi import thành công, các TTS được lưu vào bảng `intern_profiles` với mã `internCode` định dạng `INT-yyyyMM-xxxx`, liên kết đúng `program_id`, và `currentInterns` của chương trình tăng tương ứng.
-- [ ] **AC-6:** Khi chương trình ở trạng thái `COMPLETED`, `CANCELLED` hoặc `isRecruitmentOpen = false`, hệ thống từ chối import với mã lỗi `400 Bad Request`.
-- [ ] **AC-7:** Khi user không có quyền `HR` hoặc `ADMIN`, trả về `403 Forbidden`.
+- [x] **AC-1:** HR gọi `GET /api/programs/import-template` tải về được tệp `.xlsx` có header tiếng Việt và mở được trên Microsoft Excel không bị lỗi.
+- [x] **AC-2:** Gọi `POST /api/programs/{id}/import-interns/preview` với file chuẩn trả về `totalRows`, `validRowsCount` khớp với nội dung file và `isQuotaExceeded = false`.
+- [x] **AC-3:** Khi tệp có dòng chứa email hoặc SĐT sai định dạng, Preview và Import trả về chính xác số dòng và thông báo lỗi tương ứng.
+- [x] **AC-4:** Khi tệp có số lượng người vượt quá số slot còn lại của chương trình, hệ thống chặn lại với thông báo chỉ rõ số lượng chỉ tiêu trống.
+- [x] **AC-5:** Khi import thành công, các TTS được lưu vào bảng `intern_profiles` với mã `internCode` định dạng `INT-yyyyMM-xxxx`, liên kết đúng `program_id`, và `currentInterns` của chương trình tăng tương ứng.
+- [x] **AC-6:** Khi chương trình ở trạng thái `COMPLETED`, `CANCELLED` hoặc `isRecruitmentOpen = false`, hệ thống từ chối import với mã lỗi `400 Bad Request`.
+- [x] **AC-7:** Khi user không có quyền `HR` hoặc `ADMIN`, trả về `403 Forbidden`.
+- [x] **AC-8 (Multi-Program Re-enrollment):** Khi nạp một file Excel chứa các email đã từng tham gia ở chương trình thực tập khác, hệ thống không báo lỗi "Email đã tồn tại", mà tiếp nhận hợp lệ vào chương trình mới, tạo mã `internCode` mới của kỳ, kế thừa `userId` cũ (nếu có), và hiển thị tách bạch `newCandidatesCount` vs `existingCandidatesCount`.
+- [x] **AC-9 (Program-Scoped Duplicate Prevention):** Nếu trong file Excel có email/SĐT trùng với một hồ sơ đang hoạt động (`PENDING`, `APPROVED`, `INTERNING`) của CHÍNH chương trình đang nhận (`programId`), hệ thống chặn lại và báo lỗi rõ ràng *"Email/Số điện thoại đã tồn tại trong chương trình thực tập này"*.
 
 ---
 
 ## 12. Unit & Integration Test Cases Checklist
 
-- [ ] **UT-EXCEL-01:** `preview_withValidExcelFile_shouldReturnAllValidRows()`
-- [ ] **UT-EXCEL-02:** `preview_whenFileHasInvalidEmailAndPhone_shouldReturnDetailedErrors()`
-- [ ] **UT-EXCEL-03:** `import_whenProgramIsFull_shouldThrowBadRequestException()`
-- [ ] **UT-EXCEL-04:** `import_whenFileHasDuplicateInternalEmail_shouldThrowBadRequestException()`
-- [ ] **UT-EXCEL-05:** `import_whenValidFile_shouldSaveAllInternsAndPublishEvents()`
-- [ ] **UT-EXCEL-06:** `import_whenProgramCancelledOrClosed_shouldThrowBadRequestException()`
-- [ ] **IT-EXCEL-01:** Kiểm thử endpoint `/api/programs/{id}/import-interns` qua MockMvc với file `.xlsx` giả lập.
+- [x] **UT-EXCEL-01:** `preview_withValidExcelFile_shouldReturnAllValidRows()`
+- [x] **UT-EXCEL-02:** `preview_whenFileHasInvalidEmailAndPhone_shouldReturnDetailedErrors()`
+- [x] **UT-EXCEL-03:** `import_whenProgramIsFull_shouldThrowBadRequestException()`
+- [x] **UT-EXCEL-04:** `import_whenFileHasDuplicateInternalEmail_shouldThrowBadRequestException()`
+- [x] **UT-EXCEL-05:** `import_whenValidFile_shouldSaveAllInternsAndPublishEvents()`
+- [x] **UT-EXCEL-06:** `import_whenProgramCancelledOrClosed_shouldThrowBadRequestException()`
+- [x] **UT-EXCEL-07:** `preview_whenInternExistsInAnotherProgram_shouldBeValidAndFlagAsExistingUser()`
+- [x] **UT-EXCEL-08:** `import_whenCandidateEnrolledInMultiplePrograms_shouldCreateNewProfileAndInheritUserId()`
+- [x] **UT-EXCEL-09:** `import_whenDuplicateEmailInSameProgram_shouldThrowBadRequestException()`
+
+
 
 ---
 

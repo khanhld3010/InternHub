@@ -9,4 +9,5 @@ include 'reporting-and-integration-service'
 include 'file-service'
 include 'notification-service'
 include 'ai-service'
+include 'ServiceAI'
 
