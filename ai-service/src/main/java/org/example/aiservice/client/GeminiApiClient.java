@@ -1,0 +1,149 @@
+package org.example.aiservice.client;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Client kết nối Google Gemini API qua Google AI Studio.
+ * Tuân thủ bảo mật:
+ * - API Key chỉ gửi qua Header 'x-goog-api-key' (tuyệt đối không đưa vào URL ?key=)
+ * - Base URL được hardcode hoặc cấu hình an toàn, không mở cho admin cấu hình tùy ý (chống SSRF)
+ * - Timeout kết nối 5s, timeout đọc 30s
+ * - Lỗi từ provider được che giấu thành 503 chung, không để lộ exception chi tiết
+ */
+@Component
+@Slf4j
+public class GeminiApiClient {
+
+    private final RestClient restClient;
+    private final ObjectMapper objectMapper;
+    private final String baseUrl;
+
+    public GeminiApiClient(
+            @Value("${ai.gemini.base-url:https://generativelanguage.googleapis.com}") String baseUrl,
+            @Value("${ai.gemini.connect-timeout-ms:5000}") int connectTimeout,
+            @Value("${ai.gemini.read-timeout-ms:30000}") int readTimeout,
+            ObjectMapper objectMapper
+    ) {
+        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        this.objectMapper = objectMapper;
+
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeout);
+        factory.setReadTimeout(readTimeout);
+
+        this.restClient = RestClient.builder()
+                .requestFactory(factory)
+                .build();
+    }
+
+    public String generateContent(
+            String rawApiKey,
+            String modelName,
+            String systemInstruction,
+            List<Map<String, String>> conversationHistory,
+            String currentQuestion,
+            BigDecimal temperature,
+            int maxTokens
+    ) {
+        if (rawApiKey == null || rawApiKey.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI Service chua duoc cau hinh API Key hop le.");
+        }
+
+        try {
+            ObjectNode root = objectMapper.createObjectNode();
+
+            // 1. System Instruction
+            if (systemInstruction != null && !systemInstruction.isBlank()) {
+                ObjectNode sysNode = root.putObject("systemInstruction");
+                ArrayNode partsNode = sysNode.putArray("parts");
+                partsNode.addObject().put("text", systemInstruction);
+            }
+
+            // 2. Generation Config
+            ObjectNode genConfig = root.putObject("generationConfig");
+            if (temperature != null) {
+                genConfig.put("temperature", temperature.doubleValue());
+            }
+            genConfig.put("maxOutputTokens", maxTokens);
+
+            // 3. Contents (History + Current Question)
+            ArrayNode contentsNode = root.putArray("contents");
+
+            if (conversationHistory != null) {
+                for (Map<String, String> turn : conversationHistory) {
+                    String role = turn.get("role"); // "user" hoặc "model"
+                    String text = turn.get("text");
+                    if (role != null && text != null) {
+                        ObjectNode contentItem = contentsNode.addObject();
+                        contentItem.put("role", "assistant".equalsIgnoreCase(role) ? "model" : "user");
+                        contentItem.putArray("parts").addObject().put("text", text);
+                    }
+                }
+            }
+
+            // Lượt hỏi hiện tại của TTS
+            ObjectNode currentTurn = contentsNode.addObject();
+            currentTurn.put("role", "user");
+            currentTurn.putArray("parts").addObject().put("text", currentQuestion);
+
+            String requestBodyJson = objectMapper.writeValueAsString(root);
+            String url = baseUrl + "/v1beta/models/" + modelName + ":generateContent";
+
+            // Thực hiện gọi REST API với API Key đặt trong HEADER
+            byte[] responseBytes = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON, MediaType.ALL)
+                    .header("x-goog-api-key", rawApiKey.trim())
+                    .body(requestBodyJson)
+                    .retrieve()
+                    .body(byte[].class);
+
+            if (responseBytes == null || responseBytes.length == 0) {
+                log.warn("Gemini tra ve body rong");
+                return "Trợ lý ảo tạm thời không sinh được câu trả lời. Vui lòng thử lại sau.";
+            }
+
+            String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
+
+            // Parse kết quả trả về
+            JsonNode responseJson = objectMapper.readTree(responseBody);
+            JsonNode candidates = responseJson.path("candidates");
+            if (candidates.isArray() && !candidates.isEmpty()) {
+                JsonNode parts = candidates.get(0).path("content").path("parts");
+                if (parts.isArray() && !parts.isEmpty()) {
+                    return parts.get(0).path("text").asText();
+                }
+            }
+
+            log.warn("Gemini response khong co candidate text hop le: {}", responseBody);
+            return "Trợ lý ảo tạm thời không sinh được câu trả lời. Vui lòng thử lại sau.";
+
+        } catch (ResponseStatusException rse) {
+            throw rse;
+        } catch (Exception ex) {
+            log.error("Loi khi goi Google Gemini API: {}", ex.getMessage());
+            // An toan: khong truyen tiep noi dung exception cho client
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Trợ lý ảo tạm thời không khả dụng. Vui lòng thử lại sau hoặc liên hệ HR/Mentor."
+            );
+        }
+    }
+}
