@@ -48,9 +48,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -191,11 +193,16 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
 
         List<ExcelInternRowDto> rows = parseExcelFile(file, program.getName());
         List<ExcelRowError> errors = new ArrayList<>();
-        validateAndCheckDuplicates(rows, errors);
+        validateAndCheckDuplicates(programId, rows, errors);
 
         long activeCount = internProfileRepository.countByProgramIdAndStatusIn(programId, ACTIVE_STATUSES);
         int availableSlots = Math.max(0, program.getMaxInterns() - (int) activeCount);
-        int validCount = rows.size() - (int) errors.stream().map(ExcelRowError::getRowNumber).distinct().count();
+        Set<Integer> errorRowNumbers = errors.stream().map(ExcelRowError::getRowNumber).collect(Collectors.toSet());
+        int validCount = rows.size() - errorRowNumbers.size();
+        int existingCount = (int) rows.stream()
+                .filter(r -> !errorRowNumbers.contains(r.getRowNumber()) && r.isExistingUser())
+                .count();
+        int newCount = Math.max(0, validCount - existingCount);
         boolean isQuotaExceeded = validCount > availableSlots;
 
         List<ExcelInternRowDto> previewRows = rows.stream().limit(10).collect(Collectors.toList());
@@ -206,6 +213,8 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
                 .totalRows(rows.size())
                 .validRowsCount(validCount)
                 .invalidRowsCount(rows.size() - validCount)
+                .newCandidatesCount(newCount)
+                .existingCandidatesCount(existingCount)
                 .availableSlots(availableSlots)
                 .isQuotaExceeded(isQuotaExceeded)
                 .errors(errors)
@@ -226,7 +235,7 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
 
         List<ExcelInternRowDto> rows = parseExcelFile(file, program.getName());
         List<ExcelRowError> errors = new ArrayList<>();
-        validateAndCheckDuplicates(rows, errors);
+        validateAndCheckDuplicates(programId, rows, errors);
 
         if (!errors.isEmpty()) {
             String firstError = errors.get(0).getErrorMessage();
@@ -279,6 +288,7 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
             }
 
             InternProfile profile = InternProfile.builder()
+                    .userId(dto.getExistingUserId())
                     .internCode(internCode)
                     .fullName(dto.getFullName())
                     .email(dto.getEmail())
@@ -339,10 +349,15 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
             }
         }
 
+        int existingCount = (int) rows.stream().filter(ExcelInternRowDto::isExistingUser).count();
+        int newCount = Math.max(0, profiles.size() - existingCount);
+
         return ExcelImportResultResponse.builder()
                 .programId(program.getId())
                 .programName(program.getName())
                 .importedCount(profiles.size())
+                .newCandidatesCount(newCount)
+                .existingCandidatesCount(existingCount)
                 .currentInterns(program.getCurrentInterns())
                 .maxInterns(program.getMaxInterns())
                 .importedInternCodes(generatedCodes)
@@ -441,7 +456,7 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
         return rows;
     }
 
-    private void validateAndCheckDuplicates(List<ExcelInternRowDto> rows, List<ExcelRowError> errors) {
+    private void validateAndCheckDuplicates(Long programId, List<ExcelInternRowDto> rows, List<ExcelRowError> errors) {
         Set<String> fileEmails = new HashSet<>();
         Set<String> filePhones = new HashSet<>();
 
@@ -453,7 +468,7 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
             }
             if (row.getEmail().isEmpty() || !EMAIL_PATTERN.matcher(row.getEmail()).matches()) {
                 errors.add(new ExcelRowError(rowNum, "email", row.getEmail(), "Email không đúng định dạng hợp lệ"));
-            } else if (!fileEmails.add(row.getEmail())) {
+            } else if (!fileEmails.add(row.getEmail().toLowerCase())) {
                 errors.add(new ExcelRowError(rowNum, "email", row.getEmail(), "Email bị trùng lặp ngay trong tệp Excel"));
             }
 
@@ -471,28 +486,59 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
             }
         }
 
-        // Kiểm tra đối soát trùng lặp với Database
-        List<String> emailsToCheck = rows.stream().map(ExcelInternRowDto::getEmail).filter(EMAIL_PATTERN.asPredicate()).collect(Collectors.toList());
-        List<String> phonesToCheck = rows.stream().map(ExcelInternRowDto::getPhone).filter(PHONE_PATTERN.asPredicate()).collect(Collectors.toList());
+        // 1. Kiểm tra trùng lặp trong CHÍNH CHƯƠNG TRÌNH này (Program-Scoped Duplicate Check)
+        List<String> emailsToCheck = rows.stream().map(ExcelInternRowDto::getEmail).filter(EMAIL_PATTERN.asPredicate()).toList();
+        List<String> phonesToCheck = rows.stream().map(ExcelInternRowDto::getPhone).filter(PHONE_PATTERN.asPredicate()).toList();
 
-        if (!emailsToCheck.isEmpty()) {
-            Set<String> existingEmails = internProfileRepository.findAllByEmailIn(emailsToCheck).stream()
+        if (programId != null && !emailsToCheck.isEmpty()) {
+            Set<String> programExistingEmails = internProfileRepository.findAllByProgramIdAndEmailIn(programId, emailsToCheck).stream()
                     .map(InternProfile::getEmail)
+                    .map(String::toLowerCase)
                     .collect(Collectors.toSet());
             for (ExcelInternRowDto row : rows) {
-                if (existingEmails.contains(row.getEmail())) {
-                    errors.add(new ExcelRowError(row.getRowNumber(), "email", row.getEmail(), "Email đã tồn tại trên hệ thống"));
+                if (programExistingEmails.contains(row.getEmail().toLowerCase())) {
+                    errors.add(new ExcelRowError(row.getRowNumber(), "email", row.getEmail(),
+                            String.format("Email '%s' đã tồn tại trong chương trình thực tập này", row.getEmail())));
                 }
             }
         }
 
-        if (!phonesToCheck.isEmpty()) {
-            Set<String> existingPhones = internProfileRepository.findAllByPhoneIn(phonesToCheck).stream()
+        if (programId != null && !phonesToCheck.isEmpty()) {
+            Set<String> programExistingPhones = internProfileRepository.findAllByProgramIdAndPhoneIn(programId, phonesToCheck).stream()
                     .map(InternProfile::getPhone)
                     .collect(Collectors.toSet());
             for (ExcelInternRowDto row : rows) {
-                if (existingPhones.contains(row.getPhone())) {
-                    errors.add(new ExcelRowError(row.getRowNumber(), "phone", row.getPhone(), "Số điện thoại đã tồn tại trên hệ thống"));
+                if (programExistingPhones.contains(row.getPhone())) {
+                    errors.add(new ExcelRowError(row.getRowNumber(), "phone", row.getPhone(),
+                            String.format("Số điện thoại '%s' đã tồn tại trong chương trình thực tập này", row.getPhone())));
+                }
+            }
+        }
+
+        // 2. Nhận diện ứng viên hiện hữu trên toàn hệ thống (Multi-Program Identification & Identity Inheritance)
+        if (!emailsToCheck.isEmpty()) {
+            List<InternProfile> globalProfiles = internProfileRepository.findAllByEmailIn(emailsToCheck);
+            Map<String, Long> emailToUserIdMap = new HashMap<>();
+            Set<String> globalEmailSet = new HashSet<>();
+
+            for (InternProfile p : globalProfiles) {
+                if (p.getEmail() != null) {
+                    String lowerEmail = p.getEmail().toLowerCase();
+                    globalEmailSet.add(lowerEmail);
+                    if (p.getUserId() != null && !emailToUserIdMap.containsKey(lowerEmail)) {
+                        emailToUserIdMap.put(lowerEmail, p.getUserId());
+                    }
+                }
+            }
+
+            for (ExcelInternRowDto row : rows) {
+                String lowerEmail = row.getEmail() != null ? row.getEmail().toLowerCase() : "";
+                if (globalEmailSet.contains(lowerEmail)) {
+                    row.setExistingUser(true);
+                    row.setExistingUserId(emailToUserIdMap.get(lowerEmail));
+                } else {
+                    row.setExistingUser(false);
+                    row.setExistingUserId(null);
                 }
             }
         }

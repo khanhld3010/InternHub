@@ -18,6 +18,8 @@ public class ExcelImportResultResponse {
     private Long programId;
     private String programName;
     private int importedCount;
+    private int newCandidatesCount;
+    private int existingCandidatesCount;
     private int currentInterns;
     private int maxInterns;
     private List<String> importedInternCodes;

@@ -27,4 +27,7 @@ public class ExcelInternRowDto {
     private String address;
     private String appliedPosition;
     private String notes;
+    private boolean isExistingUser;
+    private Long existingUserId;
 }
+
