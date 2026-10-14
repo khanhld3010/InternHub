@@ -78,7 +78,7 @@ public class MentorQuizController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy chi tiết bài Quiz thành công", response));
     }
 
-    @GetMapping("/programs/{programId}")
+    @GetMapping({"/programs/{programId}", "/program/{programId}"})
     public ResponseEntity<ApiResponse<List<QuizSummaryResponse>>> getQuizzesByProgram(
             @PathVariable("programId") Long programId,
             @AuthenticationPrincipal CustomUserDetails userDetails
