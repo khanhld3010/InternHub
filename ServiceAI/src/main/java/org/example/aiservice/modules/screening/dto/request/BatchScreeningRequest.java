@@ -24,5 +24,9 @@ public class BatchScreeningRequest {
     private List<Long> internIds;
 
     @Builder.Default
-    private boolean forceReevaluate = false;
+    private Boolean forceReevaluate = false;
+
+    public boolean isForceReevaluate() {
+        return Boolean.TRUE.equals(forceReevaluate);
+    }
 }

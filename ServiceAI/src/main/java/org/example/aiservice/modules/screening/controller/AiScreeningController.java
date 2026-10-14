@@ -51,8 +51,7 @@ public class AiScreeningController {
     ) {
         ScreeningResultDto result = aiScreeningService.getInternEvaluation(internId);
         if (result == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(ApiResponse.error(404, "Chưa có kết quả đánh giá AI cho ứng viên này"));
+            return ResponseEntity.ok(ApiResponse.success(200, "Chưa có kết quả đánh giá AI cho ứng viên này", null));
         }
         return ResponseEntity.ok(ApiResponse.success(200, "Chi tiết đánh giá AI", result));
     }
