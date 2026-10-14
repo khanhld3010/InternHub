@@ -20,6 +20,8 @@ public class ExcelImportPreviewResponse {
     private int totalRows;
     private int validRowsCount;
     private int invalidRowsCount;
+    private int newCandidatesCount;
+    private int existingCandidatesCount;
     private int availableSlots;
     private boolean isQuotaExceeded;
     private List<ExcelRowError> errors;
