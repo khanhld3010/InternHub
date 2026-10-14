@@ -293,6 +293,7 @@ services:
       start_period: 30s
 
   # -------------------------------------------------------------
+  # -------------------------------------------------------------
   # Service AI (AI-powered Screening & Intelligence TM-103)
   # -------------------------------------------------------------
   service-ai:
@@ -300,7 +301,7 @@ services:
     container_name: service-ai
     restart: unless-stopped
     ports:
-      - "8086:8086"
+      - "8087:8086"
     environment:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
       SERVER_PORT: 8086
@@ -332,6 +333,45 @@ services:
       retries: 10
       start_period: 30s
 
+  # -------------------------------------------------------------
+  # AI Service (Microservice Chatbot & Cấu hình AI C6)
+  # -------------------------------------------------------------
+  ai-service:
+    build: ./ai-service
+    container_name: ai-service
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+      SPRING_APPLICATION_NAME: ai-service
+      SPRING_CONFIG_IMPORT: "optional:configserver:http://config-server:8888"
+      MYSQL_HOST: mysql-db
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: "123456"
+      AI_DB_NAME: ai_service_db
+      REDIS_HOST: internhub-redis-broker
+      REDIS_PORT: 6379
+      EUREKA_HOST: discovery-server
+      INTERN_SERVICE_HOST: intern-and-program-service
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      redis-broker:
+        condition: service_healthy
+    networks:
+      - micro-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 networks:
   micro-network:

@@ -214,7 +214,14 @@ spring:
             - id: service-ai-screening
               uri: lb://service-ai
               predicates:
+                - Path=/api/ai/screening, /api/ai/screening/**
+
+            # 8. AI Service (Chatbot & AI Configuration C6)
+            - id: ai-service
+              uri: lb://ai-service
+              predicates:
                 - Path=/api/ai, /api/ai/**
+
 
 eureka:
   client:
