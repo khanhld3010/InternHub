@@ -213,7 +213,22 @@ public class DataInitializer implements CommandLineRunner {
 
                 // SYSTEM
                 Permission.builder().code("SYSTEM_BACKUP").name("Quản trị sao lưu dữ liệu").module("SYSTEM").description("Kích hoạt sao lưu toàn diện và khôi phục dữ liệu").build(),
-                Permission.builder().code("SYSTEM_AUDIT_VIEW").name("Xem nhật ký kiểm toán").module("SYSTEM").description("Xem lịch sử thao tác và vết kiểm toán hệ thống").build()
+                Permission.builder().code("SYSTEM_AUDIT_VIEW").name("Xem nhật ký kiểm toán").module("SYSTEM").description("Xem lịch sử thao tác và vết kiểm toán hệ thống").build(),
+
+                // MISSION
+                Permission.builder().code("MISSION_BOARD_MANAGE").name("Quản lý bảng nhiệm vụ").module("MISSION").description("Tạo, sửa, đóng bảng nhiệm vụ (Kanban)").build(),
+                Permission.builder().code("MISSION_ITEM_MANAGE").name("Quản lý nhiệm vụ TTS").module("MISSION").description("Giao việc, cập nhật tiến độ, duyệt hoàn thành task").build(),
+                Permission.builder().code("MISSION_VIEW_OWN").name("Theo dõi nhiệm vụ cá nhân").module("MISSION").description("Thực tập sinh xem và nộp báo cáo kết quả task").build(),
+
+                // ATTENDANCE
+                Permission.builder().code("ATTENDANCE_CHECK").name("Thực hiện chấm công").module("ATTENDANCE").description("TTS quét mã QR, check-in / check-out GPS").build(),
+                Permission.builder().code("ATTENDANCE_VIEW_ALL").name("Quản lý chấm công toàn công ty").module("ATTENDANCE").description("HR / Admin xem báo cáo dữ liệu chấm công").build(),
+                Permission.builder().code("ATTENDANCE_VIEW_OWN").name("Xem lịch sử chấm công cá nhân").module("ATTENDANCE").description("Xem bảng công tháng của bản thân").build(),
+
+                // EVALUATION
+                Permission.builder().code("EVALUATION_WEEKLY_MANAGE").name("Đánh giá tuần thực tập sinh").module("EVALUATION").description("Mentor viết nhận xét, chấm điểm tuần cho TTS").build(),
+                Permission.builder().code("EVALUATION_FINAL_MANAGE").name("Đánh giá tổng kết & ký duyệt").module("EVALUATION").description("Đánh giá mốc kỳ, phê duyệt kết quả hoàn thành kỳ").build(),
+                Permission.builder().code("EVALUATION_VIEW_OWN").name("Xem đánh giá cá nhân").module("EVALUATION").description("TTS xem kết quả đánh giá tuần và tổng kết của mình").build()
         );
 
         for (Permission perm : standardPermissions) {
@@ -241,37 +256,41 @@ public class DataInitializer implements CommandLineRunner {
             log.info("-> Đã gán toàn bộ {} quyền cho vai trò Admin", allPermissions.size());
         }
 
-        // 2. HR: Quyền về intern_all, mentor, program, contract, document, user view, profile
-        if (hrRole.getPermissions() == null || hrRole.getPermissions().isEmpty() || hrRole.getPermissions().size() < 10) {
-            Set<Permission> hrPerms = allPermissions.stream()
-                    .filter(p -> List.of("INTERN_VIEW_ALL", "INTERN_CREATE", "INTERN_EDIT", "INTERN_APPROVE", "INTERN_ASSIGN_MENTOR",
-                                         "MENTOR_VIEW", "MENTOR_CREATE", "PROGRAM_VIEW", "PROGRAM_MANAGE",
-                                         "CONTRACT_VIEW", "CONTRACT_MANAGE", "DOCUMENT_VIEW", "DOCUMENT_REVIEW",
-                                         "USER_VIEW", "PROFILE_VIEW_OWN").contains(p.getCode()))
-                    .collect(Collectors.toSet());
+        // 2. HR: Quyền về intern_all, mentor, program, contract, document, user view, profile, mission_board_manage, attendance_view_all, evaluation_final_manage
+        Set<Permission> hrPerms = allPermissions.stream()
+                .filter(p -> List.of("INTERN_VIEW_ALL", "INTERN_CREATE", "INTERN_EDIT", "INTERN_APPROVE", "INTERN_ASSIGN_MENTOR",
+                                     "MENTOR_VIEW", "MENTOR_CREATE", "PROGRAM_VIEW", "PROGRAM_MANAGE",
+                                     "CONTRACT_VIEW", "CONTRACT_MANAGE", "DOCUMENT_VIEW", "DOCUMENT_REVIEW",
+                                     "USER_VIEW", "PROFILE_VIEW_OWN",
+                                     "MISSION_BOARD_MANAGE", "ATTENDANCE_VIEW_ALL", "EVALUATION_FINAL_MANAGE").contains(p.getCode()))
+                .collect(Collectors.toSet());
+        if (hrRole.getPermissions() == null || hrRole.getPermissions().size() < hrPerms.size()) {
             hrRole.setPermissions(hrPerms);
             roleRepository.save(hrRole);
-            log.info("-> Đã gán {} quyền cho vai trò HR", hrPerms.size());
+            log.info("-> Đã cập nhật {} quyền cho vai trò HR", hrPerms.size());
         }
 
-        // 3. Mentor: Quyền xem intern_own, mentor_docs, program_view, profile
-        if (mentorRole.getPermissions() == null || mentorRole.getPermissions().isEmpty() || mentorRole.getPermissions().size() < 4) {
-            Set<Permission> mentorPerms = allPermissions.stream()
-                    .filter(p -> List.of("INTERN_VIEW_OWN", "MENTOR_VIEW_OWN_DOCS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN").contains(p.getCode()))
-                    .collect(Collectors.toSet());
+        // 3. Mentor: Quyền xem intern_own, mentor_docs, program_view, profile, mission, evaluation, attendance
+        Set<Permission> mentorPerms = allPermissions.stream()
+                .filter(p -> List.of("INTERN_VIEW_OWN", "MENTOR_VIEW_OWN_DOCS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN",
+                                     "MISSION_BOARD_MANAGE", "MISSION_ITEM_MANAGE", "MISSION_VIEW_OWN",
+                                     "ATTENDANCE_VIEW_OWN", "EVALUATION_WEEKLY_MANAGE", "EVALUATION_FINAL_MANAGE").contains(p.getCode()))
+                .collect(Collectors.toSet());
+        if (mentorRole.getPermissions() == null || mentorRole.getPermissions().size() < mentorPerms.size()) {
             mentorRole.setPermissions(mentorPerms);
             roleRepository.save(mentorRole);
-            log.info("-> Đã gán {} quyền cho vai trò Mentor", mentorPerms.size());
+            log.info("-> Đã cập nhật {} quyền cho vai trò Mentor", mentorPerms.size());
         }
 
-        // 4. Intern: Quyền xem intern_own_profile, intern_own_docs, program_view, profile
-        if (internRole.getPermissions() == null || internRole.getPermissions().isEmpty() || internRole.getPermissions().size() < 4) {
-            Set<Permission> internPerms = allPermissions.stream()
-                    .filter(p -> List.of("INTERN_VIEW_OWN_PROFILE", "INTERN_VIEW_OWN_DOCUMENTS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN").contains(p.getCode()))
-                    .collect(Collectors.toSet());
+        // 4. Intern: Quyền xem intern_own_profile, intern_own_docs, program_view, profile, mission_view_own, attendance_check, attendance_view_own, evaluation_view_own
+        Set<Permission> internPerms = allPermissions.stream()
+                .filter(p -> List.of("INTERN_VIEW_OWN_PROFILE", "INTERN_VIEW_OWN_DOCUMENTS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN",
+                                     "MISSION_VIEW_OWN", "ATTENDANCE_CHECK", "ATTENDANCE_VIEW_OWN", "EVALUATION_VIEW_OWN").contains(p.getCode()))
+                .collect(Collectors.toSet());
+        if (internRole.getPermissions() == null || internRole.getPermissions().size() < internPerms.size()) {
             internRole.setPermissions(internPerms);
             roleRepository.save(internRole);
-            log.info("-> Đã gán {} quyền cho vai trò Intern", internPerms.size());
+            log.info("-> Đã cập nhật {} quyền cho vai trò Intern", internPerms.size());
         }
     }
 

@@ -28,11 +28,16 @@ public class ProgramSummaryResponse {
     private Long durationWeeks;
     private Integer maxInterns;
     private Integer currentInterns;
+    private Long pendingApplicationsCount;
     private Boolean isRecruitmentOpen;
     private ProgramStatus status;
     private String statusDisplayName;
 
     public static ProgramSummaryResponse fromEntity(InternshipProgram program) {
+        return fromEntity(program, 0L);
+    }
+
+    public static ProgramSummaryResponse fromEntity(InternshipProgram program, long pendingApplicationsCount) {
         if (program == null) return null;
 
         long weeks = 0;
@@ -52,6 +57,7 @@ public class ProgramSummaryResponse {
                 .durationWeeks(weeks)
                 .maxInterns(program.getMaxInterns())
                 .currentInterns(program.getCurrentInterns())
+                .pendingApplicationsCount(pendingApplicationsCount)
                 .isRecruitmentOpen(program.getIsRecruitmentOpen())
                 .status(program.getStatus())
                 .statusDisplayName(program.getStatus() != null ? program.getStatus().getDisplayName() : null)

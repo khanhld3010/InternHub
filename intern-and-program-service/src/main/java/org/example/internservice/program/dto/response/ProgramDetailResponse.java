@@ -29,6 +29,7 @@ public class ProgramDetailResponse {
     private Integer maxInterns;
     private Long currentInterns;
     private Long availableSlots;
+    private Long pendingApplicationsCount;
     private LocalDate startDate;
     private LocalDate endDate;
     private Long durationWeeks;
@@ -42,6 +43,10 @@ public class ProgramDetailResponse {
     private LocalDateTime updatedAt;
 
     public static ProgramDetailResponse fromEntity(InternshipProgram program, long activeInternCount) {
+        return fromEntity(program, activeInternCount, 0L);
+    }
+
+    public static ProgramDetailResponse fromEntity(InternshipProgram program, long activeInternCount, long pendingApplicationsCount) {
         if (program == null) return null;
 
         long calculatedCurrent = Boolean.TRUE.equals(program.getIsHistorical())
@@ -68,6 +73,7 @@ public class ProgramDetailResponse {
                 .maxInterns(program.getMaxInterns())
                 .currentInterns(calculatedCurrent)
                 .availableSlots(available)
+                .pendingApplicationsCount(pendingApplicationsCount)
                 .startDate(program.getStartDate())
                 .endDate(program.getEndDate())
                 .durationWeeks(weeks)

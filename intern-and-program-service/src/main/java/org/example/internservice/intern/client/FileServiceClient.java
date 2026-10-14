@@ -60,6 +60,39 @@ public class FileServiceClient {
         }
     }
 
+    /**
+     * Upload trực tiếp byte[] lên S3 Bucket thông qua Presigned Upload URL và promote sang destinationKey
+     */
+    public String uploadBytesToS3(byte[] content, String destinationKey, String contentType) {
+        try {
+            // 1. Xin presigned upload URL tạm thời
+            String fileName = destinationKey.substring(destinationKey.lastIndexOf('/') + 1);
+            PresignedUploadResponse presignedUpload = createPresignedUpload(PresignedUploadRequest.builder()
+                    .prefix("temp/contracts")
+                    .fileName(fileName)
+                    .contentType(contentType)
+                    .sizeLimitBytes((long) content.length)
+                    .build());
+
+            // 2. HTTP PUT byte[] lên presignedUrl
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.parseMediaType(contentType));
+            org.springframework.http.HttpEntity<byte[]> entity = new org.springframework.http.HttpEntity<>(content, headers);
+            restTemplate.exchange(presignedUpload.getPresignedUrl(), org.springframework.http.HttpMethod.PUT, entity, Void.class);
+
+            // 3. Promote từ tempKey sang destinationKey chính thức
+            PromoteFileResponse promoteRes = promoteFile(PromoteFileRequest.builder()
+                    .tempKey(presignedUpload.getTempKey())
+                    .destinationKey(destinationKey)
+                    .build());
+
+            return promoteRes.getFinalKey();
+        } catch (Exception e) {
+            log.error("Failed to upload bytes to S3: {}", e.getMessage(), e);
+            throw new RuntimeException("Lỗi khi lưu trữ tài liệu lên S3: " + e.getMessage(), e);
+        }
+    }
+
     // DTOs
     @Data
     @Builder

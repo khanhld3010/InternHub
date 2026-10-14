@@ -59,6 +59,8 @@ public class InternProfileServiceImpl implements InternProfileService {
     private final org.example.internservice.program.repository.ProgramMentorRepository programMentorRepository;
     private final org.example.internservice.intern.client.IdentityServiceClient identityServiceClient;
     private final org.example.internservice.intern.repository.MentorProfileRepository mentorProfileRepository;
+    private final org.example.internservice.intern.repository.InternWeeklyAssessmentRepository weeklyAssessmentRepository;
+    private final org.example.internservice.intern.repository.InternEvaluationRepository evaluationRepository;
     private final org.example.internservice.intern.client.IntegrationEmailClient integrationEmailClient;
     private final org.example.internservice.intern.service.OnboardingTokenService onboardingTokenService;
     private final ApplicationEventPublisher eventPublisher;
@@ -78,6 +80,19 @@ public class InternProfileServiceImpl implements InternProfileService {
             throw new DuplicateResourceException("Số điện thoại '" + request.getPhone() + "' đã tồn tại trong hệ thống");
         }
 
+        org.example.internservice.program.entity.InternshipProgram program = null;
+        if (request.getProgramId() != null) {
+            program = programRepository.findById(request.getProgramId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình thực tập với ID: " + request.getProgramId()));
+            if (program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.PLANNING 
+                    && program.getStatus() != org.example.internservice.program.entity.enums.ProgramStatus.OPEN) {
+                throw new BadRequestException("Chương trình thực tập không ở trạng thái nhận hồ sơ (" + program.getStatus().getDisplayName() + ")");
+            }
+            if (!Boolean.TRUE.equals(program.getIsRecruitmentOpen())) {
+                throw new BadRequestException("Chương trình thực tập hiện đang tạm dừng nhận hồ sơ tuyển sinh");
+            }
+        }
+
         String internCode = generateInternCode();
 
         InternProfile internProfile = InternProfile.builder()
@@ -95,6 +110,7 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
                 .status(InternStatus.PENDING)
+                .program(program)
                 .notes(request.getNotes())
                 .build();
 
@@ -310,12 +326,48 @@ public class InternProfileServiceImpl implements InternProfileService {
             profile.setProgram(program);
             profile.setNeedsReassignment(false);
             profile.setReassignmentReason(null);
+
+            // Tự động kế thừa Mentor của chương trình nếu chương trình đã có Mentor
+            try {
+                List<org.example.internservice.program.entity.ProgramMentor> programMentors = programMentorRepository.findByProgramId(program.getId());
+                if (!programMentors.isEmpty()) {
+                    org.example.internservice.intern.entity.MentorProfile defaultMentor = programMentors.get(programMentors.size() - 1).getMentor();
+                    if (defaultMentor != null) {
+                        profile.setMentorId(defaultMentor.getId());
+                        profile.setMentorName(defaultMentor.getFullName());
+                        profile.setMentorEmail(defaultMentor.getEmail());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Không thể tự động kế thừa Mentor của chương trình cho TTS ID={}: {}", profile.getId(), e.getMessage());
+            }
+
+            program.setCurrentInterns((int) (currentActive + 1));
+            programRepository.save(program);
         }
 
         profile.applyDecision(request.getDecision(), request.getTrimmedRejectionReason(), reviewerUsername);
 
+        if (profile.getStatus() == InternStatus.APPROVED && profile.getMentorId() != null 
+                && profile.getProgram() != null && profile.getProgram().getStatus() == org.example.internservice.program.entity.enums.ProgramStatus.ONGOING) {
+            profile.setStatus(InternStatus.INTERNING);
+        }
+
         InternProfile savedProfile = internProfileRepository.save(profile);
         log.info("Xu ly quyet dinh {} thanh cong cho ho so ID: {}", savedProfile.getStatus(), savedProfile.getId());
+
+        if (request.getDecision() == InternStatus.APPROVED && savedProfile.getMentorId() != null) {
+            internMentorAssignmentRepository.save(org.example.internservice.intern.entity.InternMentorAssignment.builder()
+                    .intern(savedProfile)
+                    .mentorId(savedProfile.getMentorId())
+                    .mentorName(savedProfile.getMentorName())
+                    .mentorEmail(savedProfile.getMentorEmail())
+                    .assignedBy(reviewerUsername)
+                    .assignedAt(LocalDateTime.now())
+                    .status(org.example.internservice.intern.entity.enums.MentorAssignmentStatus.ACTIVE)
+                    .notes("Tự động kế thừa Mentor của chương trình khi duyệt hồ sơ")
+                    .build());
+        }
 
         eventPublisher.publishEvent(new InternDecisionProcessedEvent(this, savedProfile));
 
@@ -424,6 +476,8 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .reassignmentReason(profile.getReassignmentReason())
                 .needsMentorReassignment(profile.getNeedsMentorReassignment())
                 .mentorReassignmentReason(profile.getMentorReassignmentReason())
+                .groupId(profile.getGroup() != null ? profile.getGroup().getId() : null)
+                .groupName(profile.getGroup() != null ? profile.getGroup().getName() : null)
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();
@@ -898,6 +952,7 @@ public class InternProfileServiceImpl implements InternProfileService {
         Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request, enforceInternIds);
         Page<InternProfile> internPage = internProfileRepository.findAll(spec, sanitizedPageable);
         return PageResponse.from(internPage, this::mapToResponse);
+
     }
 
     private Pageable sanitizePageable(Pageable pageable) {
@@ -946,6 +1001,43 @@ public class InternProfileServiceImpl implements InternProfileService {
         return internProfileRepository.findAllById(managedInternIds).stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void removeInternFromProgram(Long programId, Long internId) {
+        log.info("Yêu cầu gỡ thực tập sinh ID: {} khỏi chương trình ID: {}", internId, programId);
+
+        InternProfile intern = internProfileRepository.findById(internId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thực tập sinh với ID: " + internId));
+
+        if (intern.getProgram() == null || !intern.getProgram().getId().equals(programId)) {
+            throw new BadRequestException("Thực tập sinh ID " + internId + " không thuộc chương trình ID " + programId);
+        }
+
+        // 3-Layer Defense Guards:
+        // 1. Kiểm tra Mentor
+        if (intern.getMentorId() != null) {
+            throw new BadRequestException("Thực tập sinh đã được gán Mentor hướng dẫn. Vui lòng dùng chức năng 'Chuyển chương trình' hoặc 'Chấm dứt thực tập' thay vì gỡ trực tiếp.");
+        }
+
+        // 2. Kiểm tra Đánh giá quá trình
+        boolean hasWeekly = !weeklyAssessmentRepository.findByInternCodeOrderByWeekNumberDesc(intern.getInternCode()).isEmpty();
+        boolean hasEvaluation = !evaluationRepository.findByInternCode(intern.getInternCode()).isEmpty();
+        if (hasWeekly || hasEvaluation) {
+            throw new BadRequestException("Thực tập sinh đã có dữ liệu đánh giá quá trình. Vui lòng dùng chức năng 'Chuyển chương trình' hoặc 'Chấm dứt thực tập' thay vì gỡ trực tiếp.");
+        }
+
+        // 3. Kiểm tra Trạng thái hợp lệ (chỉ cho phép khi PENDING hoặc APPROVED)
+        if (intern.getStatus() != InternStatus.PENDING && intern.getStatus() != InternStatus.APPROVED) {
+            throw new BadRequestException("Không thể gỡ trực tiếp thực tập sinh ở trạng thái " + intern.getStatus().name() + ". Vui lòng dùng chức năng 'Chuyển chương trình' hoặc 'Chấm dứt thực tập'.");
+        }
+
+        // Reset liên kết chương trình và nhóm
+        intern.setProgram(null);
+        intern.setGroup(null);
+        internProfileRepository.save(intern);
+        log.info("Đã gỡ thành công thực tập sinh ID: {} khỏi chương trình ID: {}", internId, programId);
     }
 }
 

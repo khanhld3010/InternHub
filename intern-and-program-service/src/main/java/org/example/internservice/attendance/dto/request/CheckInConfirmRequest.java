@@ -18,6 +18,16 @@ public class CheckInConfirmRequest {
     @NotBlank(message = "Mã xác thực phiên QR (qrToken) không được để trống")
     private String qrToken;
 
+    private String deviceFingerprint;
+
+    private String deviceModel;
+
+    private Double latitude;
+
+    private Double longitude;
+
+    private Double accuracyMeters;
+
     @Size(max = 255, message = "Ghi chú không được vượt quá 255 ký tự")
     private String notes;
 }

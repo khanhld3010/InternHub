@@ -28,6 +28,7 @@ import org.example.internservice.program.entity.Department;
 import org.example.internservice.program.entity.InternshipProgram;
 import org.example.internservice.program.entity.ProgramMentor;
 import org.example.internservice.program.repository.DepartmentRepository;
+import org.example.internservice.program.repository.InternGroupRepository;
 import org.example.internservice.program.repository.InternshipProgramRepository;
 import org.example.internservice.program.repository.ProgramMentorRepository;
 import org.example.internservice.security.CustomUserDetails;
@@ -38,10 +39,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -55,6 +58,7 @@ public class MissionBoardServiceImpl implements MissionBoardService {
     private final ProgramMentorRepository programMentorRepository;
     private final MentorProfileRepository mentorProfileRepository;
     private final InternProfileRepository internProfileRepository;
+    private final InternGroupRepository internGroupRepository;
     private final DepartmentRepository departmentRepository;
     private final IdentityServiceClient identityServiceClient;
 
@@ -213,9 +217,54 @@ public class MissionBoardServiceImpl implements MissionBoardService {
             }
         }
 
+        Set<Long> programIds = programMap.keySet();
+        if (programIds.isEmpty()) {
+            return List.of();
+        }
+
+        // 1. Groups count map
+        Map<Long, Integer> groupCountMap = new HashMap<>();
+        List<Object[]> groupCounts = internGroupRepository.countGroupsByProgramIds(programIds);
+        for (Object[] row : groupCounts) {
+            if (row[0] != null && row[1] != null) {
+                groupCountMap.put(((Number) row[0]).longValue(), ((Number) row[1]).intValue());
+            }
+        }
+
+        // 2. Mentors count map
+        Map<Long, Integer> mentorCountMap = new HashMap<>();
+        List<Object[]> mentorCounts = programMentorRepository.countMentorsByProgramIds(programIds);
+        for (Object[] row : mentorCounts) {
+            if (row[0] != null && row[1] != null) {
+                mentorCountMap.put(((Number) row[0]).longValue(), ((Number) row[1]).intValue());
+            }
+        }
+
+        // 3. Mission Items stats map: totalTaskCount, completedTaskCount
+        Map<Long, int[]> taskStatsMap = new HashMap<>();
+        List<Object[]> taskCounts = missionItemRepository.countTasksByProgramIds(programIds);
+        for (Object[] row : taskCounts) {
+            if (row[0] != null) {
+                Long pid = ((Number) row[0]).longValue();
+                int total = (row[1] != null) ? ((Number) row[1]).intValue() : 0;
+                int completed = (row[2] != null) ? ((Number) row[2]).intValue() : 0;
+                taskStatsMap.put(pid, new int[]{total, completed});
+            }
+        }
+
         return programMap.values().stream().map(p -> {
             int totalInterns = internProfileRepository.findByProgramId(p.getId()).size();
             int activeInterns = (int) internProfileRepository.countByProgramIdAndStatusIn(p.getId(), List.of(InternStatus.INTERNING));
+            int groupCount = groupCountMap.getOrDefault(p.getId(), 0);
+            int mentorCount = mentorCountMap.getOrDefault(p.getId(), 0);
+            int[] taskStats = taskStatsMap.getOrDefault(p.getId(), new int[]{0, 0});
+            int totalTaskCount = taskStats[0];
+            int completedTaskCount = taskStats[1];
+            double progressPercent = 0.0;
+            if (totalTaskCount > 0) {
+                progressPercent = Math.round((completedTaskCount * 100.0 / totalTaskCount) * 10.0) / 10.0;
+            }
+
             return MentorProgramResponse.builder()
                     .programId(p.getId())
                     .programCode(p.getProgramCode())
@@ -227,6 +276,11 @@ public class MissionBoardServiceImpl implements MissionBoardService {
                     .endDate(p.getEndDate())
                     .totalInterns(totalInterns)
                     .activeInterns(activeInterns)
+                    .groupCount(groupCount)
+                    .totalTaskCount(totalTaskCount)
+                    .completedTaskCount(completedTaskCount)
+                    .progressPercent(progressPercent)
+                    .mentorCount(mentorCount)
                     .build();
         }).toList();
     }
@@ -236,10 +290,21 @@ public class MissionBoardServiceImpl implements MissionBoardService {
         findProgramOrThrow(programId);
         verifyMentorAccessToProgram(programId, resolveMentorIdNullable(userDetails), userDetails);
 
+        List<Object[]> internTaskCounts = missionItemRepository.countTasksByProgramIdGroupedByIntern(programId);
+        Map<Long, int[]> internTaskMap = new HashMap<>();
+        for (Object[] row : internTaskCounts) {
+            if (row[0] != null) {
+                Long internId = ((Number) row[0]).longValue();
+                int active = (row[1] != null) ? ((Number) row[1]).intValue() : 0;
+                int completed = (row[2] != null) ? ((Number) row[2]).intValue() : 0;
+                internTaskMap.put(internId, new int[]{active, completed});
+            }
+        }
+
         List<InternProfile> interns = internProfileRepository.findByProgramId(programId);
         return interns.stream()
                 .filter(i -> i.getStatus() == InternStatus.INTERNING || i.getStatus() == InternStatus.APPROVED)
-                .map(this::mapToAssigneeResponse)
+                .map(i -> mapToAssigneeResponse(i, internTaskMap))
                 .toList();
     }
 
@@ -453,6 +518,16 @@ public class MissionBoardServiceImpl implements MissionBoardService {
     }
 
     private AssigneeResponse mapToAssigneeResponse(InternProfile intern) {
+        return mapToAssigneeResponse(intern, null);
+    }
+
+    private AssigneeResponse mapToAssigneeResponse(InternProfile intern, Map<Long, int[]> internTaskMap) {
+        Long groupId = (intern.getGroup() != null) ? intern.getGroup().getId() : null;
+        String groupName = (intern.getGroup() != null) ? intern.getGroup().getName() : null;
+        int[] tasks = (internTaskMap != null) ? internTaskMap.getOrDefault(intern.getId(), new int[]{0, 0}) : new int[]{0, 0};
+        int activeTasks = tasks[0];
+        int completedTasks = tasks[1];
+
         return AssigneeResponse.builder()
                 .id(intern.getId())
                 .userId(intern.getUserId())
@@ -461,6 +536,10 @@ public class MissionBoardServiceImpl implements MissionBoardService {
                 .email(intern.getEmail())
                 .phone(intern.getPhone())
                 .appliedPosition(intern.getAppliedPosition())
+                .groupId(groupId)
+                .groupName(groupName)
+                .activeTaskCount(activeTasks)
+                .completedTaskCount(completedTasks)
                 .build();
     }
 }

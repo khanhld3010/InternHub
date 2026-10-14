@@ -14,6 +14,8 @@ public interface InternMentorAssignmentRepository extends JpaRepository<InternMe
 
     Optional<InternMentorAssignment> findByInternIdAndStatus(Long internId, MentorAssignmentStatus status);
 
+    List<InternMentorAssignment> findByInternIdInAndStatus(java.util.Collection<Long> internIds, MentorAssignmentStatus status);
+
     List<InternMentorAssignment> findByMentorIdAndStatus(Long mentorId, MentorAssignmentStatus status);
 
     List<InternMentorAssignment> findByMentorIdInAndStatus(Collection<Long> mentorIds, MentorAssignmentStatus status);

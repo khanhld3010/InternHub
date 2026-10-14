@@ -1,0 +1,88 @@
+package org.example.aiservice.security;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.example.aiservice.config.JwtProperties;
+import org.springframework.stereotype.Component;
+
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class JwtTokenProvider {
+
+    private final JwtProperties jwtProperties;
+
+    private SecretKey getSigningKey() {
+        byte[] keyBytes;
+        try {
+            String secret = jwtProperties.getSecretKey();
+            if (secret.matches("^[0-9a-fA-F]+$") && secret.length() >= 64) {
+                keyBytes = java.util.HexFormat.of().parseHex(secret);
+            } else {
+                keyBytes = Decoders.BASE64.decode(secret);
+            }
+        } catch (Exception e) {
+            keyBytes = jwtProperties.getSecretKey().getBytes(StandardCharsets.UTF_8);
+        }
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    public String getUsernameFromToken(String token) {
+        Claims claims = getClaimsFromToken(token);
+        return claims.getSubject();
+    }
+
+    public String getRoleFromToken(String token) {
+        Claims claims = getClaimsFromToken(token);
+        return claims.get("role", String.class);
+    }
+
+    public Long getUserIdFromToken(String token) {
+        Claims claims = getClaimsFromToken(token);
+        Object userIdObj = claims.get("userId");
+        if (userIdObj instanceof Number) {
+            return ((Number) userIdObj).longValue();
+        } else if (userIdObj != null) {
+            return Long.valueOf(userIdObj.toString());
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getPermissionsFromToken(String token) {
+        Claims claims = getClaimsFromToken(token);
+        List<String> permissions = claims.get("permissions", List.class);
+        return permissions != null ? permissions : Collections.emptyList();
+    }
+
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            log.warn("JWT token không hợp lệ: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private Claims getClaimsFromToken(String token) {
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+}

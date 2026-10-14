@@ -32,6 +32,9 @@ public class OfficeLocation extends BaseEntity {
     @Column(name = "allowed_radius_meters", nullable = false)
     private Double allowedRadiusMeters = 25.0;
 
+    @Column(name = "allowed_ip_subnets", length = 500)
+    private String allowedIpSubnets; // e.g. "192.168.1.0/24, 10.0.0.0/8, 127.0.0.1"
+
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

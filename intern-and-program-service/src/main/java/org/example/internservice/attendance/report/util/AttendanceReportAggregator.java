@@ -171,7 +171,8 @@ public class AttendanceReportAggregator {
             case LATE -> DailyDayStatus.PRESENT_LATE;
             case EARLY_LEAVE -> DailyDayStatus.PRESENT_EARLY_LEAVE;
             case LATE_AND_EARLY_LEAVE -> DailyDayStatus.PRESENT_LATE_AND_EARLY_LEAVE;
-            case ABSENT -> DailyDayStatus.ABSENT_UNEXCUSED;
+            case FORGOTTEN_CHECKOUT, ABSENT -> DailyDayStatus.ABSENT_UNEXCUSED;
+            default -> DailyDayStatus.ABSENT_UNEXCUSED;
         };
     }
 

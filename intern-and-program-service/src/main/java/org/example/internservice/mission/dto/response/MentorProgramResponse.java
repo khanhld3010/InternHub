@@ -26,6 +26,11 @@ public class MentorProgramResponse {
     private LocalDate endDate;
     private Integer totalInterns;
     private Integer activeInterns;
+    private Integer groupCount;
+    private Integer totalTaskCount;
+    private Integer completedTaskCount;
+    private Double progressPercent;
+    private Integer mentorCount;
 
     public Long getId() {
         return programId;

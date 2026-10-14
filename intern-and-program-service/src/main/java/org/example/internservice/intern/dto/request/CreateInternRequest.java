@@ -69,4 +69,5 @@ public class CreateInternRequest {
     private LocalDate endDate;
 
     private String notes;
+    private Long programId;
 }

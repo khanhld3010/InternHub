@@ -17,6 +17,7 @@
 | **v1.1** | 2026-09-30 | AI Pair-Programmer | `TM-25` | Cấu hình & Tọa độ | Bổ sung route `attendance-service` trên API Gateway khắc phục lỗi 404 và cập nhật tọa độ văn phòng mặc định sang (21.035665, 105.768296) theo địa điểm làm việc thực tế. |
 | **v1.2** | 2026-10-01 | AI Pair-Programmer | `TM-25` | Logic Xác Thực & API | Bổ sung lớp xác thực 2 bước bằng mã QR: Sau khi kiểm tra GPS hợp lệ, sinh mã QR chứa token phiên (hiệu lực 60s); xác thực thành công mới cho phép hoàn tất ghi nhận Check-in. |
 | **v1.3** | 2026-10-01 | AI Pair-Programmer | `TM-25` | QR Payload & URL Resolution | Chuyển đổi payload mã QR từ token thô sang Actionable Confirmation URL (`/intern/attendance/confirm?token=UUID`), bổ sung `clientBaseUrl` và cơ chế phân giải 3 tầng (Request body -> Origin/Referer header -> Default) hỗ trợ cả Browser Extension và camera điện thoại thật qua mạng Wi-Fi LAN. |
+| **v2.0** | 2026-10-12 | Luong Anh Huy & AI | `TM-25` | Nâng Cấp Toàn Diện (In-place Evolution) | Tái thiết kế trải nghiệm 12 điểm doanh nghiệp: Multi-factor Trust Level Engine (Device + IP Subnet + GPS), Real-time SSE Sync (Phone -> Laptop), Check-out thích ứng 1-chạm, EOD Auto-close 23:59, Xóa bỏ endpoint legacy bypass và schema sẵn sàng cho HR review theo ADR 0003. |
 
 ---
 
@@ -151,14 +152,18 @@
 | `work_date` | `DATE` | `NOT NULL` | Ngày làm việc (`YYYY-MM-DD`) |
 | `check_in_time` | `DATETIME` | `NOT NULL` | Thời điểm check-in (giờ server) |
 | `check_out_time` | `DATETIME` | `NULL` | Thời điểm check-out (giờ server) |
-| `check_in_latitude` | `DOUBLE` | `NOT NULL` | Vĩ độ khi check-in |
-| `check_in_longitude` | `DOUBLE` | `NOT NULL` | Kinh độ khi check-in |
-| `check_in_distance` | `DOUBLE` | `NOT NULL` | Khoảng cách tính toán tới văn phòng (mét) |
+| `check_in_latitude` | `DOUBLE` | `NULL` | Vĩ độ khi check-in (optional) |
+| `check_in_longitude` | `DOUBLE` | `NULL` | Kinh độ khi check-in (optional) |
+| `check_in_distance` | `DOUBLE` | `NULL` | Khoảng cách tính toán tới văn phòng (mét) |
 | `check_out_latitude` | `DOUBLE` | `NULL` | Vĩ độ khi check-out |
 | `check_out_longitude` | `DOUBLE` | `NULL` | Kinh độ khi check-out |
 | `check_out_distance` | `DOUBLE` | `NULL` | Khoảng cách tính toán tới văn phòng khi check-out (mét) |
 | `total_working_hours` | `DOUBLE` | `NULL` | Tổng số giờ làm việc (ví dụ: `8.5`) |
-| `status` | `VARCHAR(30)` | `NOT NULL` | `ON_TIME`, `LATE`, `EARLY_LEAVE`, `LATE_AND_EARLY_LEAVE` |
+| `status` | `VARCHAR(30)` | `NOT NULL` | `ON_TIME`, `LATE`, `EARLY_LEAVE`, `LATE_AND_EARLY_LEAVE`, `FORGOTTEN_CHECKOUT` |
+| `review_status` | `VARCHAR(32)` | `NOT NULL DEFAULT 'AUTO_APPROVED'` | `AUTO_APPROVED`, `PENDING_REVIEW`, `HR_APPROVED`, `HR_REJECTED` |
+| `reviewed_by` | `VARCHAR(64)` | `NULL` | Định danh HR/Mentor đã xử lý duyệt |
+| `reviewed_at` | `DATETIME` | `NULL` | Thời điểm xử lý duyệt |
+| `review_note` | `TEXT` | `NULL` | Lý do phê duyệt hoặc từ chối ngày công |
 | `notes` | `VARCHAR(255)` | `NULL` | Ghi chú thêm từ thực tập sinh |
 | `created_at` | `DATETIME` | `NOT NULL` | Kế thừa từ `BaseEntity` |
 | `updated_at` | `DATETIME` | `NULL` | Kế thừa từ `BaseEntity` |
@@ -167,30 +172,48 @@
 - Unique Constraint: `uk_intern_work_date` trên `(intern_id, work_date)`
 - Index: `idx_attendance_intern_date` trên `(intern_id, work_date)`
 - Index: `idx_attendance_status` trên `(status)`
+- Index: `idx_attendance_review_status` trên `(review_status)`
 
 ---
 
-### 7.2. Cấu Trúc Bảng MySQL `office_locations`
+### 7.2. Cấu Trúc Bảng MySQL `attendance_audit_logs` (Nhật ký bất biến)
 | Tên cột | Kiểu dữ liệu | Ràng buộc | Mô tả |
 | :--- | :--- | :--- | :--- |
-| `id` | `BIGINT` | `PRIMARY KEY, AUTO_INCREMENT` | Định danh kế thừa từ `BaseEntity` |
-| `name` | `VARCHAR(100)` | `NOT NULL` | Tên điểm làm việc (ví dụ: "Văn phòng chính") |
-| `latitude` | `DOUBLE` | `NOT NULL` | Vĩ độ gốc của văn phòng |
-| `longitude` | `DOUBLE` | `NOT NULL` | Kinh độ gốc của văn phòng |
-| `allowed_radius_meters` | `DOUBLE` | `NOT NULL DEFAULT 25.0` | Bán kính hợp lệ cho phép (mét) |
-| `is_active` | `BOOLEAN` | `NOT NULL DEFAULT TRUE` | Trạng thái kích hoạt áp dụng |
-| `created_at` | `DATETIME` | `NOT NULL` | Kế thừa từ `BaseEntity` |
-| `updated_at` | `DATETIME` | `NULL` | Kế thừa từ `BaseEntity` |
+| `id` | `BIGINT` | `PRIMARY KEY, AUTO_INCREMENT` | Định danh bản ghi audit |
+| `attendance_id` | `BIGINT` | `NULL` | Liên kết tới bảng `attendances` (nếu đã tạo ca) |
+| `intern_id` | `BIGINT` | `NOT NULL` | ID của thực tập sinh |
+| `action_type` | `VARCHAR(20)` | `NOT NULL` | `CHECK_IN`, `CHECK_OUT`, `QUICK_CHECK_OUT` |
+| `action_time` | `DATETIME` | `NOT NULL` | Thời điểm thực hiện trên server |
+| `device_fingerprint`| `VARCHAR(128)`| `NOT NULL` | Mã định danh thiết bị di động |
+| `device_model` | `VARCHAR(100)` | `NULL` | Tên thiết bị (User-Agent tóm tắt) |
+| `client_ip` | `VARCHAR(45)` | `NOT NULL` | IP client gửi request |
+| `is_company_ip` | `BOOLEAN` | `NOT NULL DEFAULT FALSE` | Có thuộc dải IP văn phòng không |
+| `latitude` | `DOUBLE` | `NULL` | Tọa độ GPS |
+| `longitude` | `DOUBLE` | `NULL` | Tọa độ GPS |
+| `accuracy_meters` | `DOUBLE` | `NULL` | Bán kính sai số GPS phần cứng |
+| `distance_meters` | `DOUBLE` | `NULL` | Khoảng cách tới văn phòng |
+| `trust_level` | `VARCHAR(20)` | `NOT NULL` | `HIGH`, `MEDIUM`, `LOW` |
+| `audit_flags` | `VARCHAR(255)` | `NULL` | Chuỗi cờ: `NEW_DEVICE`, `CELLULAR_DATA_OK`, `NO_GPS_SUPPLIED`, v.v. |
 
 ---
 
-### 7.3. JPA Entities & Enums Mapping
-- **Enum `AttendanceStatus`:**
-  - `ON_TIME`: Đến đúng giờ ($\le 08:15$).
-  - `LATE`: Đến muộn ($> 08:15$).
-  - `EARLY_LEAVE`: Đến đúng giờ nhưng về sớm ($< 17:30$).
-  - `LATE_AND_EARLY_LEAVE`: Vừa đến muộn vừa về sớm.
-  - `ABSENT`: Vắng mặt.
+### 7.3. Cấu Trúc Bảng MySQL `intern_devices` (Vòng đời thiết bị)
+| Tên cột | Kiểu dữ liệu | Ràng buộc | Mô tả |
+| :--- | :--- | :--- | :--- |
+| `id` | `BIGINT` | `PRIMARY KEY, AUTO_INCREMENT` | ID thiết bị |
+| `intern_id` | `BIGINT` | `NOT NULL` | ID của thực tập sinh |
+| `device_fingerprint`| `VARCHAR(128)`| `NOT NULL` | Mã băm phần cứng trình duyệt/thiết bị |
+| `device_name` | `VARCHAR(100)` | `NULL` | Tên hiển thị (ví dụ: "iPhone 15 Pro", "Samsung S23") |
+| `trust_status` | `VARCHAR(30)` | `NOT NULL DEFAULT 'PENDING_PAIRING'` | `PRIMARY_TRUSTED`, `PENDING_PAIRING`, `BLOCKED` |
+| `valid_checkin_count`| `INT` | `NOT NULL DEFAULT 0` | Số ngày check-in hợp lệ on-site để nâng hạng |
+| `last_used_at` | `DATETIME` | `NOT NULL` | Lần cuối sử dụng |
+
+---
+
+### 7.4. JPA Entities & Enums Mapping
+- **Enum `AttendanceStatus`:** `ON_TIME`, `LATE`, `EARLY_LEAVE`, `LATE_AND_EARLY_LEAVE`, `FORGOTTEN_CHECKOUT`, `ABSENT`.
+- **Enum `AttendanceReviewStatus`:** `AUTO_APPROVED`, `PENDING_REVIEW`, `HR_APPROVED`, `HR_REJECTED`.
+- **Enum `TrustLevel`:** `HIGH`, `MEDIUM`, `LOW`.
 
 ---
 
@@ -281,96 +304,98 @@
 
 ---
 
-### 8.3. API Xác Nhận Check-in: `POST /api/v1/attendances/check-in/confirm`
-- **Mục đích:** Xác thực token phiên QR (trong vòng 60s) và chính thức ghi nhận bản ghi điểm danh.
+### 8.3. API Xác Nhận Check-in Di Động: `POST /api/v1/attendances/check-in/confirm`
+- **Mục đích:** Xác thực token phiên QR, thu thập dấu vân tay thiết bị, IP mạng, Optional GPS để chạy Trust Level Engine.
 - **Phân quyền:** `@PreAuthorize("hasRole('INTERN')")`
-- **Request Headers:**
-  ```http
-  Content-Type: application/json
-  Authorization: Bearer <jwt>
-  ```
 - **Request Body JSON (`CheckInConfirmRequest`):**
   ```json
   {
     "qrToken": "550e8400-e29b-41d4-a716-446655440000",
-    "notes": "Điểm danh vào ca đúng giờ"
+    "deviceFingerprint": "a3f89b1c-7890-4123-bcde-9876543210ab",
+    "deviceModel": "iPhone 15 Pro (Safari Mobile)",
+    "latitude": 21.035665,
+    "longitude": 105.768296,
+    "accuracyMeters": 15.0,
+    "notes": "Điểm danh vào ca"
   }
   ```
 
-#### Response Success (201 Created):
+#### Response Success (200 OK - High/Medium Trust):
 ```json
 {
   "success": true,
-  "status": 201,
-  "message": "Check-in thành công",
+  "status": 200,
+  "message": "Điểm danh vào ca thành công",
   "data": {
     "id": 101,
     "internId": 12,
-    "workDate": "2026-10-01",
-    "checkInTime": "2026-10-01T08:14:45",
-    "checkOutTime": null,
-    "checkInDistance": 5.4,
-    "checkOutDistance": null,
-    "totalWorkingHours": null,
+    "workDate": "2026-10-12",
+    "checkInTime": "2026-10-12T08:14:45",
     "status": "ON_TIME",
-    "notes": "Điểm danh vào ca đúng giờ"
+    "trustLevel": "HIGH",
+    "reviewStatus": "AUTO_APPROVED",
+    "auditFlags": "LOCATION_VERIFIED"
   },
-  "timestamp": "2026-10-01T08:14:45"
+  "timestamp": "2026-10-12T08:14:45"
 }
 ```
 
-#### Response Error - Mã QR Hết Hạn (400 Bad Request):
+#### Response Success (200 OK - Low Trust / Cần Duyệt):
 ```json
 {
-  "success": false,
-  "status": 400,
-  "message": "Mã QR xác thực đã hết hạn (chỉ có hiệu lực trong 60 giây). Vui lòng quét lại vị trí và thử lại.",
-  "timestamp": "2026-10-01T08:16:00"
+  "success": true,
+  "status": 200,
+  "message": "Điểm danh đã được ghi nhận và đang chờ HR xác nhận do bạn sử dụng thiết bị mới ngoài mạng văn phòng.",
+  "data": {
+    "id": 101,
+    "internId": 12,
+    "workDate": "2026-10-12",
+    "checkInTime": "2026-10-12T08:14:45",
+    "status": "ON_TIME",
+    "trustLevel": "LOW",
+    "reviewStatus": "PENDING_REVIEW",
+    "auditFlags": "SUSPICIOUS_FRAUD_RISK"
+  },
+  "timestamp": "2026-10-12T08:14:45"
 }
-```
 ```
 
 ---
 
-### 8.3. API Check-out: `POST /api/v1/attendances/check-out`
-- **Mục đích:** Ghi nhận giờ về, tính tổng giờ làm việc và xác thực vị trí GPS.
+### 8.4. API Đồng Bộ Trạng Thái Real-time Cho Laptop: `GET /api/v1/attendances/check-in/stream`
+- **Mục đích:** Kênh Server-Sent Events (SSE) để màn hình Modal Laptop lắng nghe tức thì sự kiện xác nhận từ điện thoại.
 - **Phân quyền:** `@PreAuthorize("hasRole('INTERN')")`
-- **Request Body JSON:**
+- **Parameters:** `?qrToken=550e8400-e29b-41d4-a716-446655440000`
+- **Response Type:** `text/event-stream`
+- **Các sự kiện bắn về Laptop:**
+  - Event `CONNECTED`: Laptop kết nối kênh lắng nghe thành công.
+  - Event `CHECK_IN_SUCCESS`: Bắn ngay khi điện thoại xác nhận thành công $\rightarrow$ Laptop tự động chuyển giao diện xanh mừng thành công, tắt modal sau 3s và cập nhật Dashboard.
+  - Event `TOKEN_EXPIRED`: Bắn khi token hết hạn $\rightarrow$ Laptop kích hoạt Prefetch đổi mã mới.
+
+---
+
+### 8.5. API Check-out Nhanh 1-Chạm Trên Điện Thoại: `POST /api/v1/attendances/check-out/quick`
+- **Mục đích:** Cho phép TTS bấm Tan ca trực tiếp trên Web Mobile khi đã cất laptop vào balo (chỉ khả dụng khi đạt High/Medium trust).
+- **Phân quyền:** `@PreAuthorize("hasRole('INTERN')")`
+- **Request Body JSON (`QuickCheckOutRequest`):**
   ```json
   {
-    "latitude": 21.028512,
-    "longitude": 105.854442,
-    "notes": "Hoàn thành công việc trong ngày"
+    "deviceFingerprint": "a3f89b1c-7890-4123-bcde-9876543210ab",
+    "latitude": 21.035665,
+    "longitude": 105.768296,
+    "accuracyMeters": 20.0,
+    "notes": "Tan ca đúng giờ"
   }
   ```
+- **Xử lý:**
+  - Backend kiểm tra IP mạng hoặc GPS $\le 50\text{m}$.
+  - Nếu thỏa mãn: Ghi nhận `checkOutTime`, tính giờ làm việc, cập nhật trạng thái `status`.
+  - Nếu không thỏa mãn (ở quán cà phê ngoài dải IP & GPS xa): Bị từ chối với HTTP 403 Forbidden kèm thông báo: *"Bạn đang ở ngoài khu vực văn phòng. Vui lòng quét mã QR trên laptop để thực hiện check-out."*
 
-#### Response Success (200 OK):
-```json
-{
-  "success": true,
-  "message": "Check-out thành công",
-  "data": {
-    "id": 101,
-    "workDate": "2026-09-29",
-    "checkInTime": "2026-09-29T08:10:15",
-    "checkOutTime": "2026-09-29T17:35:00",
-    "totalWorkingHours": 9.41,
-    "status": "ON_TIME",
-    "distanceMeters": 0.45,
-    "notes": "Hoàn thành công việc trong ngày"
-  },
-  "timestamp": "2026-09-29T17:35:00"
-}
-```
+---
 
-#### Response Error - Chưa Check-in (400 Bad Request):
-```json
-{
-  "success": false,
-  "message": "Bạn chưa thực hiện check-in cho ngày hôm nay, không thể check-out",
-  "timestamp": "2026-09-29T17:35:00"
-}
-```
+### 8.6. API Check-out Tiêu Chuẩn (QR Fallback): `POST /api/v1/attendances/check-out/confirm`
+- **Mục đích:** Dự phòng quét mã QR trên laptop khi check-out bằng thiết bị lạ hoặc mạng chập chờn.
 
 ---
 
@@ -409,34 +434,55 @@
 
 ---
 
-## 9. Core Flow / Enforcement Flow (Luồng Xử Lý Cốt Lõi)
+## 9. Core Flow / Enforcement Flow (Luồng Xử Lý Cốt Lõi v2.0)
 
-### Sơ đồ luồng Check-in:
+### 9.1. Sơ Đồ Luồng E2E Điểm Danh Đa Tầng (Dynamic QR + SSE + Mobile Confirm):
 ```text
-[Intern trên Dashboard]
-       │
-       ▼ (1. Bấm nút Check-in)
-[Browser lấy GPS navigator.geolocation]
-       │
-       ▼ (2. Gửi POST /api/v1/attendances/check-in kèm lat, lng)
-[API Gateway (8080)]
-       │
-       ▼ (3. Forward tới AttendanceController - 8082)
-[AttendanceController: Validate @Valid]
-       │
-       ▼ (4. AttendanceService xử lý)
-       ├── Tìm InternProfile từ JWT userId
-       ├── Kiểm tra xem hôm nay đã check-in chưa? (Đã check-in -> 409 Conflict)
-       ├── Lấy cấu hình OfficeLocation đang active
-       ├── Tính khoảng cách Haversine (client_coord, office_coord)
-       ├── Nếu distance > 25.0m -> Throw BadRequestException (400)
-       ├── Lấy thời gian Server hiện tại (Zone Asia/Ho_Chi_Minh)
-       ├── So sánh với 08:15:00 -> Gán status ON_TIME hoặc LATE
-       └── Lưu Attendance vào Database
-       │
-       ▼ (5. Trả về ApiResponse<AttendanceResponse>)
-[Widget trên Dashboard hiển thị trạng thái đã Check-in]
+[TTS trên Laptop Dashboard]                      [Điện Thoại Di Động TTS]              [Backend Microservice & Redis]
+            │                                               │                                         │
+            ├─ 1. Bấm "Vào ca" ─────────────────────────────┼────────────────────────────────────────►│
+            │                                               │                                         ├─ Sinh qrToken (60s) vào Redis
+            │◄─ 2. Trả về qrCodeDataUrl + qrToken ──────────┼─────────────────────────────────────────┤
+            │                                               │                                         │
+            ├─ 3. Mở kết nối SSE GET /check-in/stream ──────┼────────────────────────────────────────►│ (Lắng nghe sự kiện SSE)
+            │                                               │                                         │
+            │  [Màn hình Laptop hiện QR 60s]                │                                         │
+            │  (Vòng đếm ngược Radial Progress)            │                                         │
+            │                                               │                                         │
+            │  ── 4. Dùng Camera quét mã QR trên laptop ──► │                                         │
+            │                                               ├─ 5. Mở Confirm Page (/confirm?token=)   │
+            │                                               ├─ 6. Thu thập Device Fingerprint + GPS   │
+            │                                               ├─ 7. Gửi POST /check-in/confirm ────────►│
+            │                                               │                                         ├─ Đánh giá Trust Level (Device + IP + GPS)
+            │                                               │                                         ├─ Lưu Attendance + Audit Log
+            │                                               │                                         ├─ BẮN SỰ KIỆN SSE (CHECK_IN_SUCCESS) ──┐
+            │                                               │◄─ 8. Trả về HTTP 200 (Xanh/Vàng) ───────┤                                       │
+            │                                               │                                         │                                       │
+            │◄──────────────────────────────────────────────┴─────────────────────────────────────────┴───────────────────────────────────────┘
+            │ (Nhận SSE CHECK_IN_SUCCESS)
+            ├─ Màn hình Laptop tự động nổ chúc mừng xanh lá
+            ├─ Tự động đóng Modal sau 3s
+            └─ Tự động cập nhật Card trạng thái trên Dashboard ("Đã vào ca: 08:14")
 ```
+
+---
+
+### 9.2. Ma Trận 12 Điểm Nâng Cấp Trải Nghiệm Doanh Nghiệp (Enterprise UX Requirements)
+
+| Nhóm | Điểm | Tên tính năng trải nghiệm | Hành vi chi tiết |
+| :--- | :---: | :--- | :--- |
+| **Laptop Modal** | **1** | **Vòng Đếm Ngược & Silent Prefetch** | Vòng tròn SVG đếm ngược 60s $\rightarrow$ 0s. Khi còn 5s cuối, tự gọi API lấy mã mới cross-fade mượt mà, không gián đoạn. Tự pause sau 3 phút nếu không quét. |
+| | **2** | **Đồng Bộ Tức Thì Qua SSE (Real-time Sync)** | Laptop mở kết nối Server-Sent Events. Điện thoại bấm xong là Laptop nổ hiệu ứng thành công ngay lập tức, tự đóng modal và reload card. |
+| | **3** | **Onboarding Micro-Guide** | Minh họa động hướng dẫn TTS quét bằng Camera thường hoặc Zalo / Google Lens. |
+| **Mobile Confirm** | **4** | **Pre-permission Thấu Cảm** | Banner màu xanh giải thích lý do trước khi xin quyền GPS. Nếu từ chối GPS vẫn cho tiếp tục và chuyển sang kiểm tra mạng Wi-Fi công ty (`MEDIUM_TRUST`). |
+| | **5** | **Smart Retry & Grace Period** | Tự động thử lại 3 lần nếu sóng 4G chập chờn. Cho phép sai số lệch đồng hồ 15s (`clock skew grace`) cho Redis token. |
+| | **6** | **Thẻ Trạng Thái Minh Bạch** | Xanh khi `APPROVED`. Vàng khi `PENDING_REVIEW` với lời nhắn trấn an: *"Đang chờ HR đối soát nhẹ nhàng do bạn dùng thiết bị mới ngoài công ty. Ngày công không bị mất."* |
+| **Tan Ca (Check-out)** | **7** | **Tan Ca Nhanh 1-Chạm (Mobile Quick Check-out)** | Bấm trực tiếp trên Web di động khi đang kết nối Wi-Fi công ty hoặc GPS $\le 50\text{m}$. Không bắt mở lại laptop khi đã cất vào balo. |
+| | **8** | **Nhắc Nhở Tan Ca (End-of-Shift Toast)** | Thông báo nhắc nhở nhẹ nhàng lúc 17:30 để tránh quên check-out. |
+| **Vận Hành & Ổn Định**| **9** | **Tự Động Đóng Ca EOD 23:59 & Giải Trình** | Scheduled Job 23:59 đóng các ca quên check-out (`FORGOTTEN_CHECKOUT`). Sáng hôm sau hiện popup nộp đơn giải trình giờ về cho Mentor duyệt 1-click. |
+| | **10**| **Idempotency Guard (Chống Click Trùng)** | Redis Distributed Lock (`internId + workDate`) + Disable nút trên UI ngăn bấm lặp request. |
+| | **11**| **Vòng Đời Thiết Bị (Primary Device Pairing)**| Lưu thiết bị mới là `PENDING_PAIRING`. Sau 3 ngày điểm danh hợp lệ on-site, tự động thăng hạng thành `PRIMARY_TRUSTED`. |
+| | **12**| **Bù Sai Số Tòa Nhà (Indoor Signal Fallback)** | Tính toán khoảng cách bù trừ bán kính sai số phần cứng: `distance - accuracy <= allowedRadius`. Không chặn oan trong phòng họp kín. |
 
 ---
 

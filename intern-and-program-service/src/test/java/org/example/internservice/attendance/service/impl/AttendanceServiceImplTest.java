@@ -2,7 +2,6 @@ package org.example.internservice.attendance.service.impl;
 
 import org.example.internservice.attendance.dto.request.CheckInConfirmRequest;
 import org.example.internservice.attendance.dto.request.CheckInInitiateRequest;
-import org.example.internservice.attendance.dto.request.CheckInRequest;
 import org.example.internservice.attendance.dto.request.CheckOutRequest;
 import org.example.internservice.attendance.dto.response.AttendanceResponse;
 import org.example.internservice.attendance.dto.response.CheckInQrResponse;
@@ -14,6 +13,7 @@ import org.example.internservice.attendance.entity.enums.AttendanceStatus;
 import org.example.internservice.attendance.repository.AttendanceRepository;
 import org.example.internservice.attendance.repository.OfficeLocationRepository;
 import org.example.internservice.attendance.service.CheckInQrTokenManager;
+import org.example.internservice.attendance.service.TrustLevelEvaluator;
 import org.example.internservice.attendance.util.FrontendUrlResolver;
 import org.example.internservice.attendance.util.HaversineDistanceCalculator;
 import org.example.internservice.attendance.util.QrCodeGenerator;
@@ -70,6 +70,18 @@ class AttendanceServiceImplTest {
     @Mock
     private FrontendUrlResolver frontendUrlResolver;
 
+    @Mock
+    private org.example.internservice.attendance.service.TrustLevelEvaluator trustLevelEvaluator;
+
+    @Mock
+    private org.example.internservice.attendance.repository.AttendanceAuditLogRepository auditLogRepository;
+
+    @Mock
+    private org.example.internservice.attendance.repository.InternDeviceRepository internDeviceRepository;
+
+    @Mock
+    private org.example.internservice.attendance.service.SseEmitterRegistry sseEmitterRegistry;
+
     @InjectMocks
     private AttendanceServiceImpl attendanceService;
 
@@ -96,73 +108,6 @@ class AttendanceServiceImplTest {
                 .isActive(true)
                 .build();
         mockOffice.setId(1L);
-    }
-
-    @Test
-    @DisplayName("Check-in thành công khi vị trí nằm trong bán kính cho phép")
-    void checkIn_whenValid_shouldSaveAndReturnResponse() {
-        CheckInRequest request = CheckInRequest.builder()
-                .latitude(21.028515)
-                .longitude(105.854440)
-                .notes("Đến văn phòng đúng giờ")
-                .build();
-
-        when(internProfileRepository.findByUserId(10L)).thenReturn(Optional.of(mockIntern));
-        when(attendanceRepository.existsByInternIdAndWorkDate(eq(1L), any(LocalDate.class))).thenReturn(false);
-        when(officeLocationRepository.findFirstByIsActiveTrueOrderByIdAsc()).thenReturn(Optional.of(mockOffice));
-        when(haversineCalculator.calculateDistance(anyDouble(), anyDouble(), anyDouble(), anyDouble())).thenReturn(5.2);
-
-        Attendance savedAttendance = Attendance.builder()
-                .internId(1L)
-                .workDate(LocalDate.now(AttendanceServiceImpl.VIETNAM_ZONE))
-                .checkInTime(LocalDateTime.now(AttendanceServiceImpl.VIETNAM_ZONE))
-                .checkInLatitude(request.getLatitude())
-                .checkInLongitude(request.getLongitude())
-                .checkInDistance(5.2)
-                .status(AttendanceStatus.ON_TIME)
-                .notes(request.getNotes())
-                .build();
-        savedAttendance.setId(100L);
-
-        when(attendanceRepository.save(any(Attendance.class))).thenReturn(savedAttendance);
-
-        AttendanceResponse response = attendanceService.checkIn(10L, request);
-
-        assertNotNull(response);
-        assertEquals(100L, response.getId());
-        assertEquals(1L, response.getInternId());
-        assertEquals(5.2, response.getCheckInDistance());
-        verify(attendanceRepository).save(any(Attendance.class));
-    }
-
-    @Test
-    @DisplayName("Check-in ném DuplicateResourceException khi đã check-in trong ngày")
-    void checkIn_whenAlreadyCheckedIn_shouldThrowDuplicateResourceException() {
-        CheckInRequest request = CheckInRequest.builder()
-                .latitude(21.028515)
-                .longitude(105.854440)
-                .build();
-
-        when(internProfileRepository.findByUserId(10L)).thenReturn(Optional.of(mockIntern));
-        when(attendanceRepository.existsByInternIdAndWorkDate(eq(1L), any(LocalDate.class))).thenReturn(true);
-
-        assertThrows(DuplicateResourceException.class, () -> attendanceService.checkIn(10L, request));
-    }
-
-    @Test
-    @DisplayName("Check-in ném BadRequestException khi tọa độ vượt quá bán kính 25m")
-    void checkIn_whenBeyondRadius_shouldThrowBadRequestException() {
-        CheckInRequest request = CheckInRequest.builder()
-                .latitude(21.035000)
-                .longitude(105.854440)
-                .build();
-
-        when(internProfileRepository.findByUserId(10L)).thenReturn(Optional.of(mockIntern));
-        when(attendanceRepository.existsByInternIdAndWorkDate(eq(1L), any(LocalDate.class))).thenReturn(false);
-        when(officeLocationRepository.findFirstByIsActiveTrueOrderByIdAsc()).thenReturn(Optional.of(mockOffice));
-        when(haversineCalculator.calculateDistance(anyDouble(), anyDouble(), anyDouble(), anyDouble())).thenReturn(65.4);
-
-        assertThrows(BadRequestException.class, () -> attendanceService.checkIn(10L, request));
     }
 
     @Test
@@ -402,16 +347,30 @@ class AttendanceServiceImplTest {
                 .build();
         savedAttendance.setId(99L);
 
+        TrustLevelEvaluator.EvaluationResult evalResult =
+                TrustLevelEvaluator.EvaluationResult.builder()
+                        .trustLevel(org.example.internservice.attendance.entity.enums.TrustLevel.HIGH)
+                        .reviewStatus(org.example.internservice.attendance.entity.enums.AttendanceReviewStatus.AUTO_APPROVED)
+                        .auditFlags(List.of("TRUSTED_DEVICE"))
+                        .calculatedDistance(8.0)
+                        .isCompanyIp(true)
+                        .isKnownDevice(true)
+                        .build();
+
         when(internProfileRepository.findByUserId(10L)).thenReturn(Optional.of(mockIntern));
         when(attendanceRepository.existsByInternIdAndWorkDate(eq(1L), any(LocalDate.class))).thenReturn(false);
         when(qrTokenManager.validateAndConsume("valid-token", 1L)).thenReturn(session);
+        when(officeLocationRepository.findFirstByIsActiveTrueOrderByIdAsc()).thenReturn(Optional.of(mockOffice));
+        when(trustLevelEvaluator.evaluate(eq(1L), any(), any(), any(), any(), any(), any())).thenReturn(evalResult);
         when(attendanceRepository.save(any(Attendance.class))).thenReturn(savedAttendance);
 
-        AttendanceResponse response = attendanceService.confirmCheckIn(10L, request);
+        AttendanceResponse response = attendanceService.confirmCheckIn(10L, request, "192.168.1.50");
 
         assertNotNull(response);
         assertEquals(99L, response.getId());
         assertEquals(1L, response.getInternId());
         verify(attendanceRepository).save(any(Attendance.class));
+        verify(auditLogRepository).save(any());
+        verify(sseEmitterRegistry).emitCheckInSuccess(eq("valid-token"), any());
     }
 }

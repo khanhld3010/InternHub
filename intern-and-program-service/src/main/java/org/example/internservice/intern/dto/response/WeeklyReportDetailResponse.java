@@ -36,6 +36,7 @@ public class WeeklyReportDetailResponse {
 
     private String nextWeekPlan;
     private String reportAttachmentUrl;
+    private String revisionNote;
     private LocalDateTime submittedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -24,17 +24,24 @@ public class PermissionCatalogServiceImpl implements PermissionCatalogService {
 
     private final PermissionRepository permissionRepository;
 
-    private static final Map<String, String> MODULE_DISPLAY_NAMES = Map.of(
-            "USER", "Quản Lý Người Dùng & Tài Khoản",
-            "ROLE", "Quản Lý Vai Trò & Phân Quyền",
-            "INTERN", "Quản Lý Hồ Sơ Thực Tập Sinh",
-            "MENTOR", "Quản Lý Đội Ngũ Người Hướng Dẫn",
-            "PROGRAM", "Quản Lý Chương Trình Thực Tập",
-            "CONTRACT", "Quản Lý Hợp Đồng & Đãi Ngộ",
-            "DOCUMENT", "Quản Lý Tài Liệu & Hồ Sơ Đính Kèm",
-            "PROFILE", "Hồ Sơ Cá Nhân & Tài Khoản",
-            "SYSTEM", "Quản Trị Hệ Thống, Sao Lưu & Nhật Ký",
-            "REPORT", "Báo Cáo & Thống Kê"
+    private static final Map<String, String> MODULE_DISPLAY_NAMES = Map.ofEntries(
+            Map.entry("USER", "Quản Lý Người Dùng & Tài Khoản"),
+            Map.entry("ROLE", "Quản Lý Vai Trò & Phân Quyền"),
+            Map.entry("INTERN", "Quản Lý Hồ Sơ Thực Tập Sinh"),
+            Map.entry("MENTOR", "Quản Lý Đội Ngũ Người Hướng Dẫn"),
+            Map.entry("PROGRAM", "Quản Lý Chương Trình Thực Tập"),
+            Map.entry("CONTRACT", "Quản Lý Hợp Đồng & Đãi Ngộ"),
+            Map.entry("DOCUMENT", "Quản Lý Tài Liệu & Hồ Sơ Đính Kèm"),
+            Map.entry("PROFILE", "Hồ Sơ Cá Nhân & Tài Khoản"),
+            Map.entry("SYSTEM", "Quản Trị Hệ Thống, Sao Lưu & Nhật Ký"),
+            Map.entry("REPORT", "Báo Cáo & Thống Kê"),
+            Map.entry("MISSION", "Quản Lý Bảng Nhiệm Vụ & Phân Công (Kanban)"),
+            Map.entry("ATTENDANCE", "Quản Lý Điểm Danh & Chấm Công Thực Tập"),
+            Map.entry("ALLOWANCE", "Quản Lý Phụ Cấp & Thu Nhập Hàng Tháng (C4)"),
+            Map.entry("SUPPORT", "Yêu Cầu Hỗ Trợ & Cấp Giấy Tờ (C4)"),
+            Map.entry("LEAVE", "Quản Lý Nghỉ Phép Thực Tập Sinh (TM-28)"),
+            Map.entry("MEETING", "Lịch Họp & Trao Đổi Định Kỳ (Meet/Jitsi)"),
+            Map.entry("EVALUATION", "Đánh Giá Kỹ Năng, Thái Độ & Hoàn Thành Kỳ")
     );
 
     @Override

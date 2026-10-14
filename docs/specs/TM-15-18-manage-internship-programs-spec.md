@@ -421,15 +421,20 @@ public ResponseEntity<ApiResponse<?>> getProgramDetail(
 2. **Trang `HrProgramManagementPage.tsx` (`/hr/programs`):**
    - **Header:** Tiêu đề *"Quản Lý Chương Trình Thực Tập"*, nút `[+ Tạo Chương Trình Mới]`.
    - **Thanh lọc (`ProgramFilterBar`):** Tìm kiếm theo tên/mã, chọn phòng ban từ dropdown, lọc theo trạng thái (`Tất cả`, `Đang mở tuyển`, `Đang diễn ra`, `Kế hoạch`, `Đã kết thúc`, `Đã hủy`).
-   - **Bảng danh sách (`ProgramTable`):** Cột Mã CT, Tên chương trình, Phòng ban, Thời gian (`dd/MM/yyyy - dd/MM/yyyy` kèm số tuần), Chỉ tiêu (`current/max` - tính qua COUNT), Toggle đóng/mở tuyển sinh trực tiếp, Badge trạng thái màu riêng biệt, Actions (Xem chi tiết, Sửa, Đổi trạng thái).
+   - **Bảng danh sách (`ProgramTable`):** Cột Mã CT, Tên chương trình, Phòng ban, Thời gian (`dd/MM/yyyy - dd/MM/yyyy` kèm số tuần), Cột Tiếp nhận & Đơn chờ (`current/max` kèm Badge/Số lượng hồ sơ chờ duyệt `pendingApplicationsCount`), Toggle đóng/mở tuyển sinh trực tiếp, Badge trạng thái màu riêng biệt.
+   - **Hàng loạt nút Actions tích hợp:**
+     - 🚀 **Vào Workspace của kỳ** (`<LayoutDashboard />` ➔ `/hr/programs/{id}`): Không gian làm việc riêng cho từng kỳ (thành viên, nhiệm vụ, nhóm, mentor).
+     - ➕ **Tiếp nhận & điều phối TTS** (`<UserPlus />` ➔ `EnrollInternModal`): Tiếp nhận trực tiếp danh sách ứng viên `PENDING` vào kỳ và tự động duyệt sang `APPROVED` qua `POST /api/programs/{id}/enroll`.
+     - 👥 **Quản lý & Chia nhóm** (`<Users />` ➔ `ProgramGroupModal`): Phân chia nhóm thực tập sinh theo kỳ.
+     - ✏️ Sửa, Đổi trạng thái, Xóa chương trình.
 3. **Modal `CreateProgramModal.tsx` & `EditProgramModal.tsx`:**
    - **Checkbox/Toggle:** *"Đây là chương trình đã kết thúc (Nhập dữ liệu lịch sử)"*.
      - Mặc định: tắt. `startDate` validate `>= today`, `endDate - startDate >= 4 tuần`.
      - Khi bật: cho phép chọn ngày quá khứ, tự động set status = `COMPLETED`, chuyển field `maxInterns` thành `currentInterns` (Số TTS đã tốt nghiệp).
    - Tự động tính toán số tuần và hiển thị realtime (ví dụ: *"Thời lượng: 12 tuần"*).
-4. **Cập nhật Modal Duyệt Hồ Sơ (`ApproveConfirmModal.tsx`):**
-   - Bắt buộc có Select chọn Chương trình tiếp nhận (chỉ hiển thị các chương trình `OPEN`/`PLANNING` còn chỉ tiêu).
-   - Hiển thị badge chỉ tiêu bên cạnh tên chương trình: *(còn 3/15 slot)*.
+4. **Modal Tiếp Nhận Thực Tập Sinh Theo Kỳ (`EnrollInternModal.tsx`):**
+   - Cho phép chọn nhiều ứng viên đang `PENDING` có nguyện vọng vào chương trình.
+   - Gọi API `POST /api/programs/{id}/enroll`, cập nhật tức thì `pendingApplicationsCount` và `currentParticipants`.
 5. **Cảnh báo Reassignment trên danh sách TTS:**
    - Hiển thị nhãn `⚠️ Cần phân bổ lại CT` khi hồ sơ có `needs_reassignment = true`.
    - Cho phép HR nhấp để mở modal điều phối sang chương trình mới còn chỉ tiêu.

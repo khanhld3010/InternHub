@@ -26,5 +26,8 @@ public class AttendanceResponse {
     private Double checkOutDistance;
     private Double totalWorkingHours;
     private AttendanceStatus status;
+    private String reviewStatus;
+    private String trustLevel;
+    private String auditFlags;
     private String notes;
 }

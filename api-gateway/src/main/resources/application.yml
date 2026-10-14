@@ -2,4 +2,12 @@ spring:
   application:
     name: api-gateway
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://config-server:8888}
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  cloud:
+    config:
+      fail-fast: true
+      retry:
+        max-attempts: 10
+        initial-interval: 1500
+        max-interval: 5000
+        multiplier: 1.5

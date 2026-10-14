@@ -4,8 +4,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.attendance.dto.request.CheckInConfirmRequest;
 import org.example.internservice.attendance.dto.request.CheckInInitiateRequest;
-import org.example.internservice.attendance.dto.request.CheckInRequest;
 import org.example.internservice.attendance.dto.request.CheckOutRequest;
+import org.example.internservice.attendance.dto.request.QuickCheckOutRequest;
+import org.example.internservice.attendance.dto.request.ReviewAttendanceRequest;
 import org.example.internservice.attendance.dto.response.AttendanceResponse;
 import org.example.internservice.attendance.dto.response.CheckInQrResponse;
 import org.example.internservice.attendance.dto.response.MonthlyAttendanceSummaryResponse;
@@ -17,6 +18,8 @@ import org.example.internservice.attendance.repository.AttendanceRepository;
 import org.example.internservice.attendance.repository.OfficeLocationRepository;
 import org.example.internservice.attendance.service.AttendanceService;
 import org.example.internservice.attendance.service.CheckInQrTokenManager;
+import org.example.internservice.attendance.service.TrustLevelEvaluator;
+import org.example.internservice.attendance.service.TrustLevelEvaluator.EvaluationResult;
 import org.example.internservice.attendance.util.FrontendUrlResolver;
 import org.example.internservice.attendance.util.HaversineDistanceCalculator;
 import org.example.internservice.attendance.util.QrCodeGenerator;
@@ -53,6 +56,10 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final CheckInQrTokenManager qrTokenManager;
     private final QrCodeGenerator qrCodeGenerator;
     private final FrontendUrlResolver frontendUrlResolver;
+    private final org.example.internservice.attendance.service.TrustLevelEvaluator trustLevelEvaluator;
+    private final org.example.internservice.attendance.repository.AttendanceAuditLogRepository auditLogRepository;
+    private final org.example.internservice.attendance.repository.InternDeviceRepository internDeviceRepository;
+    private final org.example.internservice.attendance.service.SseEmitterRegistry sseEmitterRegistry;
 
     @Override
     public TodayAttendanceResponse getTodayAttendance(Long userId) {
@@ -95,16 +102,12 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         OfficeLocation office = getActiveOfficeLocation();
-        double distance = haversineCalculator.calculateDistance(
-                request.getLatitude(), request.getLongitude(),
-                office.getLatitude(), office.getLongitude()
-        );
-
-        if (distance > office.getAllowedRadiusMeters()) {
-            throw new BadRequestException(String.format(
-                    "Vị trí của bạn cách văn phòng %.1fm, vượt quá bán kính cho phép (%.1fm)",
-                    distance, office.getAllowedRadiusMeters()
-            ));
+        Double distance = null;
+        if (request.getLatitude() != null && request.getLongitude() != null) {
+            distance = haversineCalculator.calculateDistance(
+                    request.getLatitude(), request.getLongitude(),
+                    office.getLatitude(), office.getLongitude()
+            );
         }
 
         CheckInQrTokenManager.CheckInSession session = qrTokenManager.createSession(
@@ -126,15 +129,15 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .qrCodeDataUrl(qrCodeDataUrl)
                 .expiresInSeconds(CheckInQrTokenManager.TTL_SECONDS)
                 .expiresAt(session.getExpiresAt())
-                .distance(Math.round(distance * 10.0) / 10.0)
+                .distance(distance != null ? Math.round(distance * 10.0) / 10.0 : null)
                 .officeName(office.getName())
-                .message("Khoảng cách hợp lệ. Mã QR xác thực phiên điểm danh đã được tạo thành công.")
+                .message("Mã QR xác thực phiên điểm danh đã được tạo thành công.")
                 .build();
     }
 
     @Override
     @Transactional
-    public AttendanceResponse confirmCheckIn(Long userId, CheckInConfirmRequest request) {
+    public AttendanceResponse confirmCheckIn(Long userId, CheckInConfirmRequest request, String clientIp) {
         InternProfile intern = getValidInternProfile(userId);
         LocalDate today = LocalDate.now(VIETNAM_ZONE);
         LocalDateTime now = LocalDateTime.now(VIETNAM_ZONE);
@@ -144,6 +147,17 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         CheckInQrTokenManager.CheckInSession session = qrTokenManager.validateAndConsume(request.getQrToken(), intern.getId());
+        OfficeLocation office = getActiveOfficeLocation();
+
+        var evalResult = trustLevelEvaluator.evaluate(
+                intern.getId(),
+                request.getDeviceFingerprint(),
+                clientIp,
+                request.getLatitude() != null ? request.getLatitude() : session.getLatitude(),
+                request.getLongitude() != null ? request.getLongitude() : session.getLongitude(),
+                request.getAccuracyMeters(),
+                office
+        );
 
         AttendanceStatus status = now.toLocalTime().isAfter(LATE_THRESHOLD)
                 ? AttendanceStatus.LATE
@@ -153,65 +167,110 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .internId(intern.getId())
                 .workDate(today)
                 .checkInTime(now)
-                .checkInLatitude(session.getLatitude())
-                .checkInLongitude(session.getLongitude())
-                .checkInDistance(session.getDistance())
+                .checkInLatitude(request.getLatitude() != null ? request.getLatitude() : session.getLatitude())
+                .checkInLongitude(request.getLongitude() != null ? request.getLongitude() : session.getLongitude())
+                .checkInDistance(evalResult.getCalculatedDistance() != null ? evalResult.getCalculatedDistance() : session.getDistance())
                 .status(status)
+                .reviewStatus(evalResult.getReviewStatus())
                 .notes(request.getNotes())
                 .build();
 
         Attendance saved = attendanceRepository.save(attendance);
-        log.info("Intern ID {} xác nhận check-in thành công qua mã QR lúc {} (Khoảng cách: {}m, Trạng thái: {})",
-                intern.getId(), now, session.getDistance(), status);
 
-        return mapToResponse(saved);
+        saveAuditLog(
+                saved.getId(),
+                intern.getId(),
+                "CHECK_IN",
+                now,
+                request.getDeviceFingerprint(),
+                request.getDeviceModel(),
+                clientIp,
+                request.getLatitude(),
+                request.getLongitude(),
+                request.getAccuracyMeters(),
+                evalResult
+        );
+
+        recordDeviceUsage(intern.getId(), request.getDeviceFingerprint(), request.getDeviceModel(), now);
+
+        AttendanceResponse response = mapToResponse(saved, evalResult.getTrustLevel().name(), String.join(",", evalResult.getAuditFlags()));
+        sseEmitterRegistry.emitCheckInSuccess(request.getQrToken(), response);
+
+        log.info("Intern ID {} xác nhận check-in thành công qua mã QR lúc {} (TrustLevel: {}, Review: {})",
+                intern.getId(), now, evalResult.getTrustLevel(), evalResult.getReviewStatus());
+
+        return response;
     }
 
     @Override
     @Transactional
-    public AttendanceResponse checkIn(Long userId, CheckInRequest request) {
+    public AttendanceResponse quickCheckOut(Long userId, org.example.internservice.attendance.dto.request.QuickCheckOutRequest request, String clientIp) {
         InternProfile intern = getValidInternProfile(userId);
         LocalDate today = LocalDate.now(VIETNAM_ZONE);
         LocalDateTime now = LocalDateTime.now(VIETNAM_ZONE);
 
-        if (attendanceRepository.existsByInternIdAndWorkDate(intern.getId(), today)) {
-            throw new DuplicateResourceException("Bạn đã thực hiện check-in cho ngày hôm nay rồi");
+        Attendance attendance = attendanceRepository.findByInternIdAndWorkDate(intern.getId(), today)
+                .orElseThrow(() -> new BadRequestException("Bạn chưa thực hiện check-in cho ngày hôm nay, không thể check-out"));
+
+        if (attendance.getCheckOutTime() != null) {
+            throw new BadRequestException("Bạn đã hoàn thành check-out cho ngày hôm nay rồi");
         }
 
         OfficeLocation office = getActiveOfficeLocation();
-        double distance = haversineCalculator.calculateDistance(
-                request.getLatitude(), request.getLongitude(),
-                office.getLatitude(), office.getLongitude()
+        var evalResult = trustLevelEvaluator.evaluate(
+                intern.getId(),
+                request.getDeviceFingerprint(),
+                clientIp,
+                request.getLatitude(),
+                request.getLongitude(),
+                request.getAccuracyMeters(),
+                office
         );
 
-        if (distance > office.getAllowedRadiusMeters()) {
-            throw new BadRequestException(String.format(
-                    "Vị trí của bạn cách văn phòng %.1fm, vượt quá bán kính cho phép (%.1fm)",
-                    distance, office.getAllowedRadiusMeters()
-            ));
+        if (evalResult.getTrustLevel() == org.example.internservice.attendance.entity.enums.TrustLevel.LOW) {
+            throw new BadRequestException("Vị trí của bạn đang ở ngoài khu vực văn phòng. Vui lòng quét mã QR trên laptop để thực hiện check-out.");
         }
 
-        AttendanceStatus status = now.toLocalTime().isAfter(LATE_THRESHOLD)
-                ? AttendanceStatus.LATE
-                : AttendanceStatus.ON_TIME;
+        long workingMinutes = Math.max(0, Duration.between(attendance.getCheckInTime(), now).toMinutes());
+        double totalWorkingHours = Math.round((workingMinutes / 60.0) * 100.0) / 100.0;
 
-        Attendance attendance = Attendance.builder()
-                .internId(intern.getId())
-                .workDate(today)
-                .checkInTime(now)
-                .checkInLatitude(request.getLatitude())
-                .checkInLongitude(request.getLongitude())
-                .checkInDistance(distance)
-                .status(status)
-                .notes(request.getNotes())
-                .build();
+        if (now.toLocalTime().isBefore(STANDARD_END_TIME)) {
+            if (attendance.getStatus() == AttendanceStatus.LATE) {
+                attendance.setStatus(AttendanceStatus.LATE_AND_EARLY_LEAVE);
+            } else if (attendance.getStatus() == AttendanceStatus.ON_TIME) {
+                attendance.setStatus(AttendanceStatus.EARLY_LEAVE);
+            }
+        }
+
+        attendance.setCheckOutTime(now);
+        attendance.setCheckOutLatitude(request.getLatitude());
+        attendance.setCheckOutLongitude(request.getLongitude());
+        attendance.setCheckOutDistance(evalResult.getCalculatedDistance());
+        attendance.setTotalWorkingHours(totalWorkingHours);
+        if (request.getNotes() != null && !request.getNotes().isBlank()) {
+            attendance.setNotes(attendance.getNotes() == null ? request.getNotes() : attendance.getNotes() + " | " + request.getNotes());
+        }
 
         Attendance saved = attendanceRepository.save(attendance);
-        log.info("Intern ID {} check-in thành công lúc {} (Khoảng cách: {}m, Trạng thái: {})",
-                intern.getId(), now, distance, status);
 
-        return mapToResponse(saved);
+        saveAuditLog(
+                saved.getId(),
+                intern.getId(),
+                "QUICK_CHECK_OUT",
+                now,
+                request.getDeviceFingerprint(),
+                request.getDeviceModel(),
+                clientIp,
+                request.getLatitude(),
+                request.getLongitude(),
+                request.getAccuracyMeters(),
+                evalResult
+        );
+
+        log.info("Intern ID {} tan ca nhanh 1-chạm thành công lúc {} (Tổng giờ: {}h)", intern.getId(), now, totalWorkingHours);
+        return mapToResponse(saved, evalResult.getTrustLevel().name(), String.join(",", evalResult.getAuditFlags()));
     }
+
 
     @Override
     @Transactional
@@ -318,6 +377,85 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .build();
     }
 
+    @Override
+    @Transactional
+    public AttendanceResponse reviewAttendance(Long attendanceId, ReviewAttendanceRequest request, String reviewerUsername) {
+        Attendance attendance = attendanceRepository.findById(attendanceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bản ghi chấm công có ID: " + attendanceId));
+
+        attendance.setReviewStatus(request.getReviewStatus());
+        attendance.setReviewedBy(reviewerUsername != null ? reviewerUsername : "HR_ADMIN");
+        attendance.setReviewedAt(LocalDateTime.now(VIETNAM_ZONE));
+        if (request.getReviewNote() != null && !request.getReviewNote().isBlank()) {
+            attendance.setReviewNote(request.getReviewNote());
+        }
+
+        Attendance saved = attendanceRepository.save(attendance);
+        log.info("Bản ghi chấm công ID {} đã được cập nhật reviewStatus thành {} bởi {}",
+                attendanceId, request.getReviewStatus(), reviewerUsername);
+
+        return mapToResponse(saved);
+    }
+
+    private void saveAuditLog(
+            Long attendanceId,
+            Long internId,
+            String actionType,
+            LocalDateTime actionTime,
+            String deviceFingerprint,
+            String deviceModel,
+            String clientIp,
+            Double latitude,
+            Double longitude,
+            Double accuracyMeters,
+            org.example.internservice.attendance.service.TrustLevelEvaluator.EvaluationResult evalResult
+    ) {
+        org.example.internservice.attendance.entity.AttendanceAuditLog auditLog = org.example.internservice.attendance.entity.AttendanceAuditLog.builder()
+                .attendanceId(attendanceId)
+                .internId(internId)
+                .actionType(actionType)
+                .actionTime(actionTime)
+                .deviceFingerprint(deviceFingerprint != null ? deviceFingerprint : "UNKNOWN")
+                .deviceModel(deviceModel)
+                .clientIp(clientIp != null ? clientIp : "UNKNOWN")
+                .isCompanyIp(evalResult.isCompanyIp())
+                .latitude(latitude)
+                .longitude(longitude)
+                .accuracyMeters(accuracyMeters)
+                .distanceMeters(evalResult.getCalculatedDistance())
+                .trustLevel(evalResult.getTrustLevel())
+                .auditFlags(String.join(",", evalResult.getAuditFlags()))
+                .build();
+        auditLogRepository.save(auditLog);
+    }
+
+    private void recordDeviceUsage(Long internId, String deviceFingerprint, String deviceModel, LocalDateTime actionTime) {
+        if (deviceFingerprint == null || deviceFingerprint.isBlank()) {
+            return;
+        }
+
+        var existingDeviceOpt = internDeviceRepository.findByInternIdAndDeviceFingerprint(internId, deviceFingerprint);
+        if (existingDeviceOpt.isPresent()) {
+            var device = existingDeviceOpt.get();
+            device.setLastUsedAt(actionTime);
+            device.setValidCheckinCount(device.getValidCheckinCount() + 1);
+            if (device.getValidCheckinCount() >= 3 && device.getTrustStatus() == org.example.internservice.attendance.entity.enums.DeviceTrustStatus.PENDING_PAIRING) {
+                device.setTrustStatus(org.example.internservice.attendance.entity.enums.DeviceTrustStatus.PRIMARY_TRUSTED);
+            }
+            internDeviceRepository.save(device);
+        } else {
+            var newDevice = org.example.internservice.attendance.entity.InternDevice.builder()
+                    .internId(internId)
+                    .deviceFingerprint(deviceFingerprint)
+                    .deviceModel(deviceModel)
+                    .trustStatus(org.example.internservice.attendance.entity.enums.DeviceTrustStatus.PENDING_PAIRING)
+                    .validCheckinCount(1)
+                    .lastUsedAt(actionTime)
+                    .build();
+            internDeviceRepository.save(newDevice);
+        }
+    }
+
     private InternProfile getValidInternProfile(Long userId) {
         InternProfile intern = internProfileRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh liên kết với tài khoản này"));
@@ -335,6 +473,10 @@ public class AttendanceServiceImpl implements AttendanceService {
     }
 
     private AttendanceResponse mapToResponse(Attendance attendance) {
+        return mapToResponse(attendance, null, null);
+    }
+
+    private AttendanceResponse mapToResponse(Attendance attendance, String trustLevel, String auditFlags) {
         return AttendanceResponse.builder()
                 .id(attendance.getId())
                 .internId(attendance.getInternId())
@@ -345,7 +487,11 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .checkOutDistance(attendance.getCheckOutDistance())
                 .totalWorkingHours(attendance.getTotalWorkingHours())
                 .status(attendance.getStatus())
+                .reviewStatus(attendance.getReviewStatus() != null ? attendance.getReviewStatus().name() : "AUTO_APPROVED")
+                .trustLevel(trustLevel)
+                .auditFlags(auditFlags)
                 .notes(attendance.getNotes())
                 .build();
     }
 }
+
