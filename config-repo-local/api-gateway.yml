@@ -149,6 +149,24 @@ spring:
               predicates:
                 - Path=/api/mission-boards, /api/mission-boards/**, /api/mission-items, /api/mission-items/**, /api/intern/mission-items, /api/intern/mission-items/**
 
+            # Route cho Lịch họp & Thông báo
+            - id: meeting-schedule-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/meetings, /api/v1/meetings/**
+
+            # Route cho phân hệ Phụ cấp C4
+            - id: allowance-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/allowances, /api/v1/allowances/**
+
+            # Route cho phân hệ Yêu cầu hỗ trợ C4
+            - id: support-request-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/v1/support-requests, /api/v1/support-requests/**
+
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
               uri: lb://reporting-and-integration-service

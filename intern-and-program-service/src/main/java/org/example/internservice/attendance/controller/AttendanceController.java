@@ -7,13 +7,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.attendance.dto.request.CheckInConfirmRequest;
 import org.example.internservice.attendance.dto.request.CheckInInitiateRequest;
-import org.example.internservice.attendance.dto.request.CheckInRequest;
 import org.example.internservice.attendance.dto.request.CheckOutRequest;
+import org.example.internservice.attendance.dto.request.QuickCheckOutRequest;
+import org.example.internservice.attendance.dto.request.ReviewAttendanceRequest;
 import org.example.internservice.attendance.dto.response.AttendanceResponse;
 import org.example.internservice.attendance.dto.response.CheckInQrResponse;
 import org.example.internservice.attendance.dto.response.MonthlyAttendanceSummaryResponse;
 import org.example.internservice.attendance.dto.response.TodayAttendanceResponse;
 import org.example.internservice.attendance.service.AttendanceService;
+import org.example.internservice.attendance.service.SseEmitterRegistry;
 import org.example.internservice.common.dto.response.ApiResponse;
 import org.example.internservice.exception.UnauthorizedException;
 import org.example.internservice.security.CustomUserDetails;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/v1/attendances")
@@ -36,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AttendanceController {
 
     private final AttendanceService attendanceService;
+    private final SseEmitterRegistry sseEmitterRegistry;
 
     @Operation(summary = "Lấy trạng thái chấm công của ngày hiện tại (Widget Dashboard)")
     @GetMapping("/today")
@@ -59,32 +63,63 @@ public class AttendanceController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Khoảng cách hợp lệ. Mã QR xác thực đã được tạo thành công.", response));
     }
 
-    @Operation(summary = "Xác nhận Check-in bằng mã QR (Lớp xác thực 2 bước)")
+    @Operation(summary = "Lắng nghe sự kiện Check-in real-time qua SSE (Phone -> Laptop Sync)")
+    @GetMapping(value = "/check-in/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamCheckInStatus(
+            @RequestParam("qrToken") String qrToken,
+            jakarta.servlet.http.HttpServletResponse response
+    ) {
+        // Thiết lập header chuẩn chống proxy / Nginx / Gateway đệm dữ liệu SSE
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("Connection", "keep-alive");
+        log.info("Khởi tạo kết nối SSE stream lắng nghe cho qrToken: {}", qrToken);
+        return sseEmitterRegistry.register(qrToken);
+    }
+
+    @Operation(summary = "Xác nhận Check-in bằng mã QR (Lớp xác thực 2 bước & Trust Engine)")
     @PostMapping("/check-in/confirm")
     @PreAuthorize("hasRole('INTERN')")
     public ResponseEntity<ApiResponse<AttendanceResponse>> confirmCheckIn(
             @Valid @RequestBody CheckInConfirmRequest request,
+            jakarta.servlet.http.HttpServletRequest servletRequest,
             Authentication authentication
     ) {
         Long userId = extractUserId(authentication);
-        log.info("Nhận request xác nhận check-in từ userId: {}, qrToken: {}", userId, request.getQrToken());
-        AttendanceResponse response = attendanceService.confirmCheckIn(userId, request);
+        String clientIp = extractClientIp(servletRequest);
+        log.info("Nhận request xác nhận check-in từ userId: {}, qrToken: {}, clientIp: {}", userId, request.getQrToken(), clientIp);
+        AttendanceResponse response = attendanceService.confirmCheckIn(userId, request, clientIp);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Check-in thành công", response));
     }
 
-    @Operation(summary = "Check-in chấm công đầu ngày (Yêu cầu tọa độ GPS)")
-    @PostMapping("/check-in")
+    @Operation(summary = "Tan ca nhanh 1-chạm trên Web Mobile (Adaptive Check-out)")
+    @PostMapping("/check-out/quick")
     @PreAuthorize("hasRole('INTERN')")
-    public ResponseEntity<ApiResponse<AttendanceResponse>> checkIn(
-            @Valid @RequestBody CheckInRequest request,
+    public ResponseEntity<ApiResponse<AttendanceResponse>> quickCheckOut(
+            @Valid @RequestBody QuickCheckOutRequest request,
+            jakarta.servlet.http.HttpServletRequest servletRequest,
             Authentication authentication
     ) {
         Long userId = extractUserId(authentication);
-        log.info("Nhận request check-in từ userId: {}, tọa độ: [{}, {}]", userId, request.getLatitude(), request.getLongitude());
-        AttendanceResponse response = attendanceService.checkIn(userId, request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Check-in thành công", response));
+        String clientIp = extractClientIp(servletRequest);
+        log.info("Nhận request tan ca nhanh từ userId: {}, clientIp: {}", userId, clientIp);
+        AttendanceResponse response = attendanceService.quickCheckOut(userId, request, clientIp);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Tan ca thành công", response));
+    }
+
+    @Operation(summary = "Phê duyệt hoặc từ chối ca chấm công ngoại lệ (HR / ADMIN)")
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/review")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<AttendanceResponse>> reviewAttendance(
+            @org.springframework.web.bind.annotation.PathVariable("id") Long attendanceId,
+            @Valid @RequestBody ReviewAttendanceRequest request,
+            Authentication authentication
+    ) {
+        String reviewerUsername = authentication != null ? authentication.getName() : "HR_ADMIN";
+        log.info("HR [{}] thực hiện xử lý duyệt ca chấm công ID {}: Status={}", reviewerUsername, attendanceId, request.getReviewStatus());
+        AttendanceResponse response = attendanceService.reviewAttendance(attendanceId, request, reviewerUsername);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Xử lý duyệt ca chấm công thành công", response));
     }
 
     @Operation(summary = "Check-out chấm công cuối ngày (Yêu cầu tọa độ GPS)")
@@ -99,6 +134,7 @@ public class AttendanceController {
         AttendanceResponse response = attendanceService.checkOut(userId, request);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Check-out thành công", response));
     }
+
 
     @Operation(summary = "Lấy lịch sử chấm công cá nhân theo tháng/năm")
     @GetMapping("/my-history")
@@ -118,5 +154,20 @@ public class AttendanceController {
             return userDetails.getUserId();
         }
         throw new UnauthorizedException("Phiên đăng nhập không hợp lệ hoặc đã hết hạn");
+    }
+
+    private String extractClientIp(jakarta.servlet.http.HttpServletRequest request) {
+        if (request == null) return "UNKNOWN";
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
     }
 }

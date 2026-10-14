@@ -12,6 +12,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.example.internservice.attendance.entity.enums.AttendanceReviewStatus;
 import org.example.internservice.attendance.entity.enums.AttendanceStatus;
 import org.example.internservice.common.entity.BaseEntity;
 
@@ -26,7 +27,8 @@ import java.time.LocalDateTime;
         },
         indexes = {
                 @Index(name = "idx_attendance_intern_date", columnList = "intern_id, work_date"),
-                @Index(name = "idx_attendance_status", columnList = "status")
+                @Index(name = "idx_attendance_status", columnList = "status"),
+                @Index(name = "idx_attendance_review_status", columnList = "review_status")
         }
 )
 @Getter
@@ -48,13 +50,13 @@ public class Attendance extends BaseEntity {
     @Column(name = "check_out_time")
     private LocalDateTime checkOutTime;
 
-    @Column(name = "check_in_latitude", nullable = false)
+    @Column(name = "check_in_latitude")
     private Double checkInLatitude;
 
-    @Column(name = "check_in_longitude", nullable = false)
+    @Column(name = "check_in_longitude")
     private Double checkInLongitude;
 
-    @Column(name = "check_in_distance", nullable = false)
+    @Column(name = "check_in_distance")
     private Double checkInDistance;
 
     @Column(name = "check_out_latitude")
@@ -72,6 +74,20 @@ public class Attendance extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private AttendanceStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "review_status", nullable = false, length = 32)
+    @Builder.Default
+    private AttendanceReviewStatus reviewStatus = AttendanceReviewStatus.AUTO_APPROVED;
+
+    @Column(name = "reviewed_by", length = 64)
+    private String reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    @Column(name = "review_note", columnDefinition = "TEXT")
+    private String reviewNote;
 
     @Column(name = "notes", length = 255)
     private String notes;

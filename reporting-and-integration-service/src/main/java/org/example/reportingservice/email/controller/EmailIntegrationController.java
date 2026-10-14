@@ -133,4 +133,17 @@ public class EmailIntegrationController {
 
         return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi email thông báo hợp đồng thành công", null));
     }
+
+    @PostMapping("/meeting-schedule")
+    @Operation(summary = "Tiếp nhận yêu cầu gửi email thông báo lịch họp (mời họp, dời lịch, hủy họp)")
+    public ResponseEntity<ApiResponse<Void>> sendMeetingScheduleEmail(
+            @Valid @RequestBody org.example.reportingservice.email.dto.request.SendMeetingEmailRequest request) {
+
+        log.info("Nhan yeu cau gui email lich hop: meetingId={}, action={}, to={}",
+                request.getMeetingId(), request.getActionType(), request.getInternEmail());
+
+        emailDeliveryService.sendMeetingScheduleEmailAsync(request);
+
+        return ResponseEntity.ok(ApiResponse.success(200, "Đã tiếp nhận yêu cầu gửi email lịch họp thành công", null));
+    }
 }

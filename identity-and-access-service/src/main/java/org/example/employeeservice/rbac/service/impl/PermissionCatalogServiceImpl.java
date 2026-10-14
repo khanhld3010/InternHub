@@ -37,6 +37,10 @@ public class PermissionCatalogServiceImpl implements PermissionCatalogService {
             Map.entry("REPORT", "Báo Cáo & Thống Kê"),
             Map.entry("MISSION", "Quản Lý Bảng Nhiệm Vụ & Phân Công (Kanban)"),
             Map.entry("ATTENDANCE", "Quản Lý Điểm Danh & Chấm Công Thực Tập"),
+            Map.entry("ALLOWANCE", "Quản Lý Phụ Cấp & Thu Nhập Hàng Tháng (C4)"),
+            Map.entry("SUPPORT", "Yêu Cầu Hỗ Trợ & Cấp Giấy Tờ (C4)"),
+            Map.entry("LEAVE", "Quản Lý Nghỉ Phép Thực Tập Sinh (TM-28)"),
+            Map.entry("MEETING", "Lịch Họp & Trao Đổi Định Kỳ (Meet/Jitsi)"),
             Map.entry("EVALUATION", "Đánh Giá Kỹ Năng, Thái Độ & Hoàn Thành Kỳ")
     );
 

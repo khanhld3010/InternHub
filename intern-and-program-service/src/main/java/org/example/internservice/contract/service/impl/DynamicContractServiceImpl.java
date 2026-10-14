@@ -126,8 +126,15 @@ public class DynamicContractServiceImpl implements DynamicContractService {
         ContractRevision revision = revisionRepository.findById(contract.getCurrentRevisionId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bản sửa đổi hiện tại"));
 
+        String signatureData = revision.getSignature() != null ? revision.getSignature().getSignatureData() : null;
+        String enrichedHtml = pdfRendererService.injectSignatureIntoHtml(
+                revision.getCanonicalSnapshotContent(),
+                signatureData,
+                contract.getInternProfile() != null ? contract.getInternProfile().getFullName() : ""
+        );
+
         return Map.of(
-                "canonicalHtml", revision.getCanonicalSnapshotContent(),
+                "canonicalHtml", enrichedHtml,
                 "snapshotHash", revision.getSnapshotHash() != null ? revision.getSnapshotHash() : "",
                 "status", revision.getStatus().name()
         );
@@ -175,8 +182,17 @@ public class DynamicContractServiceImpl implements DynamicContractService {
     @Transactional(readOnly = true)
     public Map<String, String> previewRevision(Long contractId, Long revisionId, Long internUserId) {
         ContractRevision revision = validateInternOwnership(contractId, revisionId, internUserId);
+        Contract contract = revision.getContract();
+
+        String signatureData = revision.getSignature() != null ? revision.getSignature().getSignatureData() : null;
+        String enrichedHtml = pdfRendererService.injectSignatureIntoHtml(
+                revision.getCanonicalSnapshotContent(),
+                signatureData,
+                contract.getInternProfile() != null ? contract.getInternProfile().getFullName() : ""
+        );
+
         return Map.of(
-                "canonicalHtml", revision.getCanonicalSnapshotContent(),
+                "canonicalHtml", enrichedHtml,
                 "snapshotHash", revision.getSnapshotHash() != null ? revision.getSnapshotHash() : "",
                 "status", revision.getStatus().name()
         );
@@ -320,6 +336,31 @@ public class DynamicContractServiceImpl implements DynamicContractService {
 
     @Override
     @Transactional(readOnly = true)
+    public byte[] getContractPdfBytesForHr(Long contractId) {
+        log.info("HR yêu cầu kết xuất PDF cho hợp đồng ID: {}", contractId);
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hợp đồng: " + contractId));
+
+        Long currentRevId = contract.getCurrentRevisionId();
+        if (currentRevId == null) {
+            throw new ResourceNotFoundException("Hợp đồng chưa có phiên bản sửa đổi nào");
+        }
+
+        ContractRevision revision = revisionRepository.findById(currentRevId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bản sửa đổi hiện tại: " + currentRevId));
+
+        String signatureData = revision.getSignature() != null ? revision.getSignature().getSignatureData() : null;
+        String internFullName = contract.getInternProfile() != null ? contract.getInternProfile().getFullName() : "Thực tập sinh";
+
+        return pdfRendererService.renderContractPdf(
+                revision.getCanonicalSnapshotContent(),
+                signatureData,
+                internFullName
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public byte[] getMyContractPdfBytes(Long internUserId) {
         InternProfile internProfile = internProfileRepository.findByUserId(internUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh của bạn"));
@@ -436,7 +477,7 @@ public class DynamicContractServiceImpl implements DynamicContractService {
         map.put("contract.number", contractNumber);
         String allowanceStr = "0 VNĐ / tháng";
         if (req.getAllowanceAmount() != null) {
-            java.text.NumberFormat nf = java.text.NumberFormat.getInstance(new java.util.Locale("vi", "VN"));
+            java.text.NumberFormat nf = java.text.NumberFormat.getInstance(java.util.Locale.forLanguageTag("vi-VN"));
             allowanceStr = nf.format(req.getAllowanceAmount()) + " VNĐ / tháng";
         }
         map.put("contract.allowance", allowanceStr);

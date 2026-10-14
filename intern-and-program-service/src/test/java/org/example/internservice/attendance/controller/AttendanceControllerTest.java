@@ -2,7 +2,6 @@ package org.example.internservice.attendance.controller;
 
 import org.example.internservice.attendance.dto.request.CheckInConfirmRequest;
 import org.example.internservice.attendance.dto.request.CheckInInitiateRequest;
-import org.example.internservice.attendance.dto.request.CheckInRequest;
 import org.example.internservice.attendance.dto.request.CheckOutRequest;
 import org.example.internservice.attendance.dto.response.AttendanceResponse;
 import org.example.internservice.attendance.dto.response.CheckInQrResponse;
@@ -81,36 +80,6 @@ class AttendanceControllerTest {
         assertEquals("Lấy trạng thái chấm công hôm nay thành công", responseEntity.getBody().getMessage());
         assertEquals(mockToday, responseEntity.getBody().getData());
         verify(attendanceService).getTodayAttendance(10L);
-    }
-
-    @Test
-    @DisplayName("API /check-in trả về HTTP 201 Created khi thành công")
-    void checkIn_shouldReturn201() {
-        CheckInRequest request = CheckInRequest.builder()
-                .latitude(21.028511)
-                .longitude(105.854444)
-                .notes("Check-in đúng giờ")
-                .build();
-
-        AttendanceResponse mockResponse = AttendanceResponse.builder()
-                .id(1L)
-                .internId(1L)
-                .workDate(LocalDate.now())
-                .checkInTime(LocalDateTime.now())
-                .status(AttendanceStatus.ON_TIME)
-                .build();
-
-        when(attendanceService.checkIn(eq(10L), any(CheckInRequest.class))).thenReturn(mockResponse);
-
-        ResponseEntity<ApiResponse<AttendanceResponse>> responseEntity =
-                attendanceController.checkIn(request, mockAuthentication);
-
-        assertNotNull(responseEntity);
-        assertEquals(HttpStatus.CREATED, responseEntity.getStatusCode());
-        assertNotNull(responseEntity.getBody());
-        assertEquals("Check-in thành công", responseEntity.getBody().getMessage());
-        assertEquals(mockResponse, responseEntity.getBody().getData());
-        verify(attendanceService).checkIn(eq(10L), any(CheckInRequest.class));
     }
 
     @Test
@@ -215,16 +184,19 @@ class AttendanceControllerTest {
                 .status(AttendanceStatus.ON_TIME)
                 .build();
 
-        when(attendanceService.confirmCheckIn(eq(10L), any(CheckInConfirmRequest.class))).thenReturn(mockResponse);
+        jakarta.servlet.http.HttpServletRequest servletRequest = org.mockito.Mockito.mock(jakarta.servlet.http.HttpServletRequest.class);
+        when(servletRequest.getRemoteAddr()).thenReturn("192.168.1.50");
+
+        when(attendanceService.confirmCheckIn(eq(10L), any(CheckInConfirmRequest.class), any(String.class))).thenReturn(mockResponse);
 
         ResponseEntity<ApiResponse<AttendanceResponse>> responseEntity =
-                attendanceController.confirmCheckIn(request, mockAuthentication);
+                attendanceController.confirmCheckIn(request, servletRequest, mockAuthentication);
 
         assertNotNull(responseEntity);
         assertEquals(HttpStatus.CREATED, responseEntity.getStatusCode());
         assertNotNull(responseEntity.getBody());
         assertEquals("Check-in thành công", responseEntity.getBody().getMessage());
         assertEquals(mockResponse, responseEntity.getBody().getData());
-        verify(attendanceService).confirmCheckIn(eq(10L), any(CheckInConfirmRequest.class));
+        verify(attendanceService).confirmCheckIn(eq(10L), any(CheckInConfirmRequest.class), any(String.class));
     }
 }
