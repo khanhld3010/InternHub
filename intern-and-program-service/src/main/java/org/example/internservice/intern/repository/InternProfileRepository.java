@@ -65,5 +65,7 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
 
     List<InternProfile> findAllByEmailIn(java.util.Collection<String> emails);
     List<InternProfile> findAllByPhoneIn(java.util.Collection<String> phones);
+    List<InternProfile> findAllByProgramIdAndEmailIn(Long programId, java.util.Collection<String> emails);
+    List<InternProfile> findAllByProgramIdAndPhoneIn(Long programId, java.util.Collection<String> phones);
 }
 
