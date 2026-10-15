@@ -210,17 +210,12 @@ spring:
               predicates:
                 - Path=/api/employees/**
 
-            # 7. AI Service (Screening TM-103)
-            - id: service-ai-screening
-              uri: lb://service-ai
-              predicates:
-                - Path=/api/ai/screening, /api/ai/screening/**
-
-            # 8. AI Service (Chatbot & AI Configuration C6)
+            # 7. AI Service (Chatbot, Screening & AI Modules)
             - id: ai-service
               uri: lb://ai-service
               predicates:
                 - Path=/api/ai, /api/ai/**
+
 
 
 eureka:
