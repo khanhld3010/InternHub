@@ -174,6 +174,34 @@ class AttendanceReportServiceImplTest {
     }
 
     @Test
+    @DisplayName("Lấy danh sách báo cáo chuyên cần có lọc theo xếp loại diligenceStatus thành công")
+    void getInternDiligenceReports_withDiligenceStatusFilter_returnsAccuratelyFilteredAndPaged() {
+        AttendanceReportFilterRequest filter = AttendanceReportFilterRequest.builder()
+                .month(10)
+                .year(2026)
+                .diligenceStatus(org.example.internservice.attendance.report.enums.DiligenceStatus.CRITICAL)
+                .build();
+        Pageable pageable = PageRequest.of(0, 10);
+
+        when(internProfileRepository.findAll(any(Specification.class)))
+                .thenReturn(List.of(intern));
+        when(workDayCalculator.calculateExpectedWorkDays(any(), any(), any())).thenReturn(22);
+
+        // Không có chấm công -> unexcusedAbsence = 22 -> CRITICAL
+        when(attendanceRepository.findByInternIdInAndWorkDateBetweenOrderByWorkDateAsc(any(), any(), any()))
+                .thenReturn(Collections.emptyList());
+        when(leaveRequestRepository.findApprovedLeavesByInternIdsAndDateRange(any(), any(), any()))
+                .thenReturn(Collections.emptyList());
+
+        PageResponse<InternDiligenceReportResponse> response = attendanceReportService.getInternDiligenceReports(filter, pageable, hrUser);
+
+        assertNotNull(response);
+        assertEquals(1, response.getItems().size());
+        assertEquals(org.example.internservice.attendance.report.enums.DiligenceStatus.CRITICAL, response.getItems().get(0).getDiligenceStatus());
+        assertEquals(1L, response.getTotalItems());
+    }
+
+    @Test
     @DisplayName("Mentor không được xem bảng công của TTS không do mình quản lý")
     void getInternAttendanceDetailReport_mentorNotAssigned_throwsAccessDenied() {
         CustomUserDetails otherMentor = CustomUserDetails.builder()

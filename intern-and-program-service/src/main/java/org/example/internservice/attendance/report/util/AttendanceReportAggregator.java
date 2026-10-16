@@ -49,23 +49,28 @@ public class AttendanceReportAggregator {
         double totalHours = 0.0;
 
         for (Attendance a : attendances) {
-            boolean hasHalfDayLeave = leaves.stream().anyMatch(l ->
-                    l.getDurationType() != LeaveDurationType.FULL_DAY
-                            && !a.getWorkDate().isBefore(l.getStartDate())
-                            && !a.getWorkDate().isAfter(l.getEndDate()));
-            actualWorkDays += hasHalfDayLeave ? 0.5 : 1.0;
+            if (isAttended(a.getStatus())) {
+                boolean hasHalfDayLeave = leaves.stream().anyMatch(l ->
+                        l.getDurationType() != LeaveDurationType.FULL_DAY
+                                && !a.getWorkDate().isBefore(l.getStartDate())
+                                && !a.getWorkDate().isAfter(l.getEndDate()));
+                actualWorkDays += hasHalfDayLeave ? 0.5 : 1.0;
+            }
             if (a.getStatus() == AttendanceStatus.ON_TIME) onTimeCount++;
             if (a.getStatus() == AttendanceStatus.LATE || a.getStatus() == AttendanceStatus.LATE_AND_EARLY_LEAVE) lateCount++;
             if (a.getStatus() == AttendanceStatus.EARLY_LEAVE || a.getStatus() == AttendanceStatus.LATE_AND_EARLY_LEAVE) earlyLeaveCount++;
             if (a.getTotalWorkingHours() != null) totalHours += a.getTotalWorkingHours();
         }
         totalHours = Math.round(totalHours * 100.0) / 100.0;
+        actualWorkDays = Math.round(actualWorkDays * 100.0) / 100.0;
 
         double approvedLeaveDays = leaves.stream()
-                .mapToDouble(l -> l.getTotalDays() != null ? l.getTotalDays() : (l.getDurationType() == LeaveDurationType.FULL_DAY ? 1.0 : 0.5))
+                .mapToDouble(l -> calculateEffectiveApprovedLeaveDays(l, startDate, endDate))
                 .sum();
+        approvedLeaveDays = Math.round(approvedLeaveDays * 100.0) / 100.0;
 
         double unexcusedAbsence = Math.max(0.0, expectedWorkDays - (actualWorkDays + approvedLeaveDays));
+        unexcusedAbsence = Math.round(unexcusedAbsence * 100.0) / 100.0;
         double diligenceRate = expectedWorkDays <= 0 ? 100.0 : Math.min(100.0, Math.max(0.0, Math.round(((actualWorkDays + approvedLeaveDays) / expectedWorkDays) * 10000.0) / 100.0));
 
         DiligenceStatus status = evaluateDiligenceStatus(diligenceRate, lateCount, unexcusedAbsence);
@@ -185,7 +190,13 @@ public class AttendanceReportAggregator {
 
         Map<LeaveType, Double> reasonMap = new EnumMap<>(LeaveType.class);
         for (LeaveType t : LeaveType.values()) reasonMap.put(t, 0.0);
-        leaves.forEach(l -> reasonMap.merge(l.getLeaveType(), l.getTotalDays() != null ? l.getTotalDays() : 1.0, Double::sum));
+        leaves.forEach(l -> {
+            double effectiveDays = calculateEffectiveApprovedLeaveDays(l, start, end);
+            if (effectiveDays > 0.0) {
+                reasonMap.merge(l.getLeaveType(), effectiveDays, Double::sum);
+            }
+        });
+        reasonMap.replaceAll((k, v) -> Math.round(v * 100.0) / 100.0);
 
         Map<DiligenceStatus, Long> distMap = new EnumMap<>(DiligenceStatus.class);
         for (DiligenceStatus s : DiligenceStatus.values()) distMap.put(s, 0L);
@@ -202,16 +213,48 @@ public class AttendanceReportAggregator {
                 .totalInterns(reports.size())
                 .overallDiligenceRate(avgRate)
                 .totalExpectedWorkDays(reports.stream().mapToInt(r -> r.getExpectedWorkDays() != null ? r.getExpectedWorkDays() : 0).sum())
-                .totalActualWorkDays(reports.stream().mapToDouble(r -> r.getActualWorkDays() != null ? r.getActualWorkDays() : 0.0).sum())
+                .totalActualWorkDays(Math.round(reports.stream().mapToDouble(r -> r.getActualWorkDays() != null ? r.getActualWorkDays() : 0.0).sum() * 100.0) / 100.0)
                 .totalOnTimeCount(reports.stream().mapToLong(r -> r.getOnTimeCount() != null ? r.getOnTimeCount() : 0).sum())
                 .totalLateCount(reports.stream().mapToLong(r -> r.getLateCount() != null ? r.getLateCount() : 0).sum())
                 .totalEarlyLeaveCount(reports.stream().mapToLong(r -> r.getEarlyLeaveCount() != null ? r.getEarlyLeaveCount() : 0).sum())
-                .totalApprovedLeaveDays(reports.stream().mapToDouble(r -> r.getApprovedLeaveDays() != null ? r.getApprovedLeaveDays() : 0.0).sum())
-                .totalUnexcusedAbsenceDays(reports.stream().mapToDouble(r -> r.getUnexcusedAbsenceDays() != null ? r.getUnexcusedAbsenceDays() : 0.0).sum())
+                .totalApprovedLeaveDays(Math.round(reports.stream().mapToDouble(r -> r.getApprovedLeaveDays() != null ? r.getApprovedLeaveDays() : 0.0).sum() * 100.0) / 100.0)
+                .totalUnexcusedAbsenceDays(Math.round(reports.stream().mapToDouble(r -> r.getUnexcusedAbsenceDays() != null ? r.getUnexcusedAbsenceDays() : 0.0).sum() * 100.0) / 100.0)
                 .leaveReasonBreakdown(reasonMap)
                 .statusDistribution(distMap)
                 .criticalInternsCount(distMap.get(DiligenceStatus.CRITICAL))
                 .build();
+    }
+
+    public boolean isAttended(AttendanceStatus status) {
+        if (status == null) return false;
+        return status == AttendanceStatus.ON_TIME
+                || status == AttendanceStatus.LATE
+                || status == AttendanceStatus.EARLY_LEAVE
+                || status == AttendanceStatus.LATE_AND_EARLY_LEAVE;
+    }
+
+    public double calculateEffectiveApprovedLeaveDays(LeaveRequest leave, LocalDate reportStart, LocalDate reportEnd) {
+        if (leave == null || leave.getStartDate() == null || leave.getEndDate() == null) {
+            return 0.0;
+        }
+
+        if (leave.getDurationType() == LeaveDurationType.MORNING || leave.getDurationType() == LeaveDurationType.AFTERNOON) {
+            LocalDate targetDate = leave.getStartDate();
+            if (!targetDate.isBefore(reportStart) && !targetDate.isAfter(reportEnd)
+                    && workDayCalculator.countWorkingDaysBetween(targetDate, targetDate) > 0) {
+                return 0.5;
+            }
+            return 0.0;
+        }
+
+        LocalDate effStart = leave.getStartDate().isBefore(reportStart) ? reportStart : leave.getStartDate();
+        LocalDate effEnd = leave.getEndDate().isAfter(reportEnd) ? reportEnd : leave.getEndDate();
+
+        if (effStart.isAfter(effEnd)) {
+            return 0.0;
+        }
+
+        return (double) workDayCalculator.countWorkingDaysBetween(effStart, effEnd);
     }
 
     public AttendanceSummaryKpiResponse buildEmptyKpiResponse(

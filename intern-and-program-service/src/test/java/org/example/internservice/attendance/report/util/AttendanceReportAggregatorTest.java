@@ -98,6 +98,7 @@ class AttendanceReportAggregatorTest {
     @DisplayName("Tính toán chi tiết bảng công của TTS kèm đơn nghỉ phép nửa ngày")
     void calculateInternDiligence_withHalfDayLeave_calculatesAccurately() {
         when(workDayCalculator.calculateExpectedWorkDays(any(), any(), any())).thenReturn(20);
+        when(workDayCalculator.countWorkingDaysBetween(any(), any())).thenReturn(1);
 
         Attendance attendance = Attendance.builder()
                 .internId(10L)
@@ -132,6 +133,72 @@ class AttendanceReportAggregatorTest {
         assertEquals(1L, report.getOnTimeCount());
         assertEquals("Phòng IT", report.getDepartmentName());
         assertEquals("Chương trình Spring Boot", report.getProgramTitle());
+    }
+
+    @Test
+    @DisplayName("Bản ghi chấm công ABSENT không được tính vào actualWorkDays")
+    void calculateInternDiligence_absentAttendance_doesNotIncreaseActualWorkDays() {
+        when(workDayCalculator.calculateExpectedWorkDays(any(), any(), any())).thenReturn(20);
+
+        Attendance absentAttendance = Attendance.builder()
+                .internId(10L)
+                .workDate(LocalDate.of(2026, 10, 5))
+                .status(AttendanceStatus.ABSENT)
+                .build();
+
+        Attendance forgottenCheckout = Attendance.builder()
+                .internId(10L)
+                .workDate(LocalDate.of(2026, 10, 6))
+                .status(AttendanceStatus.FORGOTTEN_CHECKOUT)
+                .build();
+
+        InternDiligenceReportResponse report = aggregator.calculateInternDiligence(
+                intern,
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 10, 31),
+                List.of(absentAttendance, forgottenCheckout),
+                List.of(),
+                "Phòng IT",
+                "Chương trình Spring Boot"
+        );
+
+        assertNotNull(report);
+        assertEquals(20, report.getExpectedWorkDays());
+        assertEquals(0.0, report.getActualWorkDays());
+        assertEquals(20.0, report.getUnexcusedAbsenceDays());
+        assertEquals(0L, report.getOnTimeCount());
+    }
+
+    @Test
+    @DisplayName("Đơn nghỉ phép vắt tháng chỉ đếm số ngày làm việc nằm trong kỳ báo cáo")
+    void calculateInternDiligence_crossMonthLeave_countsOnlyDaysInReportPeriod() {
+        when(workDayCalculator.calculateExpectedWorkDays(any(), any(), any())).thenReturn(20);
+        // Từ 01/10 đến 02/10 là 2 ngày làm việc
+        when(workDayCalculator.countWorkingDaysBetween(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 2))).thenReturn(2);
+
+        // Đơn nghỉ từ 28/09 đến 02/10 (tổng cộng 5 ngày công, nhưng chỉ có 2 ngày rơi vào tháng 10)
+        LeaveRequest crossMonthLeave = LeaveRequest.builder()
+                .startDate(LocalDate.of(2026, 9, 28))
+                .endDate(LocalDate.of(2026, 10, 2))
+                .durationType(LeaveDurationType.FULL_DAY)
+                .totalDays(5.0)
+                .leaveType(LeaveType.PERSONAL)
+                .build();
+
+        InternDiligenceReportResponse report = aggregator.calculateInternDiligence(
+                intern,
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 10, 31),
+                List.of(),
+                List.of(crossMonthLeave),
+                "Phòng IT",
+                "Chương trình Spring Boot"
+        );
+
+        assertNotNull(report);
+        assertEquals(20, report.getExpectedWorkDays());
+        assertEquals(2.0, report.getApprovedLeaveDays()); // Chỉ đếm 2 ngày của tháng 10, không lấy 5 ngày
+        assertEquals(18.0, report.getUnexcusedAbsenceDays());
     }
 
     @Test

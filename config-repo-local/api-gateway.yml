@@ -33,27 +33,6 @@ spring:
             locator:
               enabled: true
               lower-case-service-id: true
-          default-filters:
-            - name: SetResponseHeader
-              args:
-                name: X-Frame-Options
-                value: DENY
-            - name: SetResponseHeader
-              args:
-                name: X-Content-Type-Options
-                value: nosniff
-            - name: SetResponseHeader
-              args:
-                name: X-XSS-Protection
-                value: 1; mode=block
-            - name: SetResponseHeader
-              args:
-                name: Referrer-Policy
-                value: strict-origin-when-cross-origin
-            - name: SetResponseHeader
-              args:
-                name: Content-Security-Policy
-                value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: http: https:; connect-src 'self' ws: wss: http: https:;"
           routes:
             # 1. Identity and Access Service (Auth, Users, IAM)
             - id: identity-auth

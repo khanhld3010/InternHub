@@ -93,30 +93,69 @@ public class AttendanceReportServiceImpl implements AttendanceReportService {
         LocalDate endDate = range[1];
 
         Specification<InternProfile> spec = buildInternSpecification(filter, userDetails);
-        Page<InternProfile> internPage = internProfileRepository.findAll(spec, pageable);
 
-        if (internPage.isEmpty()) {
+        if (filter.getDiligenceStatus() == null) {
+            Page<InternProfile> internPage = internProfileRepository.findAll(spec, pageable);
+            if (internPage.isEmpty()) {
+                return PageResponse.from(new PageImpl<>(List.of(), pageable, 0));
+            }
+
+            List<Long> internIds = internPage.getContent().stream().map(InternProfile::getId).toList();
+            List<Attendance> attendances = attendanceRepository.findByInternIdInAndWorkDateBetweenOrderByWorkDateAsc(internIds, startDate, endDate);
+            List<LeaveRequest> leaves = leaveRequestRepository.findApprovedLeavesByInternIdsAndDateRange(internIds, startDate, endDate);
+
+            Map<Long, List<Attendance>> attendanceMap = attendances.stream().collect(Collectors.groupingBy(Attendance::getInternId));
+            Map<Long, List<LeaveRequest>> leaveMap = leaves.stream().collect(Collectors.groupingBy(l -> l.getIntern().getId()));
+
+            List<InternDiligenceReportResponse> reports = internPage.getContent().stream()
+                    .map(i -> reportAggregator.calculateInternDiligence(
+                            i, startDate, endDate,
+                            attendanceMap.getOrDefault(i.getId(), List.of()),
+                            leaveMap.getOrDefault(i.getId(), List.of()),
+                            resolveDepartmentName(i),
+                            resolveProgramTitle(i)))
+                    .toList();
+
+            Page<InternDiligenceReportResponse> reportPage = new PageImpl<>(reports, pageable, internPage.getTotalElements());
+            return PageResponse.from(reportPage);
+        }
+
+        // Khi có lọc theo diligenceStatus: thực hiện tính toán trên tập ứng viên và phân trang bộ nhớ chính xác
+        List<InternProfile> allInterns = internProfileRepository.findAll(spec);
+        if (allInterns.isEmpty()) {
             return PageResponse.from(new PageImpl<>(List.of(), pageable, 0));
         }
 
-        List<Long> internIds = internPage.getContent().stream().map(InternProfile::getId).toList();
+        List<Long> internIds = allInterns.stream().map(InternProfile::getId).toList();
         List<Attendance> attendances = attendanceRepository.findByInternIdInAndWorkDateBetweenOrderByWorkDateAsc(internIds, startDate, endDate);
         List<LeaveRequest> leaves = leaveRequestRepository.findApprovedLeavesByInternIdsAndDateRange(internIds, startDate, endDate);
 
         Map<Long, List<Attendance>> attendanceMap = attendances.stream().collect(Collectors.groupingBy(Attendance::getInternId));
         Map<Long, List<LeaveRequest>> leaveMap = leaves.stream().collect(Collectors.groupingBy(l -> l.getIntern().getId()));
 
-        List<InternDiligenceReportResponse> reports = internPage.getContent().stream()
+        List<InternDiligenceReportResponse> filteredReports = allInterns.stream()
                 .map(i -> reportAggregator.calculateInternDiligence(
                         i, startDate, endDate,
                         attendanceMap.getOrDefault(i.getId(), List.of()),
                         leaveMap.getOrDefault(i.getId(), List.of()),
                         resolveDepartmentName(i),
                         resolveProgramTitle(i)))
-                .filter(r -> filter.getDiligenceStatus() == null || r.getDiligenceStatus() == filter.getDiligenceStatus())
+                .filter(r -> r.getDiligenceStatus() == filter.getDiligenceStatus())
                 .toList();
 
-        Page<InternDiligenceReportResponse> reportPage = new PageImpl<>(reports, pageable, internPage.getTotalElements());
+        int pageSize = pageable.isPaged() ? pageable.getPageSize() : (filteredReports.isEmpty() ? 1 : filteredReports.size());
+        int pageNumber = pageable.isPaged() ? pageable.getPageNumber() : 0;
+        int fromIndex = pageNumber * pageSize;
+
+        List<InternDiligenceReportResponse> pageContent;
+        if (fromIndex >= filteredReports.size()) {
+            pageContent = List.of();
+        } else {
+            int toIndex = Math.min(fromIndex + pageSize, filteredReports.size());
+            pageContent = filteredReports.subList(fromIndex, toIndex);
+        }
+
+        Page<InternDiligenceReportResponse> reportPage = new PageImpl<>(pageContent, pageable, filteredReports.size());
         return PageResponse.from(reportPage);
     }
 
@@ -260,6 +299,16 @@ public class AttendanceReportServiceImpl implements AttendanceReportService {
         }
 
         spec = spec.and((root, query, cb) -> root.get("status").in(List.of(InternStatus.APPROVED, InternStatus.INTERNING, InternStatus.ON_HOLD, InternStatus.COMPLETED)));
+
+        // Tránh N+1 query: chỉ fetch join khi truy vấn lấy dữ liệu (không áp dụng cho truy vấn đếm count)
+        spec = spec.and((root, query, cb) -> {
+            if (query != null && Long.class != query.getResultType() && long.class != query.getResultType()) {
+                root.fetch("program", JoinType.LEFT).fetch("department", JoinType.LEFT);
+                query.distinct(true);
+            }
+            return cb.conjunction();
+        });
+
         return spec;
     }
 
