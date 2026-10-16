@@ -4,6 +4,7 @@ import org.example.internservice.intern.entity.InternMentorAssignment;
 import org.example.internservice.intern.entity.enums.MentorAssignmentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,6 +17,8 @@ public interface InternMentorAssignmentRepository extends JpaRepository<InternMe
     List<InternMentorAssignment> findByInternIdInAndStatus(java.util.Collection<Long> internIds, MentorAssignmentStatus status);
 
     List<InternMentorAssignment> findByMentorIdAndStatus(Long mentorId, MentorAssignmentStatus status);
+
+    List<InternMentorAssignment> findByMentorIdInAndStatus(Collection<Long> mentorIds, MentorAssignmentStatus status);
 
     long countByMentorIdAndStatus(Long mentorId, MentorAssignmentStatus status);
 }

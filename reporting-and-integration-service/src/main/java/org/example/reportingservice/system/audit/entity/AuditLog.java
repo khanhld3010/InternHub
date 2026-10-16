@@ -12,6 +12,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.example.reportingservice.common.entity.BaseEntity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(
@@ -42,11 +44,13 @@ public class AuditLog extends BaseEntity {
     private String userRole;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "action", nullable = false, length = 50)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "action", nullable = false, length = 100, columnDefinition = "VARCHAR(100)")
     private AuditAction action;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "module", nullable = false, length = 50)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "module", nullable = false, length = 50, columnDefinition = "VARCHAR(50)")
     private AuditModule module;
 
     @Column(name = "description", nullable = false, length = 500)
@@ -65,7 +69,8 @@ public class AuditLog extends BaseEntity {
     private String userAgent;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "status", nullable = false, length = 20, columnDefinition = "VARCHAR(20)")
     private AuditStatus status;
 
     @Column(name = "execution_time_ms")

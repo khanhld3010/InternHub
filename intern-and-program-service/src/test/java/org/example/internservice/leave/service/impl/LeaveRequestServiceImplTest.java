@@ -5,11 +5,8 @@ import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.DuplicateResourceException;
 import org.example.internservice.intern.client.NotificationEventDispatcher;
 import org.example.internservice.intern.client.dto.CreateNotificationInternalRequest;
-import org.example.internservice.intern.entity.InternMentorAssignment;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
-import org.example.internservice.intern.entity.enums.MentorAssignmentStatus;
-import org.example.internservice.intern.repository.InternMentorAssignmentRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.leave.dto.request.ApproveLeaveRequest;
 import org.example.internservice.leave.dto.request.CreateLeaveRequest;
@@ -38,7 +35,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.time.LocalDate;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -60,7 +57,7 @@ class LeaveRequestServiceImplTest {
     private InternProfileRepository internProfileRepository;
 
     @Mock
-    private InternMentorAssignmentRepository internMentorAssignmentRepository;
+    private org.example.internservice.intern.service.MentorAccessHelper mentorAccessHelper;
 
     @Mock
     private WorkdayCalculator workdayCalculator;
@@ -72,7 +69,6 @@ class LeaveRequestServiceImplTest {
     private LeaveRequestServiceImpl leaveRequestService;
 
     private InternProfile intern;
-    private CustomUserDetails internUserDetails;
     private CustomUserDetails mentorUserDetails;
 
     @BeforeEach
@@ -87,13 +83,6 @@ class LeaveRequestServiceImplTest {
                 .mentorId(202L)
                 .build();
         intern.setId(1L);
-
-        internUserDetails = CustomUserDetails.builder()
-                .userId(101L)
-                .username("an.nguyen")
-                .role("ROLE_INTERN")
-                .authorities(List.of(new SimpleGrantedAuthority("ROLE_INTERN")))
-                .build();
 
         mentorUserDetails = CustomUserDetails.builder()
                 .userId(202L)
@@ -274,15 +263,8 @@ class LeaveRequestServiceImplTest {
                 .build();
         leaveRequest.setId(10L);
 
-        InternMentorAssignment assignment = InternMentorAssignment.builder()
-                .intern(intern)
-                .mentorId(202L)
-                .status(MentorAssignmentStatus.ACTIVE)
-                .build();
-
         when(leaveRequestRepository.findByIdWithIntern(10L)).thenReturn(Optional.of(leaveRequest));
-        when(internMentorAssignmentRepository.findByInternIdAndStatus(1L, MentorAssignmentStatus.ACTIVE))
-                .thenReturn(Optional.of(assignment));
+        when(mentorAccessHelper.isInternManagedByMentor(eq(intern), eq(mentorUserDetails))).thenReturn(true);
         when(leaveRequestRepository.save(any(LeaveRequest.class))).thenAnswer(i -> i.getArgument(0));
 
         ApproveLeaveRequest request = ApproveLeaveRequest.builder()
@@ -296,6 +278,74 @@ class LeaveRequestServiceImplTest {
         assertEquals("mentor.mai", response.getApproverName());
         assertEquals("Đồng ý cho em nghỉ.", response.getApprovalNote());
         verify(notificationEventDispatcher).dispatch(any(CreateNotificationInternalRequest.class));
+    }
+
+    @Test
+    @DisplayName("HR có thẩm quyền duyệt đơn xin nghỉ phép của bất kỳ thực tập sinh nào")
+    void approveLeaveRequest_Success_WhenHrApproves() {
+        CustomUserDetails hrUserDetails = CustomUserDetails.builder()
+                .userId(999L)
+                .username("hr.admin")
+                .role("HR")
+                .authorities(List.of(new SimpleGrantedAuthority("ROLE_HR")))
+                .build();
+
+        LeaveRequest leaveRequest = LeaveRequest.builder()
+                .intern(intern)
+                .leaveType(LeaveType.ACADEMIC_EXAM)
+                .durationType(LeaveDurationType.FULL_DAY)
+                .startDate(LocalDate.now().plusDays(1))
+                .endDate(LocalDate.now().plusDays(2))
+                .totalDays(2.0)
+                .reason("Em xin nghỉ thi tốt nghiệp.")
+                .status(LeaveStatus.PENDING)
+                .build();
+        leaveRequest.setId(10L);
+
+        when(leaveRequestRepository.findByIdWithIntern(10L)).thenReturn(Optional.of(leaveRequest));
+        when(leaveRequestRepository.save(any(LeaveRequest.class))).thenAnswer(i -> i.getArgument(0));
+
+        ApproveLeaveRequest request = ApproveLeaveRequest.builder()
+                .approvalNote("HR phê duyệt đặc cách.")
+                .build();
+
+        LeaveRequestResponse response = leaveRequestService.approveLeaveRequest(hrUserDetails, 10L, request);
+
+        assertNotNull(response);
+        assertEquals(LeaveStatus.APPROVED, response.getStatus());
+        assertEquals("hr.admin", response.getApproverName());
+        verify(notificationEventDispatcher).dispatch(any(CreateNotificationInternalRequest.class));
+    }
+
+    @Test
+    @DisplayName("Mentor không được duyệt đơn của TTS không thuộc quyền phụ trách")
+    void approveLeaveRequest_ThrowsAccessDenied_WhenMentorNotAssigned() {
+        CustomUserDetails otherMentor = CustomUserDetails.builder()
+                .userId(888L)
+                .username("other.mentor")
+                .role("MENTOR")
+                .authorities(List.of(new SimpleGrantedAuthority("ROLE_MENTOR")))
+                .build();
+
+        LeaveRequest leaveRequest = LeaveRequest.builder()
+                .intern(intern)
+                .leaveType(LeaveType.PERSONAL)
+                .durationType(LeaveDurationType.FULL_DAY)
+                .startDate(LocalDate.now().plusDays(1))
+                .endDate(LocalDate.now().plusDays(2))
+                .totalDays(2.0)
+                .reason("Em xin nghỉ việc riêng.")
+                .status(LeaveStatus.PENDING)
+                .build();
+        leaveRequest.setId(10L);
+
+        when(leaveRequestRepository.findByIdWithIntern(10L)).thenReturn(Optional.of(leaveRequest));
+        when(mentorAccessHelper.isInternManagedByMentor(eq(intern), eq(otherMentor))).thenReturn(false);
+
+        ApproveLeaveRequest request = ApproveLeaveRequest.builder().build();
+
+        assertThrows(AccessDeniedException.class, () ->
+                leaveRequestService.approveLeaveRequest(otherMentor, 10L, request));
     }
 
     @Test
@@ -313,15 +363,8 @@ class LeaveRequestServiceImplTest {
                 .build();
         leaveRequest.setId(10L);
 
-        InternMentorAssignment assignment = InternMentorAssignment.builder()
-                .intern(intern)
-                .mentorId(202L)
-                .status(MentorAssignmentStatus.ACTIVE)
-                .build();
-
         when(leaveRequestRepository.findByIdWithIntern(10L)).thenReturn(Optional.of(leaveRequest));
-        when(internMentorAssignmentRepository.findByInternIdAndStatus(1L, MentorAssignmentStatus.ACTIVE))
-                .thenReturn(Optional.of(assignment));
+        when(mentorAccessHelper.isInternManagedByMentor(eq(intern), eq(mentorUserDetails))).thenReturn(true);
         when(leaveRequestRepository.save(any(LeaveRequest.class))).thenAnswer(i -> i.getArgument(0));
 
         RejectLeaveRequest request = RejectLeaveRequest.builder()

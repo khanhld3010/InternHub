@@ -29,6 +29,9 @@ import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternProfileRepository;
+import org.example.internservice.leave.entity.LeaveRequest;
+import org.example.internservice.leave.entity.enums.LeaveDurationType;
+import org.example.internservice.leave.repository.LeaveRequestRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,7 +50,9 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     public static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     public static final LocalTime LATE_THRESHOLD = LocalTime.of(8, 15, 0);
+    public static final LocalTime AFTERNOON_LATE_THRESHOLD = LocalTime.of(13, 30, 0);
     public static final LocalTime STANDARD_END_TIME = LocalTime.of(17, 30, 0);
+    public static final LocalTime MORNING_END_TIME = LocalTime.of(12, 0, 0);
 
     private final AttendanceRepository attendanceRepository;
     private final OfficeLocationRepository officeLocationRepository;
@@ -60,6 +65,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final org.example.internservice.attendance.repository.AttendanceAuditLogRepository auditLogRepository;
     private final org.example.internservice.attendance.repository.InternDeviceRepository internDeviceRepository;
     private final org.example.internservice.attendance.service.SseEmitterRegistry sseEmitterRegistry;
+    private final LeaveRequestRepository leaveRequestRepository;
 
     @Override
     public TodayAttendanceResponse getTodayAttendance(Long userId) {
@@ -159,7 +165,12 @@ public class AttendanceServiceImpl implements AttendanceService {
                 office
         );
 
-        AttendanceStatus status = now.toLocalTime().isAfter(LATE_THRESHOLD)
+        boolean hasMorningLeave = leaveRequestRepository.findApprovedLeaveByInternAndDate(intern.getId(), today)
+                .map(l -> l.getDurationType() == LeaveDurationType.MORNING)
+                .orElse(false);
+
+        LocalTime lateLimit = hasMorningLeave ? AFTERNOON_LATE_THRESHOLD : LATE_THRESHOLD;
+        AttendanceStatus status = now.toLocalTime().isAfter(lateLimit)
                 ? AttendanceStatus.LATE
                 : AttendanceStatus.ON_TIME;
 
@@ -193,7 +204,8 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         recordDeviceUsage(intern.getId(), request.getDeviceFingerprint(), request.getDeviceModel(), now);
 
-        AttendanceResponse response = mapToResponse(saved, evalResult.getTrustLevel().name(), String.join(",", evalResult.getAuditFlags()));
+        String auditFlags = evalResult.getAuditFlags() != null ? String.join(",", evalResult.getAuditFlags()) : "";
+        AttendanceResponse response = mapToResponse(saved, evalResult.getTrustLevel() != null ? evalResult.getTrustLevel().name() : null, auditFlags);
         sseEmitterRegistry.emitCheckInSuccess(request.getQrToken(), response);
 
         log.info("Intern ID {} xác nhận check-in thành công qua mã QR lúc {} (TrustLevel: {}, Review: {})",
@@ -234,7 +246,12 @@ public class AttendanceServiceImpl implements AttendanceService {
         long workingMinutes = Math.max(0, Duration.between(attendance.getCheckInTime(), now).toMinutes());
         double totalWorkingHours = Math.round((workingMinutes / 60.0) * 100.0) / 100.0;
 
-        if (now.toLocalTime().isBefore(STANDARD_END_TIME)) {
+        boolean hasAfternoonLeave = leaveRequestRepository.findApprovedLeaveByInternAndDate(intern.getId(), today)
+                .map(l -> l.getDurationType() == LeaveDurationType.AFTERNOON)
+                .orElse(false);
+
+        LocalTime endLimit = hasAfternoonLeave ? MORNING_END_TIME : STANDARD_END_TIME;
+        if (now.toLocalTime().isBefore(endLimit)) {
             if (attendance.getStatus() == AttendanceStatus.LATE) {
                 attendance.setStatus(AttendanceStatus.LATE_AND_EARLY_LEAVE);
             } else if (attendance.getStatus() == AttendanceStatus.ON_TIME) {
@@ -302,7 +319,12 @@ public class AttendanceServiceImpl implements AttendanceService {
         long workingMinutes = Math.max(0, Duration.between(attendance.getCheckInTime(), now).toMinutes());
         double totalWorkingHours = Math.round((workingMinutes / 60.0) * 100.0) / 100.0;
 
-        if (now.toLocalTime().isBefore(STANDARD_END_TIME)) {
+        boolean hasAfternoonLeave = leaveRequestRepository.findApprovedLeaveByInternAndDate(intern.getId(), today)
+                .map(l -> l.getDurationType() == LeaveDurationType.AFTERNOON)
+                .orElse(false);
+
+        LocalTime endLimit = hasAfternoonLeave ? MORNING_END_TIME : STANDARD_END_TIME;
+        if (now.toLocalTime().isBefore(endLimit)) {
             if (attendance.getStatus() == AttendanceStatus.LATE) {
                 attendance.setStatus(AttendanceStatus.LATE_AND_EARLY_LEAVE);
             } else if (attendance.getStatus() == AttendanceStatus.ON_TIME) {
@@ -424,7 +446,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .accuracyMeters(accuracyMeters)
                 .distanceMeters(evalResult.getCalculatedDistance())
                 .trustLevel(evalResult.getTrustLevel())
-                .auditFlags(String.join(",", evalResult.getAuditFlags()))
+                .auditFlags(evalResult.getAuditFlags() != null ? String.join(",", evalResult.getAuditFlags()) : "")
                 .build();
         auditLogRepository.save(auditLog);
     }

@@ -3,8 +3,15 @@
 > **Dự án**: InternHub Management System  
 > **Tài liệu**: Technical Architecture & Design Specification  
 > **Trạng thái**: Approved (Khóa hiểu biết & hoàn tất Brainstorming)  
-> **Phiên bản**: 1.0  
-> **Ngày phê duyệt**: 01/10/2026  
+> **Phiên bản**: 1.1  
+> **Ngày cập nhật**: 16/10/2026  
+
+## 0. Revision History & Technical Rationale
+
+| Phiên bản | Ngày | Tác giả | Nội dung thay đổi | Lý do kỹ thuật (Rationale) |
+| :---: | :---: | :---: | :--- | :--- |
+| **v1.1** | 2026-10-16 | AI Pair-Programmer | Tách Security Headers khỏi luồng WebSocket Handshake | Xóa `default-filters` (SetResponseHeader) khỏi `api-gateway.yml` và chuyển sang `SecurityHeadersFilter` có kiểm tra bỏ qua WebSocket upgrade. Ngăn chặn lỗi Netty `UnsupportedOperationException: ServerHttpResponse already committed (200 OK)` gây đứt kết nối SockJS. |
+| **v1.0** | 2026-10-01 | Đội Phát Triển | Khởi tạo kiến trúc WebSocket & Notification Service | Thiết kế ban đầu |
 
 ---
 
