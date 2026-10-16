@@ -8,5 +8,5 @@ include 'intern-and-program-service'
 include 'reporting-and-integration-service'
 include 'file-service'
 include 'notification-service'
-include 'ServiceAI'
+include 'ai-service'
 
