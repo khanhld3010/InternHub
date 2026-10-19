@@ -2,24 +2,38 @@ package org.example.internservice.intern.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.internservice.attendance.entity.Attendance;
+import org.example.internservice.attendance.entity.enums.AttendanceStatus;
+import org.example.internservice.attendance.repository.AttendanceRepository;
+import org.example.internservice.contract.entity.Contract;
+import org.example.internservice.contract.entity.enums.DynamicContractStatus;
+import org.example.internservice.contract.repository.ContractRevisionRepository;
+import org.example.internservice.contract.repository.DynamicContractRepository;
+import org.example.internservice.exception.BadRequestException;
+import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.client.IdentityServiceClient;
 import org.example.internservice.intern.client.NotificationEventDispatcher;
 import org.example.internservice.intern.client.dto.CreateNotificationInternalRequest;
+import org.example.internservice.intern.dto.HrApproveEvaluationRequest;
+import org.example.internservice.intern.dto.HrEvaluationSummaryItem;
 import org.example.internservice.intern.dto.InternEvaluationRequest;
 import org.example.internservice.intern.dto.InternEvaluationResponse;
 import org.example.internservice.intern.entity.InternEvaluation;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.InternWeeklyAssessment;
+import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternEvaluationRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.repository.InternWeeklyAssessmentRepository;
 import org.example.internservice.intern.service.InternEvaluationService;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -33,21 +47,24 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
     private final InternProfileRepository internProfileRepository;
     private final NotificationEventDispatcher notificationEventDispatcher;
     private final IdentityServiceClient identityServiceClient;
+    private final DynamicContractRepository dynamicContractRepository;
+    private final ContractRevisionRepository contractRevisionRepository;
+    private final AttendanceRepository attendanceRepository;
 
     @Override
     @Transactional
     public InternEvaluationResponse hrApproveEvaluation(
             String internCode,
-            org.example.internservice.intern.dto.HrApproveEvaluationRequest request,
+            HrApproveEvaluationRequest request,
             String hrUsername
     ) {
         log.info("HR {} phê duyệt đánh giá cuối kỳ cho TTS: {}", hrUsername, internCode);
         InternEvaluation evaluation = evaluationRepository.findByInternCodeAndEvaluationType(internCode, "FINAL")
-                .orElseThrow(() -> new org.example.internservice.exception.ResourceNotFoundException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy phiếu đánh giá cuối kỳ của thực tập sinh: " + internCode));
 
         if (!"SUBMITTED".equalsIgnoreCase(evaluation.getStatus()) && !"APPROVED".equalsIgnoreCase(evaluation.getStatus())) {
-            throw new org.example.internservice.exception.BadRequestException(
+            throw new BadRequestException(
                     "Phiếu đánh giá chưa được Mentor gửi nộp chính thức (Trạng thái hiện tại: " + evaluation.getStatus() + ")");
         }
 
@@ -62,11 +79,50 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
 
         InternEvaluation saved = evaluationRepository.save(evaluation);
 
-        // Cascade: Cập nhật trạng thái của InternProfile sang COMPLETED và bắn thông báo
+        // Cascade: Cập nhật trạng thái của InternProfile sang COMPLETED, thanh lý Hợp đồng, khóa tài khoản và bắn thông báo
         internProfileRepository.findByInternCode(internCode).ifPresent(profile -> {
-            profile.setStatus(org.example.internservice.intern.entity.enums.InternStatus.COMPLETED);
+            profile.setStatus(InternStatus.COMPLETED);
             internProfileRepository.save(profile);
             log.info("Đã chuyển trạng thái hồ sơ TTS {} sang COMPLETED thành công", internCode);
+
+            // Tự động thanh lý / đóng Hợp đồng thực tập (chuyển sang EXPIRED)
+            try {
+                List<Contract> contracts = dynamicContractRepository.findAllByOrderByCreatedAtDesc().stream()
+                        .filter(c -> c.getInternProfile() != null && c.getInternProfile().getId().equals(profile.getId()))
+                        .filter(c -> c.getStatus() == DynamicContractStatus.ACTIVE 
+                                || c.getStatus() == DynamicContractStatus.SIGNED
+                                || c.getStatus() == DynamicContractStatus.WAITING_EFFECTIVE_DATE)
+                        .collect(Collectors.toList());
+
+                for (Contract contract : contracts) {
+                    contract.setStatus(DynamicContractStatus.EXPIRED);
+                    dynamicContractRepository.save(contract);
+                    if (contract.getCurrentRevisionId() != null) {
+                        contractRevisionRepository.findById(contract.getCurrentRevisionId()).ifPresent(rev -> {
+                            rev.setStatus(DynamicContractStatus.EXPIRED);
+                            contractRevisionRepository.save(rev);
+                        });
+                    }
+                    log.info("Đã tự động chuyển trạng thái Hợp đồng ID={} ({}) sang EXPIRED do hoàn thành thực tập",
+                            contract.getId(), contract.getContractNumber());
+                }
+            } catch (Exception e) {
+                log.warn("Cảnh báo: Không thể tự động chuyển hợp đồng sang EXPIRED cho TTS {}: {}", internCode, e.getMessage());
+            }
+
+            // Tự động khóa tài khoản đăng nhập (Offboarding Access Control) qua IdentityServiceClient
+            if (profile.getUserId() != null) {
+                try {
+                    boolean locked = identityServiceClient.toggleUserAccountStatus(profile.getUserId());
+                    if (locked) {
+                        log.info("Đã tự động khóa tài khoản userId={} cho cựu TTS {} thành công", profile.getUserId(), internCode);
+                    } else {
+                        log.warn("Không thể tự động khóa tài khoản userId={} cho cựu TTS {}", profile.getUserId(), internCode);
+                    }
+                } catch (Exception e) {
+                    log.error("Lỗi khi gọi khóa tài khoản userId={} cho TTS {}: {}", profile.getUserId(), internCode, e.getMessage());
+                }
+            }
 
             String resultText = saved.getInternshipResult() != null ? saved.getInternshipResult() : "ĐẠT";
 
@@ -108,18 +164,18 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<org.example.internservice.intern.dto.HrEvaluationSummaryItem> getHrEvaluationSummary(
+    public List<HrEvaluationSummaryItem> getHrEvaluationSummary(
             Long programId,
             String university,
             String status,
             String keyword
     ) {
         // Lấy danh sách toàn bộ TTS đang thực tập hoặc đã hoàn thành
-        List<org.example.internservice.intern.entity.InternProfile> internProfiles = internProfileRepository.findAll();
+        List<InternProfile> internProfiles = internProfileRepository.findAll();
 
-        List<org.example.internservice.intern.dto.HrEvaluationSummaryItem> result = new java.util.ArrayList<>();
+        List<HrEvaluationSummaryItem> result = new ArrayList<>();
 
-        for (org.example.internservice.intern.entity.InternProfile p : internProfiles) {
+        for (InternProfile p : internProfiles) {
             // Lọc theo programId nếu có
             if (programId != null && (p.getProgram() == null || !programId.equals(p.getProgram().getId()))) {
                 continue;
@@ -158,7 +214,7 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
                 }
             }
 
-            result.add(org.example.internservice.intern.dto.HrEvaluationSummaryItem.builder()
+            result.add(HrEvaluationSummaryItem.builder()
                     .evaluationId(eval != null ? eval.getId() : null)
                     .internId(p.getId())
                     .internCode(p.getInternCode())
@@ -295,6 +351,54 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
     }
 
     private InternEvaluationResponse mapToResponse(InternEvaluation entity) {
+        int lateCount = 0;
+        int earlyLeaveCount = 0;
+        int absentCount = 0;
+        double totalWorkingHours = 0.0;
+
+        if (entity.getInternCode() != null) {
+            var profileOpt = internProfileRepository.findByInternCode(entity.getInternCode());
+            if (profileOpt.isPresent()) {
+                List<Attendance> attendances = attendanceRepository.findByInternId(profileOpt.get().getId());
+                for (Attendance att : attendances) {
+                    if (att.getStatus() == AttendanceStatus.LATE) {
+                        lateCount++;
+                    } else if (att.getStatus() == AttendanceStatus.EARLY_LEAVE) {
+                        earlyLeaveCount++;
+                    } else if (att.getStatus() == AttendanceStatus.LATE_AND_EARLY_LEAVE) {
+                        lateCount++;
+                        earlyLeaveCount++;
+                    } else if (att.getStatus() == AttendanceStatus.ABSENT) {
+                        absentCount++;
+                    }
+
+                    if (att.getTotalWorkingHours() != null) {
+                        totalWorkingHours += att.getTotalWorkingHours();
+                    }
+                }
+            }
+        }
+
+        // Lỗi 35 [P1] (EVAL-02): Bảo mật đánh giá - Ẩn đề xuất nhân sự nhạy cảm của Mentor đối với sinh viên khi chưa được HR duyệt chính thức
+        boolean isApproved = "APPROVED".equalsIgnoreCase(entity.getStatus());
+        boolean isStaffOrMentor = false;
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getAuthorities() != null) {
+                isStaffOrMentor = auth.getAuthorities().stream().anyMatch(a -> {
+                    String role = a.getAuthority();
+                    return "ROLE_HR".equalsIgnoreCase(role) || "ROLE_ADMIN".equalsIgnoreCase(role) || "ROLE_MENTOR".equalsIgnoreCase(role);
+                });
+            }
+        } catch (Exception e) {
+            log.debug("Could not verify security context: {}", e.getMessage());
+        }
+
+        String maskedRecommendation = (isApproved || isStaffOrMentor) ? entity.getRecommendation() : null;
+        String maskedRecommendationNote = (isApproved || isStaffOrMentor) ? entity.getRecommendationNote() : null;
+        String maskedHrComments = isApproved ? entity.getHrComments() : null;
+        String maskedInternshipResult = isApproved ? entity.getInternshipResult() : null;
+
         return InternEvaluationResponse.builder()
                 .id(entity.getId())
                 .internCode(entity.getInternCode())
@@ -310,14 +414,18 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
                 .weeklyAssessmentAvgScore(entity.getWeeklyAssessmentAvgScore())
                 .strengths(entity.getStrengths())
                 .areasForImprovement(entity.getAreasForImprovement())
-                .recommendation(entity.getRecommendation())
-                .recommendationNote(entity.getRecommendationNote())
+                .recommendation(maskedRecommendation)
+                .recommendationNote(maskedRecommendationNote)
                 .status(entity.getStatus())
                 .submittedAt(entity.getSubmittedAt())
                 .approvedAt(entity.getApprovedAt())
                 .approvedBy(entity.getApprovedBy())
-                .hrComments(entity.getHrComments())
-                .internshipResult(entity.getInternshipResult())
+                .hrComments(maskedHrComments)
+                .internshipResult(maskedInternshipResult)
+                .lateCount(lateCount)
+                .earlyLeaveCount(earlyLeaveCount)
+                .absentCount(absentCount)
+                .totalWorkingHours(BigDecimal.valueOf(totalWorkingHours).setScale(1, RoundingMode.HALF_UP).doubleValue())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

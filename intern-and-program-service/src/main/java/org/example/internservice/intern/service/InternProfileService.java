@@ -42,5 +42,7 @@ public interface InternProfileService {
     java.util.Map<String, Object> resendMentorInvitation(Long mentorId);
 
     void removeInternFromProgram(Long programId, Long internId);
+
+    InternResponse getInternById(Long id);
 }
 

@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -52,7 +53,61 @@ public class StorageService {
         }
     }
 
+    private static final Set<String> DANGEROUS_EXTENSIONS = Set.of(
+            ".exe", ".bat", ".cmd", ".sh", ".bash", ".ps1", ".vbs", ".js", ".jar", ".msi", ".dll", ".so", ".dylib", ".php", ".py", ".rb", ".scr", ".pif", ".cpl"
+    );
+
+    private void validateSafeFileExtension(String fileName) {
+        if (fileName == null || !fileName.contains(".")) {
+            return;
+        }
+        String ext = fileName.substring(fileName.lastIndexOf(".")).toLowerCase();
+        if (DANGEROUS_EXTENSIONS.contains(ext)) {
+            throw new IllegalArgumentException("Định dạng tệp không được phép tải lên hệ thống (Tập tin thực thi/script có rủi ro bảo mật: " + ext + ")");
+        }
+    }
+
+    private void validateMagicBytes(String bucket, String key) {
+        try {
+            // Đọc 16 bytes đầu tiên để nhận diện định dạng thực tế
+            GetObjectRequest getRequest = GetObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .range("bytes=0-15")
+                    .build();
+
+            byte[] header = s3Client.getObjectAsBytes(getRequest).asByteArray();
+            if (header == null || header.length < 2) {
+                return;
+            }
+
+            // Chữ ký tập tin thực thi Windows PE (MZ)
+            if (header[0] == 0x4D && header[1] == 0x5A) {
+                throw new IllegalArgumentException("Phát hiện tập tin thực thi PE (MZ header). Bị từ chối vì lý do bảo mật hệ thống.");
+            }
+            // Chữ ký tập tin thực thi Linux ELF (0x7F 'E' 'L' 'F')
+            if (header.length >= 4 && header[0] == 0x7F && header[1] == 'E' && header[2] == 'L' && header[3] == 'F') {
+                throw new IllegalArgumentException("Phát hiện tập tin thực thi ELF binary. Bị từ chối vì lý do bảo mật hệ thống.");
+            }
+            // Chữ ký Java Class binary (0xCA 0xFE 0xBA 0xBE)
+            if (header.length >= 4 && (header[0] & 0xFF) == 0xCA && (header[1] & 0xFF) == 0xFE
+                    && (header[2] & 0xFF) == 0xBA && (header[3] & 0xFF) == 0xBE) {
+                throw new IllegalArgumentException("Phát hiện bytecode Java class. Bị từ chối vì lý do bảo mật hệ thống.");
+            }
+            // Chữ ký Script Shebang (#! / #!/)
+            if (header[0] == '#' && header[1] == '!') {
+                throw new IllegalArgumentException("Phát hiện tập tin script thực thi shell/bash. Bị từ chối vì lý do bảo mật hệ thống.");
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("Không thể kiểm tra magic bytes cho key {} (bỏ qua nếu tệp rỗng): {}", key, e.getMessage());
+        }
+    }
+
     public PresignedUploadResponse createPresignedUpload(PresignedUploadRequest request) {
+        validateSafeFileExtension(request.getFileName());
+
         String prefix = (request.getPrefix() != null && !request.getPrefix().isBlank()) 
                 ? request.getPrefix() : "temp";
         
@@ -88,6 +143,9 @@ public class StorageService {
         String bucket = props.getBucketName();
         String sourceKey = request.getTempKey();
         String destKey = request.getDestinationKey();
+
+        validateSafeFileExtension(destKey);
+        validateMagicBytes(bucket, sourceKey);
 
         log.info("Promoting file from {} to {}", sourceKey, destKey);
 

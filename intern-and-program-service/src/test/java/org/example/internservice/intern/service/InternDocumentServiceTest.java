@@ -171,14 +171,50 @@ class InternDocumentServiceTest {
     }
 
     @Test
-    @DisplayName("UT-BE-05: Dung lượng vượt quá 5MB -> Ném BadRequestException")
-    void uploadDocument_whenFileSizeExceedsLimit_shouldThrowBadRequestException() {
-        byte[] largeBytes = new byte[6 * 1024 * 1024]; // 6MB
+    @DisplayName("UT-BE-05: Dung lượng CV 8MB hợp lệ không bị ném ngoại lệ giới hạn dung lượng")
+    void uploadDocument_whenFileSizeIs8MB_shouldBeAcceptedUnder10MB() {
+        byte[] valid8MBBytes = new byte[8 * 1024 * 1024]; // 8MB
         MockMultipartFile file = new MockMultipartFile(
                 "file",
-                "large_cv.pdf",
+                "valid_8mb_cv.pdf",
                 "application/pdf",
-                largeBytes
+                valid8MBBytes
+        );
+
+        when(internProfileRepository.findByInternCode("INT-202609-0001"))
+                .thenReturn(Optional.of(mockInternProfile));
+        when(fileStorageService.storeFile(eq(file), eq("interns/INT-202609-0001")))
+                .thenReturn("valid-8mb-cv.pdf");
+
+        InternDocument savedDoc = InternDocument.builder()
+                .internProfile(mockInternProfile)
+                .documentType(DocumentType.CV)
+                .originalFileName("valid_8mb_cv.pdf")
+                .fileName("valid-8mb-cv.pdf")
+                .filePath("interns/INT-202609-0001/valid-8mb-cv.pdf")
+                .fileSize((long) valid8MBBytes.length)
+                .contentType("application/pdf")
+                .status(DocumentStatus.PENDING_REVIEW)
+                .build();
+        savedDoc.setId(12L);
+        savedDoc.setCreatedAt(LocalDateTime.now());
+
+        when(internDocumentRepository.save(any(InternDocument.class))).thenReturn(savedDoc);
+
+        DocumentResponse response = internDocumentService.uploadDocument("INT-202609-0001", file, "CV");
+        assertNotNull(response);
+        assertEquals(8 * 1024 * 1024L, response.getFileSize());
+    }
+
+    @Test
+    @DisplayName("UT-BE-05b: Dung lượng vượt quá 10MB -> Ném BadRequestException")
+    void uploadDocument_whenFileSizeExceeds10MB_shouldThrowBadRequestException() {
+        byte[] exceedBytes = new byte[11 * 1024 * 1024]; // 11MB
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "exceed_cv.pdf",
+                "application/pdf",
+                exceedBytes
         );
 
         BadRequestException ex = assertThrows(BadRequestException.class, () ->

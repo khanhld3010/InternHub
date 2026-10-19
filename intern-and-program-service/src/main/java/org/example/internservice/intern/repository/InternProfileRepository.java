@@ -37,6 +37,10 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
 
     Optional<InternProfile> findByInternCode(String internCode);
 
+    Optional<InternProfile> findFirstByEmailOrderByCreatedAtDesc(String email);
+
+    boolean existsByInternCode(String internCode);
+
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 
     java.util.List<InternProfile> findByEmailStatusAndLastEmailSentAtBefore(String emailStatus, LocalDateTime threshold);

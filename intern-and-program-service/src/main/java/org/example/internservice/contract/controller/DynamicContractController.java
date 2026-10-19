@@ -56,6 +56,18 @@ public class DynamicContractController {
         return ResponseEntity.ok(ApiResponse.success(200, "Phát hành hợp đồng cho thực tập sinh thành công", response));
     }
 
+    @PostMapping({"/", ""})
+    @RequestMapping(value = {"/{id}/cancel", "/{id}/withdraw"}, method = org.springframework.web.bind.annotation.RequestMethod.POST)
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<DynamicContractResponse>> cancelContract(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        String username = getUsername();
+        String reason = body != null ? body.get("reason") : null;
+        DynamicContractResponse response = contractService.cancelContract(id, reason, username != null ? username : "HR");
+        return ResponseEntity.ok(ApiResponse.success(200, "Thu hồi hợp đồng thành công", response));
+    }
+
     @PostMapping("/{id}/revisions")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
     public ResponseEntity<ApiResponse<DynamicContractResponse>> createRevision(

@@ -512,6 +512,7 @@ public class MissionBoardServiceImpl implements MissionBoardService {
                 .isOverdue(isOverdue)
                 .orderIndex(item.getOrderIndex())
                 .assignees(assignees)
+                .version(item.getVersion())
                 .createdAt(item.getCreatedAt())
                 .updatedAt(item.getUpdatedAt())
                 .build();

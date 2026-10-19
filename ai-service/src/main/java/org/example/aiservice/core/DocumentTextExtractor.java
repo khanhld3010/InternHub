@@ -27,6 +27,8 @@ public class DocumentTextExtractor {
                 return extractPdfText(fileBytes);
             } else if (lowerName.endsWith(".docx")) {
                 return extractDocxText(fileBytes);
+            } else if (lowerName.endsWith(".doc")) {
+                return extractDocText(fileBytes);
             } else {
                 log.warn("Định dạng file không hỗ trợ trích xuất văn bản trực tiếp: {}", fileName);
                 return "";
@@ -50,6 +52,14 @@ public class DocumentTextExtractor {
         try (InputStream is = new ByteArrayInputStream(docxBytes);
              XWPFDocument doc = new XWPFDocument(is);
              XWPFWordExtractor extractor = new XWPFWordExtractor(doc)) {
+            return cleanExtractedText(extractor.getText());
+        }
+    }
+
+    private String extractDocText(byte[] docBytes) throws Exception {
+        try (InputStream is = new ByteArrayInputStream(docBytes);
+             org.apache.poi.hwpf.HWPFDocument doc = new org.apache.poi.hwpf.HWPFDocument(is);
+             org.apache.poi.hwpf.extractor.WordExtractor extractor = new org.apache.poi.hwpf.extractor.WordExtractor(doc)) {
             return cleanExtractedText(extractor.getText());
         }
     }

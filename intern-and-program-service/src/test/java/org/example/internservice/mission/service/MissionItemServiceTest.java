@@ -6,6 +6,7 @@ import org.example.internservice.intern.entity.MentorProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.repository.MentorProfileRepository;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.example.internservice.mission.dto.request.CreateMissionItemRequest;
 import org.example.internservice.mission.dto.request.UpdateItemStatusRequest;
 import org.example.internservice.mission.dto.request.UpdateMissionItemRequest;
@@ -223,6 +224,33 @@ class MissionItemServiceTest {
 
         assertNotNull(response);
         assertEquals(MissionItemStatus.COMPLETED, response.getStatus());
+        verify(missionItemRepository, times(1)).save(item);
+    }
+
+    @Test
+    @DisplayName("UT-BE-10-OPT: Ném OptimisticLockingFailureException khi phát hiện xung đột phiên bản @Version đồng thời")
+    void updateItemStatus_OptimisticLockingFailure_ThrowsException() {
+        MissionItem item = MissionItem.builder()
+                .board(mockBoard)
+                .title("Viết API")
+                .status(MissionItemStatus.TODO)
+                .assignees(new HashSet<>())
+                .version(1L)
+                .build();
+        item.setId(101L);
+
+        UpdateItemStatusRequest request = UpdateItemStatusRequest.builder()
+                .status(MissionItemStatus.IN_PROGRESS)
+                .version(1L)
+                .build();
+
+        when(missionItemRepository.findByIdWithAssignees(101L)).thenReturn(Optional.of(item));
+        when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mockMentor));
+        when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 20L)).thenReturn(true);
+        when(missionItemRepository.save(any(MissionItem.class))).thenThrow(new OptimisticLockingFailureException("Row was updated or deleted by another transaction"));
+
+        assertThrows(OptimisticLockingFailureException.class, () ->
+                missionItemService.updateItemStatus(101L, request, mentorUserDetails));
         verify(missionItemRepository, times(1)).save(item);
     }
 

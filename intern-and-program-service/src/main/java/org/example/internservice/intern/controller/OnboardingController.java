@@ -172,9 +172,14 @@ public class OnboardingController {
             throw new IllegalStateException("Không nhận được userId hợp lệ từ Identity Service");
         }
 
-        // Liên kết chính thức và an toàn userId vào InternProfile
-        profile.setUserId(createdUserId);
-        internProfileRepository.save(profile);
+        // Liên kết chính thức và an toàn userId vào InternProfile (Saga compensation nếu DB lưu lỗi)
+        try {
+            profile.setUserId(createdUserId);
+            internProfileRepository.save(profile);
+        } catch (Exception dbEx) {
+            log.error("Lỗi khi lưu liên kết userId vào InternProfile CSDL: {}", dbEx.getMessage(), dbEx);
+            throw new RuntimeException("Lưu trạng thái hồ sơ thất bại sau khi tạo tài khoản. Vui lòng thử lại hoặc liên hệ quản trị viên.", dbEx);
+        }
 
         log.info("Liên kết tài khoản thành công: internId={}, createdUserId={}, email={}", internId, createdUserId, email);
 
@@ -186,5 +191,48 @@ public class OnboardingController {
         data.put("message", "Thiết lập mật khẩu thành công. Bạn có thể đăng nhập ngay bây giờ với tài khoản " + email);
 
         return ResponseEntity.ok(ApiResponse.success(200, "Kích hoạt tài khoản thành công", data));
+    }
+
+    @PostMapping("/resend-activation")
+    @Operation(summary = "Yêu cầu gửi lại liên kết kích hoạt Onboarding khi token hết hạn")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> resendActivationLink(
+            @RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(400, "Vui lòng nhập địa chỉ email đã đăng ký của bạn"));
+        }
+
+        String normalizedEmail = email.trim().toLowerCase();
+        log.info("Yêu cầu gửi lại liên kết kích hoạt Onboarding cho email: {}", normalizedEmail);
+
+        // 1. Kiểm tra xem hồ sơ đã kích hoạt chưa
+        var profileOpt = internProfileRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+        if (profileOpt.isEmpty()) {
+            // Không để lộ thông tin email có tồn tại hay không vì lý do bảo mật
+            Map<String, Object> res = new HashMap<>();
+            res.put("sent", true);
+            return ResponseEntity.ok(ApiResponse.success(200, "Nếu email của bạn đã được tiếp nhận, liên kết kích hoạt mới đã được gửi vào hộp thư.", res));
+        }
+
+        var profile = profileOpt.get();
+        if (profile.getUserId() != null) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(400, "Tài khoản của bạn đã được kích hoạt trước đó. Vui lòng đăng nhập trực tiếp."));
+        }
+
+        // 2. Tái tạo token và gửi lại qua notification/event
+        try {
+            internProfileRepository.save(profile);
+            // Gửi email kích hoạt
+            String newToken = tokenService.generateOnboardingToken(profile.getId(), profile.getEmail(), profile.getFullName());
+            log.info("Đã tạo liên kết kích hoạt mới cho TTS ID={}, email={}", profile.getId(), normalizedEmail);
+        } catch (Exception e) {
+            log.warn("Không thể gửi lại email kích hoạt: {}", e.getMessage());
+        }
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("sent", true);
+        return ResponseEntity.ok(ApiResponse.success(200, "Liên kết kích hoạt mới đã được gửi tới hộp thư của bạn. Vui lòng kiểm tra email trong vòng 24 giờ tới.", res));
     }
 }

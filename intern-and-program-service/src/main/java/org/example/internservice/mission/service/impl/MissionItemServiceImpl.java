@@ -226,6 +226,7 @@ public class MissionItemServiceImpl implements MissionItemService {
                 .completionNote(item.getCompletionNote())
                 .submittedAt(item.getSubmittedAt())
                 .assignees(assignees)
+                .version(item.getVersion())
                 .createdAt(item.getCreatedAt())
                 .updatedAt(item.getUpdatedAt())
                 .build();

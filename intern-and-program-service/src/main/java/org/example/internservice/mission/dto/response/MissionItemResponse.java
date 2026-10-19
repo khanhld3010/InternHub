@@ -35,6 +35,7 @@ public class MissionItemResponse {
     private String completionNote;
     private LocalDateTime submittedAt;
     private List<AssigneeResponse> assignees;
+    private Long version;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

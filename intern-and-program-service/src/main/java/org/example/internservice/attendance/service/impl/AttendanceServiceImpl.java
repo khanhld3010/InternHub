@@ -2,9 +2,11 @@ package org.example.internservice.attendance.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.internservice.attendance.dto.request.AttendanceAppealRequest;
 import org.example.internservice.attendance.dto.request.CheckInConfirmRequest;
 import org.example.internservice.attendance.dto.request.CheckInInitiateRequest;
 import org.example.internservice.attendance.dto.request.CheckOutRequest;
+import org.example.internservice.attendance.dto.request.ConfirmForgottenCheckoutRequest;
 import org.example.internservice.attendance.dto.request.QuickCheckOutRequest;
 import org.example.internservice.attendance.dto.request.ReviewAttendanceRequest;
 import org.example.internservice.attendance.dto.response.AttendanceResponse;
@@ -13,11 +15,17 @@ import org.example.internservice.attendance.dto.response.MonthlyAttendanceSummar
 import org.example.internservice.attendance.dto.response.TodayAttendanceResponse;
 import org.example.internservice.attendance.entity.Attendance;
 import org.example.internservice.attendance.entity.OfficeLocation;
+import org.example.internservice.attendance.entity.enums.AttendanceReviewStatus;
 import org.example.internservice.attendance.entity.enums.AttendanceStatus;
+import org.example.internservice.allowance.entity.enums.AllowanceStatus;
+import org.example.internservice.allowance.repository.InternAllowanceRecordRepository;
+import org.example.internservice.attendance.repository.AttendanceAuditLogRepository;
 import org.example.internservice.attendance.repository.AttendanceRepository;
+import org.example.internservice.attendance.repository.InternDeviceRepository;
 import org.example.internservice.attendance.repository.OfficeLocationRepository;
 import org.example.internservice.attendance.service.AttendanceService;
 import org.example.internservice.attendance.service.CheckInQrTokenManager;
+import org.example.internservice.attendance.service.SseEmitterRegistry;
 import org.example.internservice.attendance.service.TrustLevelEvaluator;
 import org.example.internservice.attendance.service.TrustLevelEvaluator.EvaluationResult;
 import org.example.internservice.attendance.util.FrontendUrlResolver;
@@ -37,6 +45,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Service
@@ -56,10 +65,11 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final CheckInQrTokenManager qrTokenManager;
     private final QrCodeGenerator qrCodeGenerator;
     private final FrontendUrlResolver frontendUrlResolver;
-    private final org.example.internservice.attendance.service.TrustLevelEvaluator trustLevelEvaluator;
-    private final org.example.internservice.attendance.repository.AttendanceAuditLogRepository auditLogRepository;
-    private final org.example.internservice.attendance.repository.InternDeviceRepository internDeviceRepository;
-    private final org.example.internservice.attendance.service.SseEmitterRegistry sseEmitterRegistry;
+    private final TrustLevelEvaluator trustLevelEvaluator;
+    private final AttendanceAuditLogRepository auditLogRepository;
+    private final InternDeviceRepository internDeviceRepository;
+    private final SseEmitterRegistry sseEmitterRegistry;
+    private final InternAllowanceRecordRepository allowanceRecordRepository;
 
     @Override
     public TodayAttendanceResponse getTodayAttendance(Long userId) {
@@ -383,6 +393,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         Attendance attendance = attendanceRepository.findById(attendanceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bản ghi chấm công có ID: " + attendanceId));
 
+        validateAttendanceNotLockedByAllowance(attendance);
+
         attendance.setReviewStatus(request.getReviewStatus());
         attendance.setReviewedBy(reviewerUsername != null ? reviewerUsername : "HR_ADMIN");
         attendance.setReviewedAt(LocalDateTime.now(VIETNAM_ZONE));
@@ -393,6 +405,98 @@ public class AttendanceServiceImpl implements AttendanceService {
         Attendance saved = attendanceRepository.save(attendance);
         log.info("Bản ghi chấm công ID {} đã được cập nhật reviewStatus thành {} bởi {}",
                 attendanceId, request.getReviewStatus(), reviewerUsername);
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public AttendanceResponse appealAttendance(Long userId, Long attendanceId, AttendanceAppealRequest request) {
+        InternProfile intern = getValidInternProfile(userId);
+        Attendance attendance = attendanceRepository.findById(attendanceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bản ghi chấm công có ID: " + attendanceId));
+
+        validateAttendanceNotLockedByAllowance(attendance);
+
+        if (!attendance.getInternId().equals(intern.getId())) {
+            throw new BadRequestException("Bạn không có quyền gửi giải trình cho bản ghi chấm công của thực tập sinh khác");
+        }
+
+        String appealNote = "[GIẢI TRÌNH TTS]: " + request.getReason();
+        if (request.getEvidenceUrl() != null && !request.getEvidenceUrl().isBlank()) {
+            appealNote += " | Minh chứng: " + request.getEvidenceUrl();
+        }
+
+        attendance.setReviewStatus(AttendanceReviewStatus.PENDING_REVIEW);
+        attendance.setReviewNote(appealNote);
+        attendance.setReviewedBy(null);
+        attendance.setReviewedAt(null);
+
+        String combinedNotes = (attendance.getNotes() != null && !attendance.getNotes().isBlank())
+                ? attendance.getNotes() + " | " + appealNote
+                : appealNote;
+        attendance.setNotes(combinedNotes);
+
+        Attendance saved = attendanceRepository.save(attendance);
+        log.info("Intern ID {} đã gửi giải trình cho ca chấm công ID {} (Ngày: {}): {}",
+                intern.getId(), attendanceId, attendance.getWorkDate(), request.getReason());
+
+        return mapToResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public AttendanceResponse confirmForgottenCheckout(Long attendanceId, ConfirmForgottenCheckoutRequest request, String confirmedBy) {
+        Attendance attendance = attendanceRepository.findById(attendanceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bản ghi chấm công có ID: " + attendanceId));
+
+        validateAttendanceNotLockedByAllowance(attendance);
+
+        if (attendance.getCheckInTime() == null) {
+            throw new BadRequestException("Bản ghi chấm công không có thông tin giờ vào ca");
+        }
+
+        LocalDateTime actualCheckOutDateTime = attendance.getWorkDate().atTime(request.getActualCheckOutTime());
+        if (actualCheckOutDateTime.isBefore(attendance.getCheckInTime())) {
+            throw new BadRequestException("Giờ check-out xác nhận không thể sớm hơn giờ check-in (" + attendance.getCheckInTime() + ")");
+        }
+
+        long workingMinutes = Math.max(0, Duration.between(attendance.getCheckInTime(), actualCheckOutDateTime).toMinutes());
+        double totalWorkingHours = Math.round((workingMinutes / 60.0) * 100.0) / 100.0;
+
+        attendance.setCheckOutTime(actualCheckOutDateTime);
+        attendance.setTotalWorkingHours(totalWorkingHours);
+
+        if (attendance.getStatus() == AttendanceStatus.FORGOTTEN_CHECKOUT) {
+            if (actualCheckOutDateTime.toLocalTime().isBefore(STANDARD_END_TIME)) {
+                attendance.setStatus(attendance.getCheckInTime().toLocalTime().isAfter(LATE_THRESHOLD)
+                        ? AttendanceStatus.LATE_AND_EARLY_LEAVE
+                        : AttendanceStatus.EARLY_LEAVE);
+            } else {
+                attendance.setStatus(attendance.getCheckInTime().toLocalTime().isAfter(LATE_THRESHOLD)
+                        ? AttendanceStatus.LATE
+                        : AttendanceStatus.ON_TIME);
+            }
+        }
+
+        attendance.setReviewStatus(AttendanceReviewStatus.HR_APPROVED);
+        attendance.setReviewedBy(confirmedBy != null ? confirmedBy : "MENTOR_HR");
+        attendance.setReviewedAt(LocalDateTime.now(VIETNAM_ZONE));
+
+        String confirmNote = "[XÁC NHẬN GIỜ RA BỞI " + attendance.getReviewedBy() + "]: Giờ ra " + request.getActualCheckOutTime();
+        if (request.getConfirmationNote() != null && !request.getConfirmationNote().isBlank()) {
+            confirmNote += " | " + request.getConfirmationNote();
+        }
+        attendance.setReviewNote(confirmNote);
+
+        String combinedNotes = (attendance.getNotes() != null && !attendance.getNotes().isBlank())
+                ? attendance.getNotes() + " | " + confirmNote
+                : confirmNote;
+        attendance.setNotes(combinedNotes);
+
+        Attendance saved = attendanceRepository.save(attendance);
+        log.info("Bản ghi chấm công ID {} quên check-out đã được {} xác nhận giờ ra {} (Tổng giờ: {}h, Status mới: {})",
+                attendanceId, confirmedBy, request.getActualCheckOutTime(), totalWorkingHours, saved.getStatus());
 
         return mapToResponse(saved);
     }
@@ -460,8 +564,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         InternProfile intern = internProfileRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh liên kết với tài khoản này"));
 
-        if (intern.getStatus() == InternStatus.TERMINATED) {
-            throw new BadRequestException("Hồ sơ thực tập sinh đã bị chấm dứt, không thể thực hiện thao tác chấm công");
+        if (intern.getStatus() != InternStatus.INTERNING) {
+            throw new BadRequestException("Chỉ thực tập sinh đang trong giai đoạn thực tập chính thức (INTERNING) mới được phép thực hiện chấm công (Trạng thái hiện tại: " + intern.getStatus() + ")");
         }
 
         return intern;
@@ -492,6 +596,22 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .auditFlags(auditFlags)
                 .notes(attendance.getNotes())
                 .build();
+    }
+
+    private void validateAttendanceNotLockedByAllowance(Attendance attendance) {
+        if (attendance == null || attendance.getWorkDate() == null || attendance.getInternId() == null) {
+            return;
+        }
+        String periodMonth = attendance.getWorkDate().format(DateTimeFormatter.ofPattern("yyyy-MM"));
+        List<AllowanceStatus> lockedStatuses = List.of(AllowanceStatus.APPROVED, AllowanceStatus.PAID);
+
+        boolean isLocked = allowanceRecordRepository.existsByInternProfileIdAndPeriodMonthAndStatusIn(
+                attendance.getInternId(), periodMonth, lockedStatuses);
+
+        if (isLocked) {
+            throw new BadRequestException("Kỳ phụ cấp tháng " + periodMonth +
+                    " của thực tập sinh đã được phê duyệt hoặc chi trả. Dữ liệu chấm công đã bị khóa sổ và không thể chỉnh sửa.");
+        }
     }
 }
 

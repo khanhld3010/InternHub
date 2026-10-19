@@ -285,6 +285,7 @@ public class InternMissionServiceImpl implements InternMissionService {
                 .completionNote(item.getCompletionNote())
                 .submittedAt(item.getSubmittedAt())
                 .assignees(assignees)
+                .version(item.getVersion())
                 .createdAt(item.getCreatedAt())
                 .updatedAt(item.getUpdatedAt())
                 .build();

@@ -12,8 +12,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.util.List;
 
-@FeignClient(name = "intern-and-program-service", url = "${services.intern-service.url:http://localhost:8082}")
+@FeignClient(name = "intern-and-program-service", url = "${ai.intern-service.url:http://intern-and-program-service:8082}")
 public interface InternServiceClient {
+
+    @GetMapping("/api/interns/my-profile")
+    ApiResponse<InternProfileClientDto> getMyProfile(
+            @RequestHeader("Authorization") String authHeader
+    );
 
     @GetMapping("/api/interns/{id}")
     ApiResponse<InternProfileClientDto> getInternById(

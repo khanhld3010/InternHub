@@ -39,6 +39,9 @@ public class InternProfile extends BaseEntity {
     @Column(name = "intern_code", unique = true, nullable = false, length = 50)
     private String internCode;
 
+    @Column(name = "citizen_id", length = 20)
+    private String citizenId;
+
     @Column(name = "full_name", nullable = false, length = 100)
     private String fullName;
 

@@ -70,4 +70,54 @@ public class AiRateLimiterService {
             );
         }
     }
+
+    /**
+     * Rate limit cho Token Exchange: 5 requests / phút / IP (chống Brute-force token)
+     */
+    public void checkExchangeTokenRateLimit(String clientIp) {
+        if (clientIp == null || clientIp.isBlank()) {
+            clientIp = "UNKNOWN_IP";
+        }
+        try {
+            String key = "rate:ai_interview:exchange:" + clientIp;
+            Long count = redisTemplate.opsForValue().increment(key);
+            if (count != null && count == 1) {
+                redisTemplate.expire(key, Duration.ofSeconds(60));
+            }
+            if (count != null && count > 5) {
+                throw new ResponseStatusException(
+                        HttpStatus.TOO_MANY_REQUESTS,
+                        "Bạn đã vượt quá giới hạn 5 lần xác thực/phút. Vui lòng đợi trong giây lát!"
+                );
+            }
+        } catch (ResponseStatusException rse) {
+            throw rse;
+        } catch (Exception ex) {
+            log.warn("Redis issue in checkExchangeTokenRateLimit (Fail-open for candidate): {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * Rate limit cho Evidence Telemetry: 10 events / phút / session
+     */
+    public void checkEvidenceRateLimit(Long sessionId) {
+        if (sessionId == null) return;
+        try {
+            String key = "rate:ai_interview:evidence:" + sessionId;
+            Long count = redisTemplate.opsForValue().increment(key);
+            if (count != null && count == 1) {
+                redisTemplate.expire(key, Duration.ofSeconds(60));
+            }
+            if (count != null && count > 10) {
+                throw new ResponseStatusException(
+                        HttpStatus.TOO_MANY_REQUESTS,
+                        "Quá nhiều sự kiện giám sát được gửi liên tục. Vui lòng chờ."
+                );
+            }
+        } catch (ResponseStatusException rse) {
+            throw rse;
+        } catch (Exception ex) {
+            log.warn("Redis issue in checkEvidenceRateLimit (Fail-open): {}", ex.getMessage());
+        }
+    }
 }

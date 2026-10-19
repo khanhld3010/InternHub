@@ -30,7 +30,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class InternDocumentServiceImpl implements InternDocumentService {
 
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(".pdf", ".docx", ".doc");
     private static final List<String> ALLOWED_MIME_TYPES = Arrays.asList(
             "application/pdf",
@@ -184,7 +184,7 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         }
 
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new BadRequestException("Dung lượng tệp tin vượt quá giới hạn cho phép (tối đa 5MB)");
+            throw new BadRequestException("Dung lượng tệp tin vượt quá giới hạn cho phép (tối đa 10MB)");
         }
 
         String rawOriginalFilename = Objects.requireNonNullElse(file.getOriginalFilename(), "");

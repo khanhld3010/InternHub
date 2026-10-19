@@ -146,4 +146,83 @@ public class GeminiApiClient {
             );
         }
     }
+
+    /**
+     * Gọi Gemini API với Structured JSON Output (responseMimeType: application/json & responseSchema).
+     */
+    public String generateStructuredContent(
+            String rawApiKey,
+            String modelName,
+            String systemInstruction,
+            String promptText,
+            JsonNode jsonSchema,
+            BigDecimal temperature
+    ) {
+        if (rawApiKey == null || rawApiKey.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI Service chưa được cấu hình API Key.");
+        }
+
+        try {
+            ObjectNode root = objectMapper.createObjectNode();
+
+            // 1. System Instruction
+            if (systemInstruction != null && !systemInstruction.isBlank()) {
+                ObjectNode sysNode = root.putObject("systemInstruction");
+                ArrayNode partsNode = sysNode.putArray("parts");
+                partsNode.addObject().put("text", systemInstruction);
+            }
+
+            // 2. Generation Config với JSON Schema
+            ObjectNode genConfig = root.putObject("generationConfig");
+            genConfig.put("responseMimeType", "application/json");
+            if (jsonSchema != null) {
+                genConfig.set("responseSchema", jsonSchema);
+            }
+            if (temperature != null) {
+                genConfig.put("temperature", temperature.doubleValue());
+            } else {
+                genConfig.put("temperature", 0.1); // Điểm đánh giá phỏng vấn cần tính xác định cao
+            }
+
+            // 3. Contents
+            ArrayNode contentsNode = root.putArray("contents");
+            ObjectNode userTurn = contentsNode.addObject();
+            userTurn.put("role", "user");
+            userTurn.putArray("parts").addObject().put("text", promptText);
+
+            String requestBodyJson = objectMapper.writeValueAsString(root);
+            String url = baseUrl + "/v1beta/models/" + modelName + ":generateContent";
+
+            byte[] responseBytes = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON, MediaType.ALL)
+                    .header("x-goog-api-key", rawApiKey.trim())
+                    .body(requestBodyJson)
+                    .retrieve()
+                    .body(byte[].class);
+
+            if (responseBytes == null || responseBytes.length == 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini API trả về body rỗng khi chấm bài.");
+            }
+
+            String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
+            JsonNode responseJson = objectMapper.readTree(responseBody);
+            JsonNode candidates = responseJson.path("candidates");
+            if (candidates.isArray() && !candidates.isEmpty()) {
+                JsonNode parts = candidates.get(0).path("content").path("parts");
+                if (parts.isArray() && !parts.isEmpty()) {
+                    return parts.get(0).path("text").asText();
+                }
+            }
+
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini phản hồi không chứa candidate text hợp lệ.");
+
+        } catch (ResponseStatusException rse) {
+            throw rse;
+        } catch (Exception ex) {
+            log.error("Lỗi khi gọi Google Gemini Structured API: {}", ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Lỗi kết nối Gemini Grader: " + ex.getMessage());
+        }
+    }
 }

@@ -11,6 +11,7 @@ import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -85,4 +86,8 @@ public class MissionItem extends BaseEntity {
     )
     @Builder.Default
     private Set<InternProfile> assignees = new HashSet<>();
+
+    @Version
+    @Column(name = "version")
+    private Long version;
 }

@@ -21,4 +21,6 @@ public class UpdateItemStatusRequest {
     private String submissionUrl;
 
     private String completionNote;
+
+    private Long version;
 }

@@ -130,6 +130,15 @@ public class InternProfileController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách hồ sơ thực tập sinh thành công", response));
     }
 
+    @Operation(summary = "Lấy thông tin chi tiết hồ sơ thực tập sinh theo ID")
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<InternResponse>> getInternById(@PathVariable("id") Long id) {
+        log.info("Nhan request lay chi tiet ho so thuc tap sinh voi ID: {}", id);
+        InternResponse response = internProfileService.getInternById(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy thông tin thực tập sinh thành công", response));
+    }
+
     @Operation(summary = "Lấy danh sách Mentor khả dụng để phân công và theo dõi cân bằng tải (Story 31)")
     @GetMapping("/mentors")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")

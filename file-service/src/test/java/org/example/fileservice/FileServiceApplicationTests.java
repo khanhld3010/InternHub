@@ -42,4 +42,18 @@ class FileServiceApplicationTests {
         assertNotNull(viewResponse.getPresignedUrl());
         assertTrue(viewResponse.getPresignedUrl().contains(uploadResponse.getTempKey()));
     }
+
+    @Test
+    void testRejectDangerousExecutableUpload() {
+        PresignedUploadRequest uploadRequest = PresignedUploadRequest.builder()
+                .fileName("malicious_script.exe")
+                .contentType("application/x-msdownload")
+                .prefix("temp")
+                .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                storageService.createPresignedUpload(uploadRequest));
+
+        assertTrue(ex.getMessage().contains("Tập tin thực thi/script có rủi ro bảo mật"));
+    }
 }

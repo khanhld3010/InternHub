@@ -41,6 +41,10 @@ public class InternEvaluationResponse {
     private String approvedBy;
     private String hrComments;
     private String internshipResult;
+    private Integer lateCount;
+    private Integer earlyLeaveCount;
+    private Integer absentCount;
+    private Double totalWorkingHours;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

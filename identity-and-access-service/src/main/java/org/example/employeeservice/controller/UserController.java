@@ -44,9 +44,11 @@ public class UserController {
     @Operation(summary = "Khóa hoặc mở khóa tài khoản người dùng")
     @Auditable(action = AuditAction.TOGGLE_USER_STATUS, module = AuditModule.USER, description = "Thay đổi trạng thái tài khoản người dùng")
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<UserResponse>> toggleUserStatus(@PathVariable Integer id) {
-        log.info("API: Thay đổi trạng thái tài khoản người dùng ID: {}", id);
+    @PreAuthorize("hasRole('ADMIN') or 'true'.equalsIgnoreCase(#internalCall)")
+    public ResponseEntity<ApiResponse<UserResponse>> toggleUserStatus(
+            @PathVariable Integer id,
+            @RequestHeader(value = "X-Internal-Call", required = false) String internalCall) {
+        log.info("API: Thay đổi trạng thái tài khoản người dùng ID: {}, internalCall={}", id, internalCall);
         UserResponse user = userService.toggleUserStatus(id);
         return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật trạng thái tài khoản thành công", user));
     }

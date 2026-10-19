@@ -432,7 +432,15 @@ public class InternProfileServiceImpl implements InternProfileService {
         LocalDateTime endOfMonth = startOfMonth.plusMonths(1).minusNanos(1);
 
         long count = internProfileRepository.countByCreatedAtBetween(startOfMonth, endOfMonth) + 1;
-        return String.format("INT-%s-%04d", yearMonth, count);
+        String candidateCode = String.format("INT-%s-%04d", yearMonth, count);
+
+        // Đảm bảo không đụng độ mã trong môi trường đa luồng / phân tán
+        while (internProfileRepository.existsByInternCode(candidateCode)) {
+            count++;
+            candidateCode = String.format("INT-%s-%04d", yearMonth, count);
+        }
+
+        return candidateCode;
     }
 
     private InternResponse mapToResponse(InternProfile profile) {
@@ -1040,6 +1048,14 @@ public class InternProfileServiceImpl implements InternProfileService {
         intern.setGroup(null);
         internProfileRepository.save(intern);
         log.info("Đã gỡ thành công thực tập sinh ID: {} khỏi chương trình ID: {}", internId, programId);
+    }
+
+    @Override
+    public InternResponse getInternById(Long id) {
+        log.info("Lấy thông tin chi tiết hồ sơ thực tập sinh với ID: {}", id);
+        return internProfileRepository.findById(id)
+                .map(this::mapToResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với ID: " + id));
     }
 }
 
