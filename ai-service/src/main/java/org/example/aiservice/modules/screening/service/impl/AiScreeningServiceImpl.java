@@ -164,17 +164,44 @@ public class AiScreeningServiceImpl implements AiScreeningService {
 
         // 3. Lấy file CV và bóc tách văn bản
         DocumentClientDto cvDoc = fetchCvDocument(intern.getInternCode(), authHeader);
+        if (cvDoc == null) {
+            log.warn("Thực tập sinh internId={}, internCode={} chưa nộp CV. Chặn thẩm định AI.", internId, intern.getInternCode());
+            ScreeningResultDto failResult = ScreeningResultDto.builder()
+                    .internId(internId)
+                    .programId(programId)
+                    .overallScore(0)
+                    .recommendation(AiRecommendation.CONSIDER)
+                    .matchSummary("Ứng viên chưa tải lên CV. Không thể thực hiện thẩm định AI.")
+                    .errorMessage("Ứng viên chưa tải lên CV. Không thể thực hiện thẩm định AI.")
+                    .evaluatedAt(LocalDateTime.now())
+                    .build();
+            saveEvaluationToDb(failResult, internId, programId, null, null);
+            return failResult;
+        }
+
         String cvText = "";
         String cvHash = null;
-        Long docId = null;
+        Long docId = cvDoc.getId();
 
-        if (cvDoc != null) {
-            docId = cvDoc.getId();
-            byte[] fileBytes = downloadDocumentBytes(cvDoc.getId(), authHeader);
-            if (fileBytes != null && fileBytes.length > 0) {
-                cvText = documentTextExtractor.extractText(fileBytes, cvDoc.getOriginalFileName());
-                cvHash = calculateSha256(fileBytes);
-            }
+        byte[] fileBytes = downloadDocumentBytes(cvDoc.getId(), authHeader);
+        if (fileBytes != null && fileBytes.length > 0) {
+            cvText = documentTextExtractor.extractText(fileBytes, cvDoc.getOriginalFileName());
+            cvHash = calculateSha256(fileBytes);
+        }
+
+        if (cvText == null || cvText.trim().length() < 10) {
+            log.warn("File CV của internId={} không trích xuất được nội dung văn bản hợp lệ.", internId);
+            ScreeningResultDto failResult = ScreeningResultDto.builder()
+                    .internId(internId)
+                    .programId(programId)
+                    .overallScore(0)
+                    .recommendation(AiRecommendation.CONSIDER)
+                    .matchSummary("Tệp CV không có nội dung văn bản hợp lệ để thẩm định.")
+                    .errorMessage("Tệp CV không có nội dung văn bản hợp lệ để thẩm định.")
+                    .evaluatedAt(LocalDateTime.now())
+                    .build();
+            saveEvaluationToDb(failResult, internId, programId, docId, cvHash);
+            return failResult;
         }
 
         // 4. Gọi Gemini AI Provider
@@ -266,21 +293,25 @@ public class AiScreeningServiceImpl implements AiScreeningService {
     private InternProfileClientDto fetchIntern(Long id, String authHeader) {
         try {
             ApiResponse<InternProfileClientDto> res = internServiceClient.getInternById(id, authHeader);
-            return res != null ? res.getData() : null;
+            if (res != null && res.getData() != null) {
+                return res.getData();
+            }
         } catch (Exception e) {
             log.warn("Lỗi khi gọi InternServiceClient.getInternById({}): {}", id, e.getMessage());
-            return InternProfileClientDto.builder().id(id).build();
         }
+        return InternProfileClientDto.builder().id(id).build();
     }
 
     private ProgramClientDto fetchProgram(Long id, String authHeader) {
         try {
             ApiResponse<ProgramClientDto> res = internServiceClient.getProgramById(id, authHeader);
-            return res != null ? res.getData() : null;
+            if (res != null && res.getData() != null) {
+                return res.getData();
+            }
         } catch (Exception e) {
             log.warn("Lỗi khi gọi InternServiceClient.getProgramById({}): {}", id, e.getMessage());
-            return ProgramClientDto.builder().id(id).build();
         }
+        return ProgramClientDto.builder().id(id).build();
     }
 
     private DocumentClientDto fetchCvDocument(String internCode, String authHeader) {

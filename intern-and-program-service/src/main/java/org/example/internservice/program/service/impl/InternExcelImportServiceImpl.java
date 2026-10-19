@@ -25,6 +25,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
+import org.example.internservice.intern.entity.enums.CandidateType;
 import org.example.internservice.intern.entity.enums.Gender;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.event.InternDecisionProcessedEvent;
@@ -257,6 +258,16 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
         LocalDateTime startOfMonth = LocalDate.now().withDayOfMonth(1).atStartOfDay();
         LocalDateTime endOfMonth = startOfMonth.plusMonths(1).minusNanos(1);
         long currentMonthCount = internProfileRepository.countByCreatedAtBetween(startOfMonth, endOfMonth);
+        String maxCode = internProfileRepository.findMaxInternCodeByYearMonth(yearMonth);
+        long currentMaxSequence = currentMonthCount;
+        if (maxCode != null && maxCode.length() >= 16) {
+            try {
+                String seqStr = maxCode.substring(maxCode.lastIndexOf('-') + 1);
+                currentMaxSequence = Math.max(currentMonthCount, Long.parseLong(seqStr));
+            } catch (NumberFormatException e) {
+                // fallback to currentMonthCount
+            }
+        }
 
         List<InternProfile> profiles = new ArrayList<>();
         List<String> generatedCodes = new ArrayList<>();
@@ -268,9 +279,15 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
                 ? null 
                 : programMentors.get(programMentors.size() - 1).getMentor();
 
+        long nextCodeIndex = currentMaxSequence;
         for (int i = 0; i < rows.size(); i++) {
             ExcelInternRowDto dto = rows.get(i);
-            String internCode = String.format("INT-%s-%04d", yearMonth, currentMonthCount + i + 1);
+            nextCodeIndex++;
+            String internCode = String.format("INT-%s-%04d", yearMonth, nextCodeIndex);
+            while (internProfileRepository.findByInternCode(internCode).isPresent() || generatedCodes.contains(internCode)) {
+                nextCodeIndex++;
+                internCode = String.format("INT-%s-%04d", yearMonth, nextCodeIndex);
+            }
             generatedCodes.add(internCode);
 
             Long mentorId = null;
@@ -303,6 +320,7 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
                     .startDate(program.getStartDate())
                     .endDate(program.getEndDate())
                     .status(assignedStatus)
+                    .candidateType(CandidateType.UNIVERSITY)
                     .program(program)
                     .reviewedBy(importedBy)
                     .reviewedAt(now)

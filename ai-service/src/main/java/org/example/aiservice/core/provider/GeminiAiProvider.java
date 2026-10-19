@@ -6,6 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.client.GeminiApiClient;
 import org.example.aiservice.entity.AiSystemConfig;
+import org.example.aiservice.modules.quiz.dto.response.AiQuizGenerateResponse;
+import org.example.aiservice.modules.quiz.dto.response.AiQuizOptionDto;
+import org.example.aiservice.modules.quiz.dto.response.AiQuizQuestionDto;
+import org.example.aiservice.modules.quiz.enums.QuestionType;
+import org.example.aiservice.modules.quiz.enums.QuizDifficulty;
 import org.example.aiservice.modules.screening.dto.response.ScreeningResultDto;
 import org.example.aiservice.modules.screening.enums.AiRecommendation;
 import org.example.aiservice.security.AesGcmEncryptionUtil;
@@ -217,6 +222,188 @@ public class GeminiAiProvider implements AiProvider {
                 .suggestedInterviewQuestions(questions)
                 .evaluatedAt(LocalDateTime.now())
                 .fromCache(false)
+                .build();
+    }
+
+    @Override
+    public AiQuizGenerateResponse generateQuizQuestions(
+            String contextText,
+            String topic,
+            String programName,
+            String groupName,
+            int questionCount,
+            QuizDifficulty difficulty
+    ) {
+        AiSystemConfig config = configAdminService.getOrCreateDefaultConfig();
+
+        if (Boolean.FALSE.equals(config.getIsActive())) {
+            log.warn("Hệ thống AI đang tắt hoặc bảo trì. Fallback sang quiz giả lập chuẩn.");
+            return generateMockQuiz(topic, programName, groupName, questionCount, difficulty);
+        }
+
+        String rawApiKey = null;
+        if (config.getApiKeyEncrypted() != null && !config.getApiKeyEncrypted().isBlank()) {
+            try {
+                rawApiKey = encryptionUtil.decrypt(config.getApiKeyEncrypted(), config.getKeyVersion());
+            } catch (Exception e) {
+                log.error("Không thể giải mã API key cho quiz generation: {}", e.getMessage());
+            }
+        }
+
+        if (rawApiKey == null || rawApiKey.isBlank() || isMockKey(rawApiKey)) {
+            log.info("Chưa cấu hình API Key thật cho AI Service. Sử dụng bộ câu hỏi quiz giả lập chuẩn.");
+            return generateMockQuiz(topic, programName, groupName, questionCount, difficulty);
+        }
+
+        try {
+            String prompt = buildQuizPrompt(contextText, topic, programName, groupName, questionCount, difficulty);
+            String systemInstruction = "Bạn là chuyên gia thẩm định và ra đề thi đánh giá kỹ thuật (Technical Assessment Creator). " +
+                    "Hãy phân tích và trả về DUY NHẤT một chuỗi JSON chuẩn 100%, không bọc trong markdown block.";
+
+            String responseText = geminiApiClient.generateContent(
+                    rawApiKey,
+                    config.getModelName(),
+                    systemInstruction,
+                    Collections.emptyList(),
+                    prompt,
+                    new BigDecimal("0.30"),
+                    3500
+            );
+
+            return parseQuizGeminiResponse(responseText, topic, questionCount, difficulty);
+
+        } catch (Exception e) {
+            log.error("Lỗi khi gọi Gemini API sinh quiz: {}", e.getMessage(), e);
+            AiQuizGenerateResponse fallback = generateMockQuiz(topic, programName, groupName, questionCount, difficulty);
+            fallback.setErrorMessage("Lỗi kết nối Gemini: " + e.getMessage() + ". Đã chuyển sang chế độ dự phòng.");
+            return fallback;
+        }
+    }
+
+    private String buildQuizPrompt(String contextText, String topic, String programName, String groupName, int questionCount, QuizDifficulty difficulty) {
+        return "Hãy đóng vai trò Chuyên gia ra đề thi và đánh giá kỹ thuật (Technical Assessment Creator).\n" +
+                "Nhiệm vụ: Tạo một bộ đề trắc nghiệm gồm " + questionCount + " câu hỏi về chủ đề '" + topic + "' " +
+                (difficulty != null ? "với độ khó " + difficulty.name() : "") + ".\n\n" +
+                (contextText != null && !contextText.isBlank() ? "--- NỘI DUNG TÀI LIỆU / BÁO CÁO ĐÍNH KÈM ---\n" + contextText + "\n\n" : "") +
+                "YÊU CẦU ĐỊNH DẠNG ĐẦU RA JSON DUY NHẤT:\n" +
+                "{\n" +
+                "  \"title\": \"Bài trắc nghiệm: " + topic + "\",\n" +
+                "  \"topic\": \"" + topic + "\",\n" +
+                "  \"estimatedMinutes\": " + (questionCount * 2) + ",\n" +
+                "  \"questions\": [\n" +
+                "    {\n" +
+                "      \"questionText\": \"Nội dung câu hỏi?\",\n" +
+                "      \"questionType\": \"SINGLE_CHOICE\",\n" +
+                "      \"orderIndex\": 1,\n" +
+                "      \"points\": 10,\n" +
+                "      \"explanation\": \"Giải thích vì sao đáp án đúng...\",\n" +
+                "      \"options\": [\n" +
+                "        {\"optionLabel\": \"A\", \"optionText\": \"Đáp án A\", \"isCorrect\": true, \"orderIndex\": 1},\n" +
+                "        {\"optionLabel\": \"B\", \"optionText\": \"Đáp án B\", \"isCorrect\": false, \"orderIndex\": 2},\n" +
+                "        {\"optionLabel\": \"C\", \"optionText\": \"Đáp án C\", \"isCorrect\": false, \"orderIndex\": 3},\n" +
+                "        {\"optionLabel\": \"D\", \"optionText\": \"Đáp án D\", \"isCorrect\": false, \"orderIndex\": 4}\n" +
+                "      ]\n" +
+                "    }\n" +
+                "  ]\n" +
+                "}\n" +
+                "- KHÔNG ĐƯỢC thêm ký tự markdown (như ```json) bên ngoài chuỗi JSON.";
+    }
+
+    private AiQuizGenerateResponse parseQuizGeminiResponse(String rawText, String topic, int requestedCount, QuizDifficulty difficulty) throws Exception {
+        if (rawText == null || rawText.isBlank()) {
+            throw new RuntimeException("Gemini trả về phản hồi rỗng");
+        }
+
+        rawText = rawText.replaceAll("^```json\\s*", "").replaceAll("^```\\s*", "").replaceAll("```$", "").trim();
+        JsonNode rootNode = objectMapper.readTree(rawText);
+
+        String title = rootNode.path("title").asText("Bài kiểm tra: " + topic);
+        int estMinutes = rootNode.path("estimatedMinutes").asInt(requestedCount * 2);
+
+        List<AiQuizQuestionDto> questions = new ArrayList<>();
+        JsonNode questionsNode = rootNode.path("questions");
+        if (questionsNode.isArray()) {
+            int qIndex = 1;
+            for (JsonNode qNode : questionsNode) {
+                String qText = qNode.path("questionText").asText("");
+                String qTypeStr = qNode.path("questionType").asText("SINGLE_CHOICE");
+                QuestionType qType;
+                try {
+                    qType = QuestionType.valueOf(qTypeStr);
+                } catch (Exception e) {
+                    qType = QuestionType.SINGLE_CHOICE;
+                }
+                int points = qNode.path("points").asInt(10);
+                String explanation = qNode.path("explanation").asText("");
+
+                List<AiQuizOptionDto> options = new ArrayList<>();
+                JsonNode optsNode = qNode.path("options");
+                if (optsNode.isArray()) {
+                    int optIndex = 1;
+                    for (JsonNode opt : optsNode) {
+                        options.add(AiQuizOptionDto.builder()
+                                .optionLabel(opt.path("optionLabel").asText(String.valueOf((char) ('A' + optIndex - 1))))
+                                .optionText(opt.path("optionText").asText(""))
+                                .isCorrect(opt.path("isCorrect").asBoolean(false))
+                                .orderIndex(optIndex++)
+                                .build());
+                    }
+                }
+
+                questions.add(AiQuizQuestionDto.builder()
+                        .questionText(qText)
+                        .questionType(qType)
+                        .orderIndex(qIndex++)
+                        .points(points)
+                        .explanation(explanation)
+                        .options(options)
+                        .build());
+            }
+        }
+
+        return AiQuizGenerateResponse.builder()
+                .title(title)
+                .topic(topic)
+                .difficulty(difficulty != null ? difficulty : QuizDifficulty.MEDIUM)
+                .totalQuestions(questions.size())
+                .estimatedMinutes(estMinutes)
+                .questions(questions)
+                .fromMock(false)
+                .generatedAt(LocalDateTime.now())
+                .build();
+    }
+
+    private AiQuizGenerateResponse generateMockQuiz(String topic, String programName, String groupName, int questionCount, QuizDifficulty difficulty) {
+        List<AiQuizQuestionDto> questions = new ArrayList<>();
+        int count = Math.max(3, questionCount);
+
+        for (int i = 1; i <= count; i++) {
+            List<AiQuizOptionDto> options = List.of(
+                    AiQuizOptionDto.builder().optionLabel("A").optionText("Đáp án đúng minh họa cho câu hỏi số " + i).isCorrect(true).orderIndex(1).build(),
+                    AiQuizOptionDto.builder().optionLabel("B").optionText("Lựa chọn phương án sai 1").isCorrect(false).orderIndex(2).build(),
+                    AiQuizOptionDto.builder().optionLabel("C").optionText("Lựa chọn phương án sai 2").isCorrect(false).orderIndex(3).build(),
+                    AiQuizOptionDto.builder().optionLabel("D").optionText("Lựa chọn phương án sai 3").isCorrect(false).orderIndex(4).build()
+            );
+
+            questions.add(AiQuizQuestionDto.builder()
+                    .orderIndex(i)
+                    .questionText("Câu hỏi " + i + ": Khái niệm cốt lõi liên quan đến chủ đề '" + (topic != null ? topic : "Lập trình chuyên sâu") + "' là gì?")
+                    .questionType(QuestionType.SINGLE_CHOICE)
+                    .points(10)
+                    .explanation("Giải thích chuẩn: Đáp án A chính xác theo kiến thức nền tảng của chủ đề " + topic + ".")
+                    .options(options)
+                    .build());
+        }
+
+        return AiQuizGenerateResponse.builder()
+                .title("Bài kiểm tra đánh giá năng lực: " + (topic != null ? topic : "Chuyên môn"))
+                .topic(topic != null ? topic : "Tổng hợp")
+                .difficulty(difficulty != null ? difficulty : QuizDifficulty.MEDIUM)
+                .totalQuestions(questions.size())
+                .estimatedMinutes(count * 2)
+                .questions(questions)
+                .fromMock(true)
+                .generatedAt(LocalDateTime.now())
                 .build();
     }
 }

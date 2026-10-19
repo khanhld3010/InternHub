@@ -146,6 +146,12 @@ spring:
               predicates:
                 - Path=/api/v1/support-requests, /api/v1/support-requests/**
 
+            # Route cho phân hệ AI Quiz TM-104
+            - id: quiz-service
+              uri: lb://intern-and-program-service
+              predicates:
+                - Path=/api/quizzes, /api/quizzes/**
+
             # 3. Reporting and Integration Service (Backup TM-8, Audit Log TM-9)
             - id: reporting-backups
               uri: lb://reporting-and-integration-service

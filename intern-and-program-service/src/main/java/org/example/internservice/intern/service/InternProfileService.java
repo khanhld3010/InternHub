@@ -37,10 +37,16 @@ public interface InternProfileService {
     
     InternResponse getMyProfileByUserId(Long userId);
 
+    InternResponse getMyProfileByUserId(Long userId, Long programId);
+
+    java.util.List<InternResponse> getMyProfiles(Long userId);
+
     org.example.internservice.intern.dto.response.MentorOptionResponse createMentor(org.example.internservice.intern.dto.request.CreateMentorRequest request);
 
     java.util.Map<String, Object> resendMentorInvitation(Long mentorId);
 
     void removeInternFromProgram(Long programId, Long internId);
+
+    InternResponse getInternById(Long id);
 }
 

@@ -18,4 +18,12 @@ public interface InternDocumentRepository extends JpaRepository<InternDocument, 
     Optional<InternDocument> findTopByInternProfileInternCodeAndDocumentTypeOrderByCreatedAtDesc(
             String internCode, DocumentType documentType
     );
+
+    boolean existsByInternProfileIdAndDocumentType(Long internId, DocumentType documentType);
+
+    @org.springframework.data.jpa.repository.Query("SELECT d.internProfile.id FROM InternDocument d WHERE d.internProfile.id IN :internIds AND d.documentType = :documentType")
+    java.util.Set<Long> findInternProfileIdsWithDocumentType(
+            @org.springframework.data.repository.query.Param("internIds") java.util.Collection<Long> internIds,
+            @org.springframework.data.repository.query.Param("documentType") DocumentType documentType
+    );
 }

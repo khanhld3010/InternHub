@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -130,6 +131,15 @@ public class InternProfileController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách hồ sơ thực tập sinh thành công", response));
     }
 
+    @Operation(summary = "Lấy thông tin chi tiết hồ sơ thực tập sinh theo ID")
+    @GetMapping("/{id:[0-9]+}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
+    public ResponseEntity<ApiResponse<InternResponse>> getInternById(@PathVariable Long id) {
+        log.info("API: Lấy chi tiết hồ sơ thực tập sinh ID: {}", id);
+        InternResponse response = internProfileService.getInternById(id);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy thông tin hồ sơ thành công", response));
+    }
+
     @Operation(summary = "Lấy danh sách Mentor khả dụng để phân công và theo dõi cân bằng tải (Story 31)")
     @GetMapping("/mentors")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
@@ -211,18 +221,35 @@ public class InternProfileController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy lịch sử phân công Mentor thành công", response));
     }
 
-    @Operation(summary = "Lấy thông tin hồ sơ của thực tập sinh đang đăng nhập")
+    @Operation(summary = "Lấy thông tin hồ sơ của thực tập sinh đang đăng nhập (hỗ trợ lọc theo programId)")
     @GetMapping("/my-profile")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<InternResponse>> getMyProfile(Authentication authentication) {
+    public ResponseEntity<ApiResponse<InternResponse>> getMyProfile(
+            @RequestParam(required = false) Long programId,
+            Authentication authentication
+    ) {
         if (authentication == null || !(authentication.getPrincipal() instanceof org.example.internservice.security.CustomUserDetails userDetails)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(ApiResponse.error(HttpStatus.UNAUTHORIZED.value(), "Yêu cầu đăng nhập"));
         }
         Long userId = userDetails.getUserId();
-        log.info("API getMyProfile được gọi bởi userId: {}, username: {}", userId, userDetails.getUsername());
-        InternResponse response = internProfileService.getMyProfileByUserId(userId);
+        log.info("API getMyProfile được gọi bởi userId: {}, username: {}, programId: {}", userId, userDetails.getUsername(), programId);
+        InternResponse response = internProfileService.getMyProfileByUserId(userId, programId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy thông tin hồ sơ thành công", response));
+    }
+
+    @Operation(summary = "Lấy danh sách toàn bộ các kỳ thực tập mà người dùng đang đăng nhập đã tham gia/đăng ký")
+    @GetMapping("/my-profiles")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<java.util.List<InternResponse>>> getMyProfiles(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof org.example.internservice.security.CustomUserDetails userDetails)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error(HttpStatus.UNAUTHORIZED.value(), "Yêu cầu đăng nhập"));
+        }
+        Long userId = userDetails.getUserId();
+        log.info("API getMyProfiles được gọi bởi userId: {}, username: {}", userId, userDetails.getUsername());
+        java.util.List<InternResponse> responses = internProfileService.getMyProfiles(userId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách các kỳ thực tập thành công", responses));
     }
 }
 
