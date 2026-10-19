@@ -10,6 +10,7 @@ import org.example.internservice.common.dto.response.PageResponse;
 import org.example.internservice.exception.UnauthorizedException;
 import org.example.internservice.leave.dto.request.ApproveLeaveRequest;
 import org.example.internservice.leave.dto.request.CreateLeaveRequest;
+import org.example.internservice.leave.dto.request.LeaveRequestFilterRequest;
 import org.example.internservice.leave.dto.request.RejectLeaveRequest;
 import org.example.internservice.leave.dto.response.LeaveRequestResponse;
 import org.example.internservice.leave.dto.response.LeaveRequestSummaryResponse;
@@ -98,6 +99,19 @@ public class LeaveRequestController {
                 .toList();
         LeaveRequestResponse response = leaveRequestService.getLeaveRequestDetail(userDetails.getUserId(), roles, id);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy thông tin chi tiết đơn xin nghỉ phép thành công", response));
+    }
+
+    @Operation(summary = "Quản lý và tra cứu danh sách đơn xin nghỉ phép (HR xem toàn hệ thống, Mentor xem TTS phụ trách)")
+    @GetMapping
+    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<PageResponse<LeaveRequestSummaryResponse>>> getLeaveRequests(
+            @Valid LeaveRequestFilterRequest filter,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            Authentication authentication
+    ) {
+        CustomUserDetails userDetails = extractUserDetails(authentication);
+        PageResponse<LeaveRequestSummaryResponse> response = leaveRequestService.getLeaveRequests(filter, userDetails, pageable);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy danh sách đơn xin nghỉ phép thành công", response));
     }
 
     @Operation(summary = "Danh sách đơn xin nghỉ phép chờ duyệt dành cho Mentor / HR")

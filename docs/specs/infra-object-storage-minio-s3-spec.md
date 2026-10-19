@@ -8,6 +8,13 @@
   - `intern-and-program-service` (Service nghiệp vụ quản lý tài liệu TTS)
   - `InternHub-Frontend` (Client upload/download trực tiếp qua Pre-signed URL)
 
+## 0. Revision History & Technical Rationale
+
+| Phiên bản | Ngày | Tác giả | Nội dung thay đổi | Lý do kỹ thuật (Rationale) |
+| :---: | :---: | :---: | :--- | :--- |
+| **v1.1** | 2026-10-16 | AI Pair-Programmer | Cho phép công khai endpoint Actuator Healthcheck | Bổ sung `.requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()` trong `SecurityConfig.java` của `file-service`. Khắc phục lỗi 403 Forbidden khiến Docker đánh dấu container `unhealthy`. |
+| **v1.0** | 2026-10-05 | Đội Phát Triển | Thiết kế hạ tầng Object Storage MinIO & S3 Pre-signed URL | Thiết kế ban đầu |
+
 ---
 
 ## 1. Bối cảnh & Mục tiêu Kiến trúc (Context & Objectives)

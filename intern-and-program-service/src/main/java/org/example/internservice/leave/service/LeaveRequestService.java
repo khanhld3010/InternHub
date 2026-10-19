@@ -48,4 +48,13 @@ public interface LeaveRequestService {
      * Mentor / HR từ chối đơn xin nghỉ phép.
      */
     LeaveRequestResponse rejectLeaveRequest(CustomUserDetails approverDetails, Long leaveRequestId, RejectLeaveRequest request);
+
+    /**
+     * Tra cứu danh sách đơn xin nghỉ phép có bộ lọc (HR xem toàn công ty, Mentor xem TTS phụ trách).
+     */
+    PageResponse<LeaveRequestSummaryResponse> getLeaveRequests(
+            org.example.internservice.leave.dto.request.LeaveRequestFilterRequest filter,
+            CustomUserDetails userDetails,
+            Pageable pageable
+    );
 }
