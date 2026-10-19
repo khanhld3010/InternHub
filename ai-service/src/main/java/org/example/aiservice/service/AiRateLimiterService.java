@@ -2,6 +2,8 @@ package org.example.aiservice.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.aiservice.entity.AiFeatureProfile;
+import org.example.aiservice.repository.AiFeatureProfileRepository;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -17,45 +19,79 @@ import java.time.format.DateTimeFormatter;
 public class AiRateLimiterService {
 
     private final StringRedisTemplate redisTemplate;
+    private final AiFeatureProfileRepository profileRepository;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-    private static final int LIMIT_PER_MINUTE = 20;
-    private static final int LIMIT_PER_DAY = 200;
+    private static final int DEFAULT_LIMIT_PER_MINUTE = 20;
+    private static final int DEFAULT_LIMIT_PER_DAY = 200;
 
     /**
-     * Kiểm tra và tăng lượt đếm rate limit cho userId.
-     * Áp dụng nguyên tắc Fail-Closed: nếu Redis lỗi -> ném lỗi 503 ngay, không bypass.
+     * Rate Limiting & Quota Guard đa tầng theo từng Feature Profile (Dynamic Quota).
+     * Áp dụng nguyên tắc Fail-Closed: nếu Redis lỗi -> ném HTTP 503 ngay lập tức để bảo vệ tài khoản API Key.
+     *
+     * @param featureKey Định danh tính năng (CHATBOT, INTERVIEW_GENERATOR, REPORT_ASSISTANT, CV_SCREENING)
+     * @param identifier Định danh người dùng (userId) hoặc Client IP
      */
-    public void checkAndIncrement(String userId) {
-        if (userId == null || userId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Khong xac dinh duoc nguoi dung");
+    public void checkFeatureRateLimit(String featureKey, String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Không xác định được danh tính người dùng hoặc IP gọi AI.");
+        }
+
+        // Đọc cấu hình hạn ngạch từ Profile (nếu chưa có hoặc lỗi thì dùng default an toàn)
+        int limitPerMinute = DEFAULT_LIMIT_PER_MINUTE;
+        int limitPerDay = DEFAULT_LIMIT_PER_DAY;
+        String featureName = featureKey;
+
+        try {
+            AiFeatureProfile profile = profileRepository.findByFeatureKey(featureKey).orElse(null);
+            if (profile != null) {
+                if (Boolean.FALSE.equals(profile.getIsActive())) {
+                    throw new ResponseStatusException(
+                            HttpStatus.FORBIDDEN,
+                            "Tính năng AI [" + profile.getFeatureName() + "] hiện đang tạm tắt bởi Quản trị viên."
+                    );
+                }
+                if (profile.getRateLimitPerMinute() != null && profile.getRateLimitPerMinute() > 0) {
+                    limitPerMinute = profile.getRateLimitPerMinute();
+                }
+                if (profile.getDailyQuota() != null && profile.getDailyQuota() > 0) {
+                    limitPerDay = profile.getDailyQuota();
+                }
+                featureName = profile.getFeatureName();
+            }
+        } catch (ResponseStatusException rse) {
+            throw rse;
+        } catch (Exception e) {
+            log.warn("[AiRateLimiterService] Không thể tải profile [{}], fallback về default: {}", featureKey, e.getMessage());
         }
 
         try {
-            // 1. Fixed-window 60s (20 requests/phút)
-            String minuteKey = "rate:ai_chat:" + userId;
+            // 1. Fixed-window 60s
+            String minuteKey = "rate:ai:" + featureKey.toLowerCase() + ":" + identifier;
             Long currentMinuteCount = redisTemplate.opsForValue().increment(minuteKey);
             if (currentMinuteCount != null && currentMinuteCount == 1) {
                 redisTemplate.expire(minuteKey, Duration.ofSeconds(60));
             }
-            if (currentMinuteCount != null && currentMinuteCount > LIMIT_PER_MINUTE) {
+            if (currentMinuteCount != null && currentMinuteCount > limitPerMinute) {
                 throw new ResponseStatusException(
                         HttpStatus.TOO_MANY_REQUESTS,
-                        "Ban da vuot qua gioi han 20 tin nhan/phut. Vui long doi giay lat!"
+                        String.format("Bạn đã vượt quá giới hạn %d lượt/phút cho tính năng [%s]. Vui lòng đợi trong giây lát!",
+                                limitPerMinute, featureName)
                 );
             }
 
-            // 2. Quota theo ngày (200 requests/ngày)
+            // 2. Quota theo ngày (yyyyMMdd)
             String todayStr = LocalDate.now().format(DATE_FORMATTER);
-            String dayKey = "quota:ai_chat:" + userId + ":" + todayStr;
+            String dayKey = "quota:ai:" + featureKey.toLowerCase() + ":" + identifier + ":" + todayStr;
             Long currentDayCount = redisTemplate.opsForValue().increment(dayKey);
             if (currentDayCount != null && currentDayCount == 1) {
                 redisTemplate.expire(dayKey, Duration.ofHours(25));
             }
-            if (currentDayCount != null && currentDayCount > LIMIT_PER_DAY) {
+            if (currentDayCount != null && currentDayCount > limitPerDay) {
                 throw new ResponseStatusException(
                         HttpStatus.TOO_MANY_REQUESTS,
-                        "Ban da dung het quota 200 tin nhan trong ngay hom nay. Vui long quay lai vao ngay mai!"
+                        String.format("Bạn đã sử dụng hết hạn mức %d lượt/ngày cho tính năng [%s]. Vui lòng quay lại vào ngày mai!",
+                                limitPerDay, featureName)
                 );
             }
 
@@ -63,12 +99,20 @@ public class AiRateLimiterService {
             throw rse;
         } catch (Exception ex) {
             // Redis connection failure / timeout -> FAIL-CLOSED
-            log.error("Loi ket noi Redis trong RateLimiter (Fail-closed): {}", ex.getMessage());
+            log.error("[AiRateLimiterService] Lỗi kết nối Redis khi kiểm tra tính năng [{}] (Fail-closed): {}",
+                    featureKey, ex.getMessage());
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
-                    "He thong kiem soat luu luong AI tam thoi khong kha dung. Vui long thu lai sau."
+                    "Hệ thống kiểm soát lưu lượng AI tạm thời không khả dụng. Vui lòng thử lại sau."
             );
         }
+    }
+
+    /**
+     * Tương thích ngược cho Chatbot (chuyển hướng gọi checkFeatureRateLimit).
+     */
+    public void checkAndIncrement(String userId) {
+        checkFeatureRateLimit("CHATBOT", userId);
     }
 
     /**

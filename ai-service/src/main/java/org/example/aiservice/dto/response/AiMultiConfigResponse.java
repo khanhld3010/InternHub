@@ -42,6 +42,8 @@ public class AiMultiConfigResponse {
         private String modelName;
         private BigDecimal temperature;
         private Integer maxTokens;
+        private Integer rateLimitPerMinute;
+        private Integer dailyQuota;
         private String systemInstruction;
         private List<String> quickPrompts;
         private boolean isActive;

@@ -29,6 +29,14 @@ public class UpdateFeatureProfileRequest {
     @NotNull(message = "maxTokens không được để trống")
     private Integer maxTokens;
 
+    @NotNull(message = "Giới hạn request/phút không được để trống")
+    @DecimalMin(value = "1", message = "Giới hạn request/phút tối thiểu là 1")
+    private Integer rateLimitPerMinute;
+
+    @NotNull(message = "Hạn mức request/ngày không được để trống")
+    @DecimalMin(value = "1", message = "Hạn mức request/ngày tối thiểu là 1")
+    private Integer dailyQuota;
+
     private String systemInstruction;
 
     private List<String> quickPrompts;

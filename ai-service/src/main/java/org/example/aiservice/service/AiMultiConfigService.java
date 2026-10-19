@@ -74,6 +74,8 @@ public class AiMultiConfigService {
                         .modelName(p.getModelName())
                         .temperature(p.getTemperature())
                         .maxTokens(p.getMaxTokens())
+                        .rateLimitPerMinute(p.getRateLimitPerMinute())
+                        .dailyQuota(p.getDailyQuota())
                         .systemInstruction(p.getSystemInstruction())
                         .quickPrompts(parseQuickPrompts(p.getQuickPromptsJson()))
                         .isActive(Boolean.TRUE.equals(p.getIsActive()))
@@ -114,6 +116,12 @@ public class AiMultiConfigService {
         profile.setModelName(request.getModelName().trim());
         profile.setTemperature(request.getTemperature());
         profile.setMaxTokens(request.getMaxTokens());
+        if (request.getRateLimitPerMinute() != null) {
+            profile.setRateLimitPerMinute(request.getRateLimitPerMinute());
+        }
+        if (request.getDailyQuota() != null) {
+            profile.setDailyQuota(request.getDailyQuota());
+        }
         profile.setSystemInstruction(request.getSystemInstruction());
         profile.setIsActive(request.getIsActive());
         profile.setUpdatedBy(adminUserId);
@@ -127,8 +135,9 @@ public class AiMultiConfigService {
         }
 
         profileRepository.save(profile);
-        log.info("[AiMultiConfigService] Admin {} cập nhật Profile [{}]: model={}, temp={}, active={}",
-                adminUserId, featureKey, profile.getModelName(), profile.getTemperature(), profile.getIsActive());
+        log.info("[AiMultiConfigService] Admin {} cập nhật Profile [{}]: model={}, temp={}, rateLimit={}/m, quota={}/d, active={}",
+                adminUserId, featureKey, profile.getModelName(), profile.getTemperature(),
+                profile.getRateLimitPerMinute(), profile.getDailyQuota(), profile.getIsActive());
 
         return AiMultiConfigResponse.FeatureProfileDto.builder()
                 .featureKey(profile.getFeatureKey())
@@ -137,6 +146,8 @@ public class AiMultiConfigService {
                 .modelName(profile.getModelName())
                 .temperature(profile.getTemperature())
                 .maxTokens(profile.getMaxTokens())
+                .rateLimitPerMinute(profile.getRateLimitPerMinute())
+                .dailyQuota(profile.getDailyQuota())
                 .systemInstruction(profile.getSystemInstruction())
                 .quickPrompts(parseQuickPrompts(profile.getQuickPromptsJson()))
                 .isActive(Boolean.TRUE.equals(profile.getIsActive()))

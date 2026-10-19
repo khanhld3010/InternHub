@@ -48,6 +48,14 @@ public class AiFeatureProfile {
     @Column(name = "quick_prompts_json", columnDefinition = "TEXT")
     private String quickPromptsJson;
 
+    @Column(name = "rate_limit_per_minute", nullable = false)
+    @Builder.Default
+    private Integer rateLimitPerMinute = 20;
+
+    @Column(name = "daily_quota", nullable = false)
+    @Builder.Default
+    private Integer dailyQuota = 200;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;
