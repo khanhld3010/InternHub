@@ -1,6 +1,6 @@
 # Specification: Đăng Ký Tài Khoản và Nộp Hồ Sơ Trực Tuyến (Account Registration & Online Application)
 
-> **Trạng thái:** IMPLEMENTED (v1.4)  
+> **Trạng thái:** IMPLEMENTED (v1.6)  
 > **Lưu trữ tại:** `InternHub/docs/specs/TM-10-register-account-and-apply-online-spec.md`  
 > **Áp dụng quy tắc:** [Persistent Spec & Change Rationale](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/04-development-guide.md)
 
@@ -18,6 +18,8 @@
 | **v1.2** | 2026-09-24 | Senior Backend AI Pair-Programmer | `TM-10` | Triển khai hoàn tất | Hoàn thành toàn bộ code cho cả 2 microservices: IAM (đăng ký 2 pha bóc tách trong @Transactional) và Intern Service (nộp hồ sơ trực tuyến, liên kết userId, chặn nộp trùng lặp). Đã vượt qua 100% Unit Tests và bootJar. |
 | **v1.3** | 2026-09-25 | Senior Backend AI Pair-Programmer | `TM-10 / TM-15` | Nâng cấp liên kết Chương trình & Hỗ trợ nộp đa chương trình | 1. Bổ sung trường `programId` vào `ApplyInternRequest`, lưu trực tiếp `program_id` vào `intern_profiles` ngay từ lúc nộp đơn (`PENDING`).<br>2. Cung cấp Public API `GET /api/programs/open` cho ứng viên lấy danh sách các chương trình đang mở tuyển.<br>3. Cho phép 1 ứng viên (cùng `userId`/`email`/`phone`) nộp hồ sơ vào NHIỀU chương trình khác nhau; gỡ bỏ UNIQUE đơn lẻ trên `email` & `phone` tại `intern_profiles`, thay thế bằng cơ chế kiểm tra chống nộp trùng trong CÙNG MỘT chương trình (`existsByUserIdAndProgramIdAndStatusIn`).<br>4. Bổ sung bộ lọc theo `programId` trong API tìm kiếm & phân trang hồ sơ của HR (`GET /api/interns`). |
 | **v1.4** | 2026-09-29 | Senior Backend AI Pair-Programmer | `TM-10` | Nâng cấp Xác thực Email & Kích hoạt Tài khoản bằng OTP | 1. **Đổi trạng thái khởi tạo**: Tài khoản mới đăng ký lưu `Account` với trạng thái `PENDING_ACTIVATION` thay vì `ACTIVE`.<br>2. **Tích hợp Email OTP**: Tái sử dụng hạ tầng `reporting-and-integration-service` để gửi email HTML chứa mã kích hoạt 6 chữ số (hiệu lực 15 phút) qua `@Async`.<br>3. **Bảng dữ liệu mới**: Thêm bảng `account_activation_tokens` lưu mã OTP, số lần thử sai (chống Brute-force tối đa 5 lần), thời hạn và thời điểm tiêu thụ.<br>4. **Bổ sung 2 API mới**: `POST /api/auth/activate` (xác thực OTP để chuyển trạng thái sang `ACTIVE`) và `POST /api/auth/resend-activation` (gửi lại mã, áp dụng Cooldown 60s).<br>5. **An ninh & Bảo mật**: Tuyệt đối ẩn mã OTP khỏi API response (chỉ trả về `maskedEmail`); toàn bộ cấu hình mật khẩu SMTP/Secrets được quản lý trong file `.env`. |
+| **v1.5** | 2026-10-19 | Senior Backend AI Pair-Programmer & User | `TM-10 / TM-103` | Khắc phục xung đột sinh mã TTS & Bổ sung cờ hasCv | 1. **Khắc phục va chạm `intern_code`**: Sửa hàm `generateInternCode` trong `InternProfileServiceImpl` và `InternExcelImportServiceImpl`. Thay vì đếm tổng số bản ghi trong tháng (`countByCreatedAtBetween + 1`) dễ gây va chạm khóa duy nhất `intern_code` khi có bản ghi bị xóa hoặc import đồng thời, chuyển sang truy vấn `findMaxInternCodeByYearMonth` để lấy số thứ tự lớn nhất, tăng tiến và kiểm tra trùng lặp bằng vòng lặp an toàn.<br>2. **Cung cấp cờ `hasCv`**: Bổ sung trường `hasCv` trong `InternResponse` bằng truy vấn kiểm tra sự tồn tại tài liệu loại `CV` trong `intern_documents`, tối ưu hóa truy vấn hàng loạt `findInternProfileIdsWithDocumentType` để tránh lỗi N+1 khi phân trang danh sách cho HR. |
+| **v1.6** | 2026-10-19 | Senior Backend AI Pair-Programmer | `TM-10 / Multi-Program` | Hỗ trợ API Đa Kỳ Thực Tập & Lọc Theo ProgramId | 1. **API lấy toàn bộ kỳ thực tập**: Bổ sung `GET /api/interns/my-profiles` trả về danh sách tất cả các hồ sơ kỳ thực tập của `userId` đang đăng nhập, batch-load thông tin `hasCv` chống N+1.<br>2. **API chi tiết theo kỳ thực tập**: Nâng cấp `GET /api/interns/my-profile?programId={id}` cho phép nạp hồ sơ của kỳ thực tập cụ thể khi người dùng chuyển đổi Workspace.<br>3. **Repository mở rộng**: Thêm `findByUserIdAndProgramId(Long userId, Long programId)` tại `InternProfileRepository`. |
 
 ---
 
@@ -145,6 +147,7 @@
 - **FR-10 (Auto Intern Code Generation):** Tự động sinh mã thực tập sinh duy nhất theo định dạng `INT-YYYY-XXXX`.
 - **FR-11 (Initial Application Status):** Khởi tạo trạng thái hồ sơ thực tập sinh mặc định là `PENDING`.
 - **FR-12 (Audit Logging):** Ghi nhật ký kiểm toán hệ thống (`@Auditable`) cho các hành động: `REGISTER`, `ACTIVATE_SUCCESS`, `ACTIVATE_FAILED`.
+- **FR-13 (Multi-Program Intern Profile Queries - v1.6):** Cung cấp API `GET /api/interns/my-profiles` trả về tất cả các hồ sơ của ứng viên đăng nhập (kèm trạng thái CV batch-loaded), và nâng cấp `GET /api/interns/my-profile?programId={id}` để tải hồ sơ chi tiết theo từng kỳ thực tập cụ thể.
 
 ---
 
@@ -300,6 +303,64 @@
   "activationKey": "682941",
   "expiresInMinutes": 15,
   "idempotencyKey": "ACTIVATE_nguyenvana@gmail.com_1727581200000"
+}
+```
+
+---
+
+### 8.5. API Lấy Danh Sách Tất Cả Hồ Sơ Kỳ Thực Tập: `GET /api/interns/my-profiles` (MỚI v1.6)
+- **Microservice:** `intern-and-program-service`
+- **Authentication:** `ROLE_INTERN`, `ROLE_ADMIN`
+- **Mô tả:** Trả về danh sách tất cả các hồ sơ thực tập liên kết với `userId` hiện tại của tài khoản đăng nhập. Mỗi hồ sơ được tự động nạp trạng thái tài liệu `hasCv` thông qua cơ chế batch query chống lỗi N+1.
+
+#### Response Success (200 OK):
+```json
+{
+  "code": 200,
+  "message": "Lấy danh sách hồ sơ thực tập thành công",
+  "data": [
+    {
+      "id": 1,
+      "internCode": "INT-2026-0001",
+      "userId": 15,
+      "programId": 10,
+      "programCode": "SPRING-2026",
+      "programName": "Chương trình thực tập Spring 2026",
+      "status": "APPROVED",
+      "hasCv": true,
+      "university": "Đại học Bách Khoa Hà Nội",
+      "major": "Công nghệ thông tin",
+      "desiredDepartmentName": "Phòng Công Nghệ & Chuyển Đổi Số",
+      "appliedPosition": "Java Backend Engineer",
+      "startDate": "2026-03-01",
+      "endDate": "2026-06-30",
+      "mentorName": "Trần Văn Mentor"
+    }
+  ],
+  "timestamp": "2026-10-19T14:00:00"
+}
+```
+
+---
+
+### 8.6. API Lấy Hồ Sơ Chi Tiết Theo Kỳ Thực Tập: `GET /api/interns/my-profile?programId={id}` (NÂNG CẤP v1.6)
+- **Microservice:** `intern-and-program-service`
+- **Authentication:** `ROLE_INTERN`, `ROLE_ADMIN`
+- **Tham số:** `programId` (Optional `Long`): Nếu cung cấp, trả về hồ sơ thuộc kỳ thực tập tương ứng; nếu không, trả về hồ sơ mới nhất.
+
+#### Response Success (200 OK):
+```json
+{
+  "code": 200,
+  "message": "Lấy hồ sơ cá nhân thành công",
+  "data": {
+    "id": 1,
+    "internCode": "INT-2026-0001",
+    "programId": 10,
+    "status": "APPROVED",
+    "hasCv": true
+  },
+  "timestamp": "2026-10-19T14:00:00"
 }
 ```
 

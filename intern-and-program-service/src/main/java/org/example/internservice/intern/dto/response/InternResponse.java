@@ -57,6 +57,8 @@ public class InternResponse {
     private String mentorReassignmentReason;
     private Long groupId;
     private String groupName;
+    private Boolean hasCv;
+    private Long cvDocumentId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

@@ -54,3 +54,7 @@ ai:
     read-timeout-ms: 30000
   intern-service:
     url: http://${INTERN_SERVICE_HOST:intern-and-program-service}:8082
+
+services:
+  intern-service:
+    url: http://${INTERN_SERVICE_HOST:intern-and-program-service}:8082

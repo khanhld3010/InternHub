@@ -19,5 +19,5 @@ public class ProgramClientDto {
     private String description;
     private String departmentName;
     private Integer maxInterns;
-    private Integer currentInterns;
+    private Long currentInterns;
 }
