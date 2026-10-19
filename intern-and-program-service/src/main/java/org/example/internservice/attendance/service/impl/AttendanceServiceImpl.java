@@ -69,6 +69,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final HaversineDistanceCalculator haversineCalculator;
     private final CheckInQrTokenManager qrTokenManager;
     private final QrCodeGenerator qrCodeGenerator;
+    private final FrontendUrlResolver frontendUrlResolver;
     private final TrustLevelEvaluator trustLevelEvaluator;
     private final AttendanceAuditLogRepository auditLogRepository;
     private final InternDeviceRepository internDeviceRepository;
