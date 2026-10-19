@@ -71,4 +71,26 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
             @Param("internId") Long internId,
             @Param("targetDate") LocalDate targetDate
     );
+
+    @Query("SELECT l FROM LeaveRequest l " +
+            "JOIN FETCH l.intern i " +
+            "WHERE i.id IN :internIds " +
+            "AND l.status = org.example.internservice.leave.entity.enums.LeaveStatus.APPROVED " +
+            "AND l.startDate <= :endDate AND l.endDate >= :startDate")
+    List<LeaveRequest> findApprovedLeavesByInternIdsAndDateRange(
+            @Param("internIds") List<Long> internIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query("SELECT l FROM LeaveRequest l " +
+            "JOIN FETCH l.intern i " +
+            "WHERE i.id = :internId " +
+            "AND l.status = org.example.internservice.leave.entity.enums.LeaveStatus.APPROVED " +
+            "AND l.startDate <= :endDate AND l.endDate >= :startDate")
+    List<LeaveRequest> findApprovedLeavesByInternIdAndDateRange(
+            @Param("internId") Long internId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

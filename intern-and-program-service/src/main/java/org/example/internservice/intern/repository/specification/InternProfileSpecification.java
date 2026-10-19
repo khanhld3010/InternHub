@@ -1,12 +1,15 @@
 package org.example.internservice.intern.repository.specification;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import org.example.internservice.intern.dto.request.InternFilterRequest;
 import org.example.internservice.intern.entity.InternProfile;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public class InternProfileSpecification {
@@ -35,6 +38,30 @@ public class InternProfileSpecification {
                     predicates.add(root.get("mentorId").in(enforceMentorIds));
                 }
             }
+
+            return buildPredicates(request, root, criteriaBuilder, predicates);
+        };
+    }
+
+    public static Specification<InternProfile> getSpecification(InternFilterRequest request, Collection<Long> enforceInternIds) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            // Ràng buộc bảo mật: Chỉ cho phép truy vấn các thực tập sinh thuộc danh sách enforceInternIds
+            if (enforceInternIds != null) {
+                if (enforceInternIds.isEmpty()) {
+                    predicates.add(criteriaBuilder.disjunction());
+                } else {
+                    predicates.add(root.get("id").in(enforceInternIds));
+                }
+            }
+
+            return buildPredicates(request, root, criteriaBuilder, predicates);
+        };
+    }
+
+    private static Predicate buildPredicates(InternFilterRequest request, Root<InternProfile> root,
+                                             CriteriaBuilder criteriaBuilder, List<Predicate> predicates) {
 
             if (request == null) {
                 return predicates.isEmpty() ? criteriaBuilder.conjunction() : criteriaBuilder.and(predicates.toArray(new Predicate[0]));
@@ -81,7 +108,6 @@ public class InternProfileSpecification {
             }
 
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
-        };
     }
 
     private static String escapeWildcards(String text) {

@@ -33,9 +33,13 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authorize -> authorize
-                // Actuator health/info: chỉ ADMIN hoặc có quyền SYSTEM_AUDIT_VIEW
-                .requestMatchers("/actuator/**")
-                    .hasAnyAuthority("SYSTEM_AUDIT_VIEW", "ROLE_ADMIN")
+                // Actuator endpoints & API docs: cho phép không cần xác thực phục vụ Docker healthcheck và Eureka probe
+                .requestMatchers(
+                    "/actuator/**",
+                    "/v3/api-docs/**",
+                    "/swagger-ui/**",
+                    "/swagger-ui.html"
+                ).permitAll()
                 // Internal storage API: không yêu cầu auth (gọi nội bộ qua Eureka)
                 .requestMatchers("/api/storage/**").permitAll()
                 // Mọi request khác cần authenticated

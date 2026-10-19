@@ -82,6 +82,9 @@ class AttendanceServiceImplTest {
     @Mock
     private org.example.internservice.attendance.service.SseEmitterRegistry sseEmitterRegistry;
 
+    @Mock
+    private org.example.internservice.leave.repository.LeaveRequestRepository leaveRequestRepository;
+
     @InjectMocks
     private AttendanceServiceImpl attendanceService;
 
@@ -372,5 +375,56 @@ class AttendanceServiceImplTest {
         verify(attendanceRepository).save(any(Attendance.class));
         verify(auditLogRepository).save(any());
         verify(sseEmitterRegistry).emitCheckInSuccess(eq("valid-token"), any());
+    }
+
+    @Test
+    @DisplayName("Check-in ca chiều khi có đơn nghỉ phép nửa ngày sáng MORNING hợp lệ không bị phạt LATE")
+    void confirmCheckIn_withApprovedMorningLeave_checkInAfternoon_markedOnTime() {
+        CheckInConfirmRequest request = CheckInConfirmRequest.builder()
+                .qrToken("valid-token")
+                .build();
+
+        CheckInQrTokenManager.CheckInSession session = CheckInQrTokenManager.CheckInSession.builder()
+                .token("valid-token")
+                .internId(1L)
+                .userId(10L)
+                .workDate(LocalDate.now())
+                .latitude(21.035665)
+                .longitude(105.768296)
+                .distance(8.0)
+                .createdAt(LocalDateTime.now())
+                .expiresAt(LocalDateTime.now().plusSeconds(60))
+                .consumed(false)
+                .build();
+
+        org.example.internservice.leave.entity.LeaveRequest morningLeave = org.example.internservice.leave.entity.LeaveRequest.builder()
+                .startDate(LocalDate.now())
+                .endDate(LocalDate.now())
+                .durationType(org.example.internservice.leave.entity.enums.LeaveDurationType.MORNING)
+                .build();
+
+        when(internProfileRepository.findByUserId(10L)).thenReturn(Optional.of(mockIntern));
+        when(attendanceRepository.existsByInternIdAndWorkDate(eq(1L), any(LocalDate.class))).thenReturn(false);
+        when(qrTokenManager.validateAndConsume("valid-token", 1L)).thenReturn(session);
+        when(officeLocationRepository.findFirstByIsActiveTrueOrderByIdAsc()).thenReturn(Optional.of(mockOffice));
+        when(trustLevelEvaluator.evaluate(eq(1L), any(), any(), any(), any(), any(), any()))
+                .thenReturn(TrustLevelEvaluator.EvaluationResult.builder()
+                        .trustLevel(org.example.internservice.attendance.entity.enums.TrustLevel.HIGH)
+                        .reviewStatus(org.example.internservice.attendance.entity.enums.AttendanceReviewStatus.AUTO_APPROVED)
+                        .auditFlags(List.of("APPROVED_LEAVE"))
+                        .build());
+        when(leaveRequestRepository.findApprovedLeaveByInternAndDate(eq(1L), any(LocalDate.class)))
+                .thenReturn(Optional.of(morningLeave));
+        when(attendanceRepository.save(any(Attendance.class))).thenAnswer(invocation -> {
+            Attendance att = invocation.getArgument(0);
+            att.setId(100L);
+            return att;
+        });
+
+        AttendanceResponse response = attendanceService.confirmCheckIn(10L, request, "192.168.1.50");
+
+        assertNotNull(response);
+        assertEquals(100L, response.getId());
+        verify(attendanceRepository).save(any(Attendance.class));
     }
 }
