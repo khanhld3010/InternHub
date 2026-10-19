@@ -25,6 +25,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
+import org.example.internservice.intern.entity.enums.CandidateType;
 import org.example.internservice.intern.entity.enums.Gender;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.event.InternDecisionProcessedEvent;
@@ -303,6 +304,7 @@ public class InternExcelImportServiceImpl implements InternExcelImportService {
                     .startDate(program.getStartDate())
                     .endDate(program.getEndDate())
                     .status(assignedStatus)
+                    .candidateType(CandidateType.UNIVERSITY)
                     .program(program)
                     .reviewedBy(importedBy)
                     .reviewedAt(now)

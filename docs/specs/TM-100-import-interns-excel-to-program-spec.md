@@ -17,6 +17,7 @@
 | **v1.0** | 2026-10-09 | AI Senior Backend Pair-Programmer | `TM-100` | Tạo mới Đặc Tả | Xây dựng tài liệu đặc tả chuẩn 13 phần cho tính năng nhập danh sách thực tập sinh hàng loạt từ tệp Excel vào chương trình thực tập, giải quyết điểm nghẽn nhập liệu thủ công của HR. |
 | **v1.1** | 2026-10-09 | AI Senior Backend Pair-Programmer | `TM-100` | Hoàn tất Triển khai Backend | Triển khai hoàn chỉnh toàn bộ 3 REST endpoints, DTOs, Repository batch queries, Service với Pessimistic Lock, xử lý Apache POI và 7 unit test cases pass 100%. |
 | **v2.0** | 2026-10-13 | AI Senior Backend Pair-Programmer | `TM-100` | Nâng Cấp Nghiệp Vụ (Multi-Program) | **Chuyển đổi cơ chế kiểm tra trùng lặp email/SĐT từ toàn cục (Global) sang phạm vi chương trình (Program-Scoped Duplicate Checking):**<br>1. *Vấn đề kỹ thuật cũ (v1.1):* `findAllByEmailIn` kiểm tra trên toàn bộ bảng `intern_profiles`, khiến file Excel khi dùng nạp vào Program B sau khi đã nạp Program A bị báo lỗi *"Email đã tồn tại trên hệ thống"*.<br>2. *Logic v2.0:* Cho phép 1 TTS tham gia nhiều chương trình cùng lúc hoặc qua các kỳ khác nhau. Chỉ báo lỗi khi trùng lặp nội bộ trong chính file Excel hoặc trùng lặp trong chính chương trình đang import (`programId`).<br>3. *Kế thừa danh tính:* Tự động liên kết `userId` của TTS nếu email đã tồn tại ở kỳ trước, sinh `internCode` mới của kỳ, tách số lượng ứng viên mới vs ứng viên hiện hữu trong Preview response. |
+| **v3.0** | 2026-10-19 | AI Senior Pair-Programmer & User | `TM-100` | Chuẩn Hóa Phân Loại Nguồn & Vòng Đời Kích Hoạt Tài Khoản Hướng B | 1. **Chuẩn hóa CandidateType:** Gán tường minh `candidateType = UNIVERSITY` khi import từ Excel để phân biệt với `FREE_APPLICANT`.<br>2. **Quy chuẩn kích hoạt tài khoản Token-based Onboarding (Hướng B):** Đặc tả luồng kích hoạt an toàn qua email khi duyệt `APPROVED` (không lưu/gửi mật khẩu thô, TTS tự đặt mật khẩu qua `/onboarding/activate`).<br>3. **Đặc tả UI/UX Frontend Design:** Bổ sung Badge phân loại nguồn ứng viên & bộ lọc tại `ApplicationsTab` và `InternsTab`, nâng cấp khối chọn trạng thái `APPROVED`/`PENDING` trong `ExcelImportTab`. |
 
 ---
 
@@ -167,6 +168,14 @@
     - Hồ sơ mới sẽ được tạo độc lập với `program_id` của kỳ này và được cấp mã `internCode` tuần tự mới.
     - Hệ thống tự động truy vấn tìm `userId` của ứng viên từ các hồ sơ trước đó trong bảng `intern_profiles` (nếu tài khoản đã kích hoạt IAM) và gán vào `newIntern.userId`.
     - Điều này giúp TTS đăng nhập một tài khoản duy nhất và quản lý/xem được tất cả các kỳ thực tập mà mình đã và đang tham gia.
+- **BR-5 (Phân Loại Nguồn Ứng Viên & Vòng Đời Kích Hoạt Tài Khoản Token-based Onboarding - Hướng B):**
+  - **Phân loại nguồn:** 100% TTS được tiếp nhận qua tệp Excel được gắn tường minh `candidateType = CandidateType.UNIVERSITY` (*"Sinh viên theo trường liên kết"*), phân tách rạch ròi với `CandidateType.FREE_APPLICANT` (*"Ứng viên tự do"* nộp trực tuyến).
+  - **Nhập khẩu với trạng thái `PENDING` (Chờ xét duyệt):** TTS được lưu vào CSDL với `status = PENDING`, `userId = null`, không phát sinh tài khoản hay email. HR có thể sử dụng AI Screening để đối soát mức độ phù hợp.
+  - **Nhập khẩu với trạng thái `APPROVED` (Tiếp nhận ngay) hoặc Phê duyệt sau từ PENDING:**
+    - Kích hoạt sự kiện `InternDecisionProcessedEvent`.
+    - `InternDecisionEventListener` sinh `onboardingToken` bảo mật (JWT thời hạn 7 ngày, miễn nhiễm Safe Links scanner).
+    - Vi dịch vụ `reporting-and-integration-service` gửi email chúc mừng kèm liên kết kích hoạt: `${APP_FRONTEND_URL}/onboarding/activate?token=...`.
+    - TTS tự truy cập và thiết lập mật khẩu an toàn $\rightarrow$ `OnboardingController` gọi `identity-and-access-service` tạo Account với role `INTERN`, gắn `userId` vào `InternProfile`. Tuyệt đối không lưu hay gửi mật khẩu văn bản thô.
 
 ---
 
@@ -197,7 +206,8 @@
 | `applied_position`| `VARCHAR(100)` | `NOT NULL` | Cột "Vị trí thực tập" (hoặc tên Program) |
 | `start_date` | `DATE` | `NOT NULL` | Lấy từ `program.startDate` |
 | `end_date` | `DATE` | `NULL` | Lấy từ `program.endDate` |
-| `status` | `VARCHAR(20)` | `NOT NULL` | Mặc định `APPROVED` |
+| `status` | `VARCHAR(20)` | `NOT NULL` | Mặc định `APPROVED` (hoặc `PENDING` nếu chọn chờ xét duyệt) |
+| `candidate_type` | `VARCHAR(30)` | `NOT NULL` | Gán cố định `CandidateType.UNIVERSITY` ("Sinh viên theo trường liên kết") |
 | `program_id` | `BIGINT` | `NOT NULL, FK` | ID của chương trình tiếp nhận |
 | `reviewed_by` | `VARCHAR(100)` | `NULL` | Username của HR/Admin thực hiện import |
 | `reviewed_at` | `DATETIME` | `NULL` | Thời điểm thực hiện import |
