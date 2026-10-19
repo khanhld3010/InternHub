@@ -1,6 +1,7 @@
 package org.example.aiservice.modules.interview.repository;
 
 import org.example.aiservice.modules.interview.entity.InterviewEvaluation;
+import org.example.aiservice.modules.interview.enums.GradingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,7 +16,7 @@ public interface InterviewEvaluationRepository extends JpaRepository<InterviewEv
 
     Optional<InterviewEvaluation> findBySessionIdAndIsActiveTrue(Long sessionId);
 
-    List<InterviewEvaluation> findByGradingStatusAndIsActiveTrue(org.example.aiservice.modules.interview.enums.GradingStatus gradingStatus);
+    List<InterviewEvaluation> findByGradingStatusAndIsActiveTrue(GradingStatus gradingStatus);
 
     List<InterviewEvaluation> findBySessionIdOrderByVersionDesc(Long sessionId);
 

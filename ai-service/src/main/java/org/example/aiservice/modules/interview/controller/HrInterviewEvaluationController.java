@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.aiservice.modules.interview.dto.request.HrEvaluationReviewRequest;
 import org.example.aiservice.modules.interview.dto.request.RegradeRequest;
 import org.example.aiservice.modules.interview.dto.response.EvaluationDossierResponse;
+import org.example.aiservice.modules.interview.service.EvaluationPdfExportService;
 import org.example.aiservice.modules.interview.service.HrInterviewEvaluationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +22,7 @@ import java.util.Map;
 public class HrInterviewEvaluationController {
 
     private final HrInterviewEvaluationService evaluationService;
-    private final org.example.aiservice.modules.interview.service.EvaluationPdfExportService pdfExportService;
+    private final EvaluationPdfExportService pdfExportService;
 
     /**
      * 7.1 Lấy Phiếu Đánh Giá Chi Tiết Phiên Phỏng Vấn (Evaluation Dossier)

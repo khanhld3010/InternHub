@@ -17,7 +17,7 @@ class AiInterviewGraderServiceMathTest {
 
     @BeforeEach
     void setUp() {
-        graderService = new AiInterviewGraderService(null, null, null, null, null, null);
+        graderService = new AiInterviewGraderService(null, null, null, null, null, null, null);
     }
 
     @Test

@@ -2,6 +2,7 @@ package org.example.aiservice.modules.interview.repository;
 
 import org.example.aiservice.modules.interview.entity.InterviewSession;
 import org.example.aiservice.modules.interview.enums.SessionStatus;
+import org.example.aiservice.modules.interview.enums.SubmissionReason;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -36,5 +37,5 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
                            @Param("fromStatus") SessionStatus fromStatus,
                            @Param("toStatus") SessionStatus toStatus,
                            @Param("submittedAt") LocalDateTime submittedAt,
-                           @Param("reason") org.example.aiservice.modules.interview.enums.SubmissionReason reason);
+                           @Param("reason") SubmissionReason reason);
 }

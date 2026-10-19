@@ -13,15 +13,18 @@ import org.example.aiservice.entity.AiChatLog;
 import org.example.aiservice.entity.AiSystemConfig;
 import org.example.aiservice.repository.AiChatLogRepository;
 import org.example.aiservice.security.AesGcmEncryptionUtil;
+import org.example.aiservice.security.PromptInjectionGuardService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -38,6 +41,7 @@ public class AiChatService {
     private final AiAuditLogService auditLogService;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final PromptInjectionGuardService promptGuardService;
 
     private static final int MAX_HISTORY_TURNS = 10;
     private static final long SESSION_TTL_MINUTES = 30;
@@ -45,7 +49,10 @@ public class AiChatService {
     public ChatResponse chat(ChatRequest request, String userId, String rawJwtToken) {
         long startTime = System.currentTimeMillis();
 
-        // 1. Kiểm tra rate limit & quota ngày (Fail-closed)
+        // 1. AI-15: Kiểm duyệt phòng thủ Prompt Injection & Jailbreak (Fail-fast HTTP 400)
+        promptGuardService.validatePromptInput(request.getMessage(), "CHATBOT", userId);
+
+        // 2. Kiểm tra rate limit & quota ngày (Fail-closed)
         rateLimiterService.checkAndIncrement(userId);
 
         // 2. Lấy cấu hình AI đang kích hoạt
@@ -103,6 +110,99 @@ public class AiChatService {
         auditLogService.saveChatAuditLogAsync(userId, request.getSessionId(), request.getMessage(), reply, config, status, latencyMs);
 
         return ChatResponse.builder().reply(reply).build();
+    }
+
+    /**
+     * AI-17: Stream câu trả lời của Chatbot qua Server-Sent Events (SSE).
+     */
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter streamChat(
+            ChatRequest request,
+            String userId,
+            String rawJwtToken
+    ) {
+        long startTime = System.currentTimeMillis();
+
+        // 1. Kiểm duyệt phòng thủ Prompt Injection (Fail-fast HTTP 400)
+        promptGuardService.validatePromptInput(request.getMessage(), "CHATBOT", userId);
+
+        // 2. Kiểm tra Rate Limiting & Quota
+        rateLimiterService.checkAndIncrement(userId);
+
+        AiSystemConfig config = configAdminService.getOrCreateDefaultConfig();
+        if (Boolean.FALSE.equals(config.getIsActive())) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Trợ lý ảo hiện đang tạm đóng để bảo trì.");
+        }
+
+        if (config.getApiKeyEncrypted() == null || config.getApiKeyEncrypted().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Hệ thống AI chưa được cấu hình API Key.");
+        }
+
+        String rawApiKey;
+        try {
+            rawApiKey = encryptionUtil.decrypt(config.getApiKeyEncrypted(), config.getKeyVersion());
+        } catch (Exception e) {
+            log.error("Khong the giai ma API Key AI: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi bảo mật giải mã khóa hệ thống.");
+        }
+
+        String historyKey = "ai:chat:history:" + userId + ":" + request.getSessionId();
+        List<Map<String, String>> history = loadHistoryFromRedis(historyKey);
+
+        Map<String, String> internContext = internProfileClient.fetchBasicContext(rawJwtToken);
+        String finalSystemInstruction = buildPromptWithContext(config.getSystemInstruction(), internContext);
+
+        SseEmitter emitter = new SseEmitter(60000L);
+
+        StringBuilder fullReplyBuilder = new StringBuilder();
+
+        // Chạy stream trong ThreadPool bất đồng bộ
+        CompletableFuture.runAsync(() -> {
+            String status = "SUCCESS";
+            try {
+                geminiApiClient.streamGenerateContent(
+                        rawApiKey,
+                        config.getModelName(),
+                        finalSystemInstruction,
+                        history,
+                        request.getMessage(),
+                        config.getTemperature(),
+                        config.getMaxTokens(),
+                        chunk -> {
+                            fullReplyBuilder.append(chunk);
+                            try {
+                                emitter.send(SseEmitter.event()
+                                        .name("chunk")
+                                        .data(chunk));
+                            } catch (Exception e) {
+                                log.warn("Không thể gửi SSE chunk: {}", e.getMessage());
+                            }
+                        }
+                );
+
+                String finalReply = fullReplyBuilder.toString();
+                appendHistoryToRedis(historyKey, history, request.getMessage(), finalReply);
+                int latencyMs = (int) (System.currentTimeMillis() - startTime);
+                auditLogService.saveChatAuditLogAsync(userId, request.getSessionId(), request.getMessage(), finalReply, config, status, latencyMs);
+
+                emitter.send(SseEmitter.event()
+                        .name("done")
+                        .data("[DONE]"));
+                emitter.complete();
+
+            } catch (Exception ex) {
+                status = "LLM_ERROR";
+                int latencyMs = (int) (System.currentTimeMillis() - startTime);
+                auditLogService.saveChatAuditLogAsync(userId, request.getSessionId(), request.getMessage(), null, config, status, latencyMs);
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("error")
+                            .data("Trợ lý ảo tạm thời không khả dụng."));
+                } catch (Exception ignored) {}
+                emitter.completeWithError(ex);
+            }
+        });
+
+        return emitter;
     }
 
     public void clearSession(String sessionId, String userId) {

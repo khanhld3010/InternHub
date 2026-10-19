@@ -13,6 +13,7 @@ import org.example.aiservice.modules.interview.repository.InterviewAnswerReposit
 import org.example.aiservice.modules.interview.repository.InterviewQuestionRepository;
 import org.example.aiservice.security.AesGcmEncryptionUtil;
 import org.example.aiservice.service.AiConfigAdminService;
+import org.example.aiservice.service.AiPromptTemplateService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,6 +34,7 @@ public class AiInterviewGraderService {
     private final InterviewQuestionRepository questionRepository;
     private final InterviewAnswerRepository answerRepository;
     private final ObjectMapper objectMapper;
+    private final AiPromptTemplateService promptTemplateService;
 
     private static final String SYSTEM_INSTRUCTION =
             "BẠN LÀ MỘT CHUYÊN GIA KHẢO THÍ CÔNG NGHỆ THÔNG TIN VÀ GIÁM KHẢO PHỎNG VẤN KỸ THUẬT CẤP CAO.\n" +
@@ -261,10 +263,14 @@ public class AiInterviewGraderService {
 
         JsonNode schemaNode = buildGeminiJsonSchema();
 
+        String finalSystemInstruction = promptTemplateService != null
+                ? promptTemplateService.getResolvedPrompt("INTERVIEW_GRADE_SYSTEM", Collections.emptyMap(), SYSTEM_INSTRUCTION)
+                : SYSTEM_INSTRUCTION;
+
         String jsonOutput = geminiApiClient.generateStructuredContent(
                 rawApiKey,
                 "gemini-1.5-pro",
-                SYSTEM_INSTRUCTION,
+                finalSystemInstruction,
                 promptBuilder.toString(),
                 schemaNode,
                 BigDecimal.valueOf(0.1)

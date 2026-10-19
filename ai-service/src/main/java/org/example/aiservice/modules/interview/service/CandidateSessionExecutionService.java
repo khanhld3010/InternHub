@@ -10,6 +10,7 @@ import org.example.aiservice.modules.interview.entity.InterviewAnswer;
 import org.example.aiservice.modules.interview.entity.InterviewQuestion;
 import org.example.aiservice.modules.interview.entity.InterviewSchedule;
 import org.example.aiservice.modules.interview.entity.InterviewSession;
+import org.example.aiservice.modules.interview.enums.InputMethod;
 import org.example.aiservice.modules.interview.enums.InterviewMode;
 import org.example.aiservice.modules.interview.enums.SessionStatus;
 import org.example.aiservice.modules.interview.repository.InterviewAnswerRepository;
@@ -198,7 +199,7 @@ public class CandidateSessionExecutionService {
 
         // 4. Cập nhật câu trả lời an toàn
         answer.setAnswerText(request.getAnswerText());
-        answer.setInputMethod(request.getInputMethod() != null ? request.getInputMethod() : org.example.aiservice.modules.interview.enums.InputMethod.TYPING);
+        answer.setInputMethod(request.getInputMethod() != null ? request.getInputMethod() : InputMethod.TYPING);
         answer.setRevision(answer.getRevision() + 1);
         answer.setTimeSpentSeconds(request.getTimeSpentSeconds() != null ? request.getTimeSpentSeconds() : 0);
         answer.setIsSubmitted(Boolean.TRUE.equals(request.getIsSubmitted()));

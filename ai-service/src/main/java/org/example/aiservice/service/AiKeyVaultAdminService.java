@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.client.GeminiApiClient;
 import org.example.aiservice.dto.request.AddKeyVaultRequest;
+import org.example.aiservice.dto.request.UpdateKeyVaultRequest;
 import org.example.aiservice.dto.response.AiKeyVaultDto;
 import org.example.aiservice.dto.response.TestKeyVaultResponse;
 import org.example.aiservice.entity.AiKeyVaultEntry;
@@ -179,7 +180,7 @@ public class AiKeyVaultAdminService {
     }
 
     @Transactional
-    public AiKeyVaultDto updateKey(Long id, org.example.aiservice.dto.request.UpdateKeyVaultRequest request, String adminUsername) {
+    public AiKeyVaultDto updateKey(Long id, UpdateKeyVaultRequest request, String adminUsername) {
         AiKeyVaultEntry entry = vaultRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy khóa với ID: " + id));
 

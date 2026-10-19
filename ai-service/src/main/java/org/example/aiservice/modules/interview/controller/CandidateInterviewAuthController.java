@@ -8,6 +8,7 @@ import org.example.aiservice.modules.interview.dto.response.CandidateSessionAcce
 import org.example.aiservice.modules.interview.service.CandidateAuthService;
 import org.example.aiservice.modules.interview.dto.response.InternInterviewItemResponse;
 import org.example.aiservice.modules.interview.service.InterviewScheduleManagementService;
+import org.example.aiservice.service.AiRateLimiterService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +22,7 @@ public class CandidateInterviewAuthController {
 
     private final CandidateAuthService candidateAuthService;
     private final InterviewScheduleManagementService scheduleManagementService;
-    private final org.example.aiservice.service.AiRateLimiterService rateLimiterService;
+    private final AiRateLimiterService rateLimiterService;
 
     @PostMapping("/exchange-token")
     public ResponseEntity<CandidateSessionAccessResponse> exchangeToken(

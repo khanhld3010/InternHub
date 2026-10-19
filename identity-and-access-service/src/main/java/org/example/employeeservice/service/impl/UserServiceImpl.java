@@ -2,9 +2,14 @@ package org.example.employeeservice.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.employeeservice.client.NotificationServiceClient;
+import org.example.employeeservice.dto.request.UpdateProfileRequest;
+import org.example.employeeservice.dto.request.UpdateUserProfileRequest;
 import org.example.employeeservice.dto.response.UserResponse;
 import org.example.employeeservice.entity.Account;
 import org.example.employeeservice.entity.User;
+import org.example.employeeservice.exception.DuplicateResourceException;
+import org.example.employeeservice.exception.ForbiddenException;
 import org.example.employeeservice.exception.ResourceNotFoundException;
 import org.example.employeeservice.repository.AccountRepository;
 import org.example.employeeservice.repository.UserRepository;
@@ -22,7 +27,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
-    private final org.example.employeeservice.client.NotificationServiceClient notificationServiceClient;
+    private final NotificationServiceClient notificationServiceClient;
 
     @Override
     public List<UserResponse> getAllUsers() {
@@ -88,7 +93,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateCurrentUserProfile(String username, org.example.employeeservice.dto.request.UpdateUserProfileRequest request) {
+    public UserResponse updateCurrentUserProfile(String username, UpdateUserProfileRequest request) {
         log.info("Cập nhật thông tin cá nhân cho người dùng username={}", username);
         Account account = accountRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với username: " + username));
@@ -111,7 +116,7 @@ public class UserServiceImpl implements UserService {
         if (phone != null && !phone.isEmpty()) {
             // Kiểm tra trùng lặp số điện thoại nếu thay đổi
             if (!phone.equals(user.getPhoneNumber()) && userRepository.existsByPhoneNumber(phone)) {
-                throw new org.example.employeeservice.exception.DuplicateResourceException("Số điện thoại này đã được sử dụng bởi tài khoản khác");
+                throw new DuplicateResourceException("Số điện thoại này đã được sử dụng bởi tài khoản khác");
             }
             user.setPhoneNumber(phone);
         }
@@ -175,7 +180,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateOwnProfile(String username, org.example.employeeservice.dto.request.UpdateProfileRequest request) {
+    public UserResponse updateOwnProfile(String username, UpdateProfileRequest request) {
         log.info("Xử lý cập nhật hồ sơ cá nhân cho user: {}", username);
         Account account = accountRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với username: " + username));
@@ -199,7 +204,7 @@ public class UserServiceImpl implements UserService {
             String incomingFullName = request.getFullName().trim();
             if (user.getFullName() != null && !incomingFullName.equalsIgnoreCase(user.getFullName().trim())) {
                 log.warn("User {} cố gắng tự thay đổi họ và tên từ '{}' sang '{}'", username, user.getFullName(), incomingFullName);
-                throw new org.example.employeeservice.exception.ForbiddenException(
+                throw new ForbiddenException(
                         "Không thể tự thay đổi họ tên. Vui lòng liên hệ Ban Nhân sự."
                 );
             }
@@ -208,7 +213,7 @@ public class UserServiceImpl implements UserService {
         if (request.getDateOfBirth() != null) {
             if (user.getDateOfBirth() != null && !request.getDateOfBirth().equals(user.getDateOfBirth())) {
                 log.warn("User {} cố gắng tự thay đổi ngày sinh từ '{}' sang '{}'", username, user.getDateOfBirth(), request.getDateOfBirth());
-                throw new org.example.employeeservice.exception.ForbiddenException(
+                throw new ForbiddenException(
                         "Không thể tự thay đổi ngày sinh. Vui lòng liên hệ Ban Nhân sự."
                 );
             }

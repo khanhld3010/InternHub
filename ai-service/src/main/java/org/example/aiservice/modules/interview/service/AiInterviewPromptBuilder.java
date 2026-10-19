@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.client.dto.InternProfileClientDto;
 import org.example.aiservice.client.dto.ProgramClientDto;
 import org.example.aiservice.modules.screening.entity.InternAiEvaluation;
+import org.example.aiservice.service.AiPromptTemplateService;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -17,9 +18,10 @@ import java.util.List;
 public class AiInterviewPromptBuilder {
 
     private final ObjectMapper objectMapper;
+    private final AiPromptTemplateService promptTemplateService;
 
     public String buildSystemInstruction() {
-        return """
+        String fallback = """
                 Bạn là Trợ lý Chuyên gia Tuyển dụng Kỹ thuật và Phỏng vấn cấp cao của tập đoàn InternHub.
                 Nhiệm vụ của bạn là xây dựng bộ câu hỏi phỏng vấn thực tập sinh cực kỳ sắc bén, thực tế và khách quan.
 
@@ -27,10 +29,6 @@ public class AiInterviewPromptBuilder {
                 1. TECHNICAL_FOUNDATION: Kiểm tra kiến thức nền tảng vững chắc, tư duy thuật toán/hệ thống theo vị trí.
                 2. PROJECT_DEEP_DIVE: Hỏi xoáy sâu vào các dự án ứng viên khai trong CV để xác minh độ trung thực, vai trò thực tế và cách giải quyết bài toán.
                 3. BEHAVIORAL_AND_CULTURE_FIT: Kiểm tra tinh thần học hỏi, khả năng chịu áp lực, giao tiếp và văn hóa làm việc nhóm.
-
-                ĐẶC BIỆT KHI CÓ DỮ LIỆU AI SCREENING (Kỹ năng còn thiếu - missingSkills, Điểm nghi vấn - redFlags):
-                - Bạn PHẢI tạo ít nhất 2 câu hỏi nhắm thẳng vào các kỹ năng còn thiếu (missingSkills) để kiểm tra khả năng tự học/học bù.
-                - Bạn PHẢI tạo ít nhất 1 câu hỏi đối chất với các điểm bất thường (redFlags) trong CV để kiểm chứng tính xác thực.
 
                 ĐẦU RA BẮT BUỘC LÀ JSON NGUYÊN BẢN (KHÔNG BỌC TRONG MARKDOWN CODE BLOCK ```json, KHÔNG BỔ SUNG TEXT NGOÀI):
                 {
@@ -48,6 +46,7 @@ public class AiInterviewPromptBuilder {
                   ]
                 }
                 """;
+        return promptTemplateService.getResolvedPrompt("INTERVIEW_GEN_SYSTEM", java.util.Collections.emptyMap(), fallback);
     }
 
     public String buildUserPrompt(
@@ -105,7 +104,18 @@ public class AiInterviewPromptBuilder {
         }
 
         sb.append("Hãy sinh danh sách chính xác ").append(totalQuestions).append(" câu hỏi phỏng vấn chuẩn JSON.");
-        return sb.toString();
+        String fallbackUserPrompt = sb.toString();
+
+        java.util.Map<String, Object> vars = new java.util.HashMap<>();
+        vars.put("targetRole", targetRole != null ? targetRole : "Kỹ sư phần mềm");
+        vars.put("totalQuestions", totalQuestions);
+        vars.put("customRequirements", customRequirements != null ? customRequirements : "(Không có)");
+        vars.put("programInfo", program != null ? program.getName() + " - " + program.getDescription() : targetRole);
+        vars.put("internInfo", intern != null ? intern.getFullName() + " (" + intern.getEmail() + ")" : "Chưa cập nhật");
+        vars.put("screeningDossier", screening != null ? screening.getMatchSummary() : "Chưa có");
+        vars.put("cvText", (cvText != null && !cvText.isBlank()) ? (cvText.length() > 4000 ? cvText.substring(0, 4000) : cvText) : "(Trống)");
+
+        return promptTemplateService.getResolvedPrompt("INTERVIEW_GEN_USER", vars, fallbackUserPrompt);
     }
 
     public String buildSingleQuestionRegeneratePrompt(

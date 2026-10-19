@@ -59,3 +59,29 @@ app:
   notification-service:
     url: http://${NOTIFICATION_SERVICE_HOST:notification-service}:8085
     internal-token: ${INTERNAL_SERVICE_TOKEN:internhub-internal-secret-token-2026}
+
+# AI-20: Resilience4j Circuit Breaker & TimeLimiter Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      geminiClient:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 60
+        slow-call-duration-threshold: 12000ms
+        wait-duration-in-open-state: 30000ms
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - org.springframework.web.client.RestClientResponseException
+          - java.net.http.HttpTimeoutException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+  timelimiter:
+    instances:
+      geminiClient:
+        timeout-duration: 15000ms
+        cancel-running-future: true
+

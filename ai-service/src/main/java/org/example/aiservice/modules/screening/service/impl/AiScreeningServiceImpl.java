@@ -16,12 +16,16 @@ import org.example.aiservice.modules.screening.dto.request.BatchScreeningRequest
 import org.example.aiservice.modules.screening.dto.response.BatchJobCreatedResponse;
 import org.example.aiservice.modules.screening.dto.response.BatchJobStatusResponse;
 import org.example.aiservice.modules.screening.dto.response.ScreeningResultDto;
+import org.example.aiservice.modules.screening.entity.AiCandidateBookmark;
 import org.example.aiservice.modules.screening.entity.InternAiEvaluation;
 import org.example.aiservice.modules.screening.enums.AiRecommendation;
 import org.example.aiservice.modules.screening.enums.EvaluationStatus;
+import org.example.aiservice.modules.screening.repository.AiCandidateBookmarkRepository;
 import org.example.aiservice.modules.screening.repository.AiEvaluationRepository;
 import org.example.aiservice.modules.screening.service.AiScreeningService;
+import org.example.aiservice.security.PiiDataSanitizerService;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -30,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,11 +49,13 @@ public class AiScreeningServiceImpl implements AiScreeningService {
     private final DocumentTextExtractor documentTextExtractor;
     private final InternServiceClient internServiceClient;
     private final ObjectMapper objectMapper;
-    private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
+    private final StringRedisTemplate redisTemplate;
+    private final PiiDataSanitizerService piiDataSanitizerService;
+    private final AiCandidateBookmarkRepository bookmarkRepository;
 
     // Bộ nhớ tạm fallback và Redis Key prefix
     private static final String REDIS_JOB_PREFIX = "ai:screening:job:";
-    private static final java.time.Duration JOB_TTL = java.time.Duration.ofHours(24);
+    private static final Duration JOB_TTL = Duration.ofHours(24);
     private final Map<String, BatchJobStatusResponse> activeJobs = new ConcurrentHashMap<>();
 
     private String cachedRulesJson = "{}";
@@ -167,7 +174,9 @@ public class AiScreeningServiceImpl implements AiScreeningService {
 
         // 2. Lấy thông tin ứng viên từ intern-and-program-service
         InternProfileClientDto intern = fetchIntern(internId, authHeader);
-        String internJson = safeToJson(intern);
+        // AI-13: Khử định danh PII trước khi gửi sang Cloud LLM (Gemini)
+        var sanitizedIntern = piiDataSanitizerService.sanitizeInternProfile(intern);
+        String internJson = safeToJson(sanitizedIntern);
 
         // 3. Lấy file CV và bóc tách văn bản
         DocumentClientDto cvDoc = fetchCvDocument(intern.getInternCode(), authHeader);
@@ -179,7 +188,9 @@ public class AiScreeningServiceImpl implements AiScreeningService {
             docId = cvDoc.getId();
             byte[] fileBytes = downloadDocumentBytes(cvDoc.getId(), authHeader);
             if (fileBytes != null && fileBytes.length > 0) {
-                cvText = documentTextExtractor.extractText(fileBytes, cvDoc.getOriginalFileName());
+                String rawCvText = documentTextExtractor.extractText(fileBytes, cvDoc.getOriginalFileName());
+                // AI-13: Khử định danh CCCD, SĐT, Email, STK, Ngày sinh, Địa chỉ chi tiết trong CV
+                cvText = piiDataSanitizerService.sanitize(rawCvText);
                 cvHash = calculateSha256(fileBytes);
             }
         }
@@ -371,5 +382,41 @@ public class AiScreeningServiceImpl implements AiScreeningService {
         } catch (Exception e) {
             return Collections.emptyList();
         }
+    }
+
+    @Override
+    @Transactional
+    public boolean toggleCandidateBookmark(Long programId, Long internId, String createdBy, String notes) {
+        if (programId == null || internId == null) {
+            return false;
+        }
+
+        var existing = bookmarkRepository.findByProgramIdAndInternId(programId, internId);
+        if (existing.isPresent()) {
+            bookmarkRepository.delete(existing.get());
+            log.info("Đã xóa bookmark cho internId={} trong programId={}", internId, programId);
+            return false; // Đã un-bookmark
+        } else {
+            AiCandidateBookmark bookmark = AiCandidateBookmark.builder()
+                    .programId(programId)
+                    .internId(internId)
+                    .createdBy(createdBy)
+                    .notes(notes)
+                    .build();
+            bookmarkRepository.save(bookmark);
+            log.info("Đã tạo mới bookmark cho internId={} trong programId={} bởi user={}", internId, programId, createdBy);
+            return true; // Đã bookmark
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> getBookmarkedInternIds(Long programId) {
+        if (programId == null) {
+            return Collections.emptyList();
+        }
+        return bookmarkRepository.findByProgramId(programId).stream()
+                .map(AiCandidateBookmark::getInternId)
+                .toList();
     }
 }

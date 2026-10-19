@@ -3,6 +3,7 @@ package org.example.aiservice.modules.interview.controller;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.aiservice.modules.interview.dto.request.CreateInterviewScheduleRequest;
+import org.example.aiservice.modules.interview.dto.request.UpdateInterviewScheduleRequest;
 import org.example.aiservice.modules.interview.dto.response.InterviewScheduleDetailResponse;
 import org.example.aiservice.modules.interview.entity.InterviewSchedule;
 import org.example.aiservice.modules.interview.service.InterviewScheduleManagementService;
@@ -52,7 +53,7 @@ public class HrInterviewScheduleController {
     @PutMapping("/{id}")
     public ResponseEntity<InterviewScheduleDetailResponse> updateSchedule(
             @PathVariable Long id,
-            @Valid @RequestBody org.example.aiservice.modules.interview.dto.request.UpdateInterviewScheduleRequest request) {
+            @Valid @RequestBody UpdateInterviewScheduleRequest request) {
         InterviewScheduleDetailResponse response = scheduleManagementService.updateSchedule(id, request);
         return ResponseEntity.ok(response);
     }

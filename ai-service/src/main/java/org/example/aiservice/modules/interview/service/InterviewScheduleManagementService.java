@@ -3,6 +3,7 @@ package org.example.aiservice.modules.interview.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.modules.interview.dto.request.CreateInterviewScheduleRequest;
+import org.example.aiservice.modules.interview.dto.request.UpdateInterviewScheduleRequest;
 import org.example.aiservice.modules.interview.dto.response.InterviewScheduleDetailResponse;
 import org.example.aiservice.modules.interview.entity.InterviewQuestionSet;
 import org.example.aiservice.modules.interview.entity.InterviewSchedule;
@@ -241,7 +242,7 @@ public class InterviewScheduleManagementService {
      * API 4.1: Cập nhật thông tin đợt phỏng vấn cho HR và đồng bộ sang ứng viên
      */
     @Transactional
-    public InterviewScheduleDetailResponse updateSchedule(Long scheduleId, org.example.aiservice.modules.interview.dto.request.UpdateInterviewScheduleRequest request) {
+    public InterviewScheduleDetailResponse updateSchedule(Long scheduleId, UpdateInterviewScheduleRequest request) {
         InterviewSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
 

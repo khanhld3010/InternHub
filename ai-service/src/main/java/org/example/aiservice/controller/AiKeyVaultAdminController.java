@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.dto.request.AddKeyVaultRequest;
+import org.example.aiservice.dto.request.UpdateKeyVaultRequest;
 import org.example.aiservice.dto.response.AiKeyVaultDto;
 import org.example.aiservice.dto.response.TestKeyVaultResponse;
 import org.example.aiservice.service.AiKeyVaultAdminService;
@@ -61,7 +62,7 @@ public class AiKeyVaultAdminController {
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> updateKey(
             @PathVariable Long id,
-            @Valid @RequestBody org.example.aiservice.dto.request.UpdateKeyVaultRequest request,
+            @Valid @RequestBody UpdateKeyVaultRequest request,
             Authentication authentication
     ) {
         String adminUser = authentication != null ? authentication.getName() : "ADMIN";

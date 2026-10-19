@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.client.GeminiApiClient;
+import org.example.aiservice.entity.AiFeatureProfile;
+import org.example.aiservice.entity.AiGlobalConfig;
 import org.example.aiservice.entity.AiSystemConfig;
 import org.example.aiservice.security.AesGcmEncryptionUtil;
 import org.example.aiservice.service.AiConfigAdminService;
 import org.example.aiservice.service.AiMultiConfigService;
+import org.example.aiservice.service.AiPromptTemplateService;
 import org.example.aiservice.modules.report.dto.AiEvaluateWeeklyReportRequest;
 import org.example.aiservice.modules.report.dto.AiWeeklyReportEvaluationResult;
 import org.springframework.http.HttpStatus;
@@ -27,6 +30,7 @@ public class AiWeeklyReportGraderService {
     private final AiMultiConfigService multiConfigService;
     private final AesGcmEncryptionUtil encryptionUtil;
     private final ObjectMapper objectMapper;
+    private final AiPromptTemplateService promptTemplateService;
 
     private static final String FEATURE_KEY = "REPORT_ASSISTANT";
     private static final String DEFAULT_MODEL_NAME = "gemini-3.5-flash-lite";
@@ -56,13 +60,13 @@ public class AiWeeklyReportGraderService {
     public AiWeeklyReportEvaluationResult evaluateReport(AiEvaluateWeeklyReportRequest request) {
         long startTime = System.currentTimeMillis();
 
-        org.example.aiservice.entity.AiFeatureProfile profile = multiConfigService.getProfileOrDefault(FEATURE_KEY);
+        AiFeatureProfile profile = multiConfigService.getProfileOrDefault(FEATURE_KEY);
         if (!Boolean.TRUE.equals(profile.getIsActive())) {
             log.warn("[AiWeeklyReportGraderService] Module {} bị tắt bởi Admin (Hard Block).", FEATURE_KEY);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tính năng Trợ Lý Báo Cáo Tuần tạm thời bị vô hiệu hóa bởi Quản trị viên.");
         }
 
-        org.example.aiservice.entity.AiGlobalConfig globalConfig = multiConfigService.getOrCreateGlobalConfig();
+        AiGlobalConfig globalConfig = multiConfigService.getOrCreateGlobalConfig();
         String rawApiKey = null;
         if (globalConfig.getApiKeyEncrypted() != null && !globalConfig.getApiKeyEncrypted().isBlank()) {
             try {

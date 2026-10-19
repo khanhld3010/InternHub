@@ -134,7 +134,7 @@ class AiKeyVaultManagerTest {
 
         // Assert
         assertThat(selected).isNotNull();
-        assertThat(selected.getStatus()).isEqualTo("ACTIVE");
+        assertThat(selected.getStatus()).isEqualTo("HALF_OPEN");
         assertThat(selected.getCooldownUntil()).isNull();
         verify(vaultRepository).save(keyExpiredCooldown);
     }

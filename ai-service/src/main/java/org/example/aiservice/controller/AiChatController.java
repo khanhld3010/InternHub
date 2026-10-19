@@ -9,10 +9,12 @@ import org.example.aiservice.dto.response.ChatResponse;
 import org.example.aiservice.dto.response.QuickPromptsResponse;
 import org.example.aiservice.service.AiChatService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -30,6 +32,20 @@ public class AiChatController {
     ) {
         String authHeader = httpServletRequest.getHeader("Authorization");
         return ApiResponse.success(aiChatService.chat(request, userId, authHeader));
+    }
+
+    /**
+     * AI-17: SSE Streaming Chatbot Endpoint (text/event-stream)
+     */
+    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("hasAuthority('AI_CHAT_USE') or hasRole('INTERN')")
+    public SseEmitter streamChat(
+            @Valid @RequestBody ChatRequest request,
+            @AuthenticationPrincipal String userId,
+            HttpServletRequest httpServletRequest
+    ) {
+        String authHeader = httpServletRequest.getHeader("Authorization");
+        return aiChatService.streamChat(request, userId, authHeader);
     }
 
     @DeleteMapping("/chat/sessions/{sessionId}")

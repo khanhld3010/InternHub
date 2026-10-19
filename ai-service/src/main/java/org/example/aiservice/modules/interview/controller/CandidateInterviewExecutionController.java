@@ -2,11 +2,18 @@ package org.example.aiservice.modules.interview.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.aiservice.modules.interview.dto.request.CandidateEvidenceRequest;
 import org.example.aiservice.modules.interview.dto.request.SaveCandidateAnswerRequest;
+import org.example.aiservice.modules.interview.dto.response.CandidateEvidenceResponse;
 import org.example.aiservice.modules.interview.dto.response.CandidateQuestionResponse;
 import org.example.aiservice.modules.interview.dto.response.CandidateRecoveryStateResponse;
 import org.example.aiservice.modules.interview.dto.response.SaveCandidateAnswerResponse;
+import org.example.aiservice.modules.interview.dto.response.SubmitInterviewSessionResponse;
+import org.example.aiservice.modules.interview.enums.SubmissionReason;
 import org.example.aiservice.modules.interview.service.CandidateSessionExecutionService;
+import org.example.aiservice.modules.interview.service.InterviewAuditAndSubmissionService;
+import org.example.aiservice.security.PromptInjectionGuardService;
+import org.example.aiservice.service.AiRateLimiterService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -17,8 +24,9 @@ import org.springframework.web.bind.annotation.*;
 public class CandidateInterviewExecutionController {
 
     private final CandidateSessionExecutionService executionService;
-    private final org.example.aiservice.modules.interview.service.InterviewAuditAndSubmissionService auditAndSubmissionService;
-    private final org.example.aiservice.service.AiRateLimiterService rateLimiterService;
+    private final InterviewAuditAndSubmissionService auditAndSubmissionService;
+    private final AiRateLimiterService rateLimiterService;
+    private final PromptInjectionGuardService promptGuardService;
 
     @PostMapping("/{sessionId}/start")
     public ResponseEntity<CandidateQuestionResponse> startSession(
@@ -36,6 +44,12 @@ public class CandidateInterviewExecutionController {
             @Valid @RequestBody SaveCandidateAnswerRequest request,
             Authentication authentication) {
         String authenticatedUserId = authentication != null ? authentication.getName() : null;
+
+        // AI-15: Chặn Prompt Injection / Jailbreak fail-fast ngay từ controller
+        if (request != null && request.getAnswerText() != null) {
+            promptGuardService.validatePromptInput(request.getAnswerText(), "INTERVIEW_ANSWER", authenticatedUserId);
+        }
+
         SaveCandidateAnswerResponse response = executionService.saveAnswer(sessionId, questionId, request, authenticatedUserId);
         return ResponseEntity.ok(response);
     }
@@ -50,9 +64,9 @@ public class CandidateInterviewExecutionController {
     }
 
     @PostMapping("/{sessionId}/evidence")
-    public ResponseEntity<org.example.aiservice.modules.interview.dto.response.CandidateEvidenceResponse> recordEvidence(
+    public ResponseEntity<CandidateEvidenceResponse> recordEvidence(
             @PathVariable Long sessionId,
-            @Valid @RequestBody org.example.aiservice.modules.interview.dto.request.CandidateEvidenceRequest request,
+            @Valid @RequestBody CandidateEvidenceRequest request,
             Authentication authentication) {
         rateLimiterService.checkEvidenceRateLimit(sessionId);
         String authenticatedUserId = authentication != null ? authentication.getName() : null;
@@ -61,9 +75,9 @@ public class CandidateInterviewExecutionController {
     }
 
     @PostMapping("/{sessionId}/submit")
-    public ResponseEntity<org.example.aiservice.modules.interview.dto.response.SubmitInterviewSessionResponse> submitSession(
+    public ResponseEntity<SubmitInterviewSessionResponse> submitSession(
             @PathVariable Long sessionId,
-            @RequestParam(required = false) org.example.aiservice.modules.interview.enums.SubmissionReason reason,
+            @RequestParam(required = false) SubmissionReason reason,
             Authentication authentication) {
         String authenticatedUserId = authentication != null ? authentication.getName() : null;
         var response = auditAndSubmissionService.submitSession(sessionId, reason, authenticatedUserId);
