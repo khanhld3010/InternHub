@@ -21,13 +21,13 @@ public class AiMultiConfigAdminController {
     private final AiMultiConfigService multiConfigService;
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('AI_CONFIG_MANAGE') or hasRole('ADMIN')")
     public ResponseEntity<AiMultiConfigResponse> getMultiConfig() {
         return ResponseEntity.ok(multiConfigService.getMultiConfig());
     }
 
     @PutMapping("/global-key")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('AI_CONFIG_MANAGE') or hasRole('ADMIN')")
     public ResponseEntity<Void> updateGlobalKey(
             @Valid @RequestBody UpdateGlobalKeyRequest request,
             @AuthenticationPrincipal String adminUserId
@@ -38,7 +38,7 @@ public class AiMultiConfigAdminController {
     }
 
     @PutMapping("/profiles/{featureKey}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('AI_CONFIG_MANAGE') or hasRole('ADMIN')")
     public ResponseEntity<AiMultiConfigResponse.FeatureProfileDto> updateProfile(
             @PathVariable String featureKey,
             @Valid @RequestBody UpdateFeatureProfileRequest request,
@@ -49,7 +49,7 @@ public class AiMultiConfigAdminController {
     }
 
     @PostMapping("/profiles/{featureKey}/test")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('AI_CONFIG_MANAGE') or hasRole('ADMIN')")
     public ResponseEntity<TestProfileResponse> testProfile(
             @PathVariable String featureKey,
             @Valid @RequestBody TestProfileRequest request
