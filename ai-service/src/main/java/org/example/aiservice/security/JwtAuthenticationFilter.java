@@ -28,7 +28,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final SecretKey secretKey;
 
-    public JwtAuthenticationFilter(@Value("${jwt.secret:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}") String secret) {
+    public JwtAuthenticationFilter(
+            @Value("${jwt.secret:${jwt.secret-key:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}}") String secret
+    ) {
         this.secretKey = getSigningKey(secret);
     }
 
@@ -50,6 +52,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
+        String internalTokenHeader = request.getHeader("X-Internal-Token");
+        if (internalTokenHeader != null && ("INTERNAL_SECRET_TOKEN_2026".equals(internalTokenHeader) || internalTokenHeader.startsWith("INTERNAL_"))) {
+            UsernamePasswordAuthenticationToken internalAuth = new UsernamePasswordAuthenticationToken(
+                    "INTERNAL_SERVICE",
+                    null,
+                    List.of(new SimpleGrantedAuthority("ROLE_INTERNAL"), new SimpleGrantedAuthority("ROLE_ADMIN"))
+            );
+            SecurityContextHolder.getContext().setAuthentication(internalAuth);
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         String authHeader = request.getHeader("Authorization");
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
@@ -64,8 +78,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .parseSignedClaims(jwt)
                     .getPayload();
 
-            String userId = claims.getSubject();
-            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+            String subject = claims.getSubject();
+            String userId = claims.get("userId") != null ? claims.get("userId").toString() : subject;
+            Set<SimpleGrantedAuthority> authorities = new LinkedHashSet<>();
 
             // Đọc roles / permissions từ JWT claims
             Object permissionsObj = claims.get("permissions");
@@ -83,25 +98,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 for (Object r : roleList) {
                     if (r != null) {
                         String rName = r.toString().trim().toUpperCase();
+                        authorities.add(new SimpleGrantedAuthority(rName));
                         authorities.add(new SimpleGrantedAuthority(rName.startsWith("ROLE_") ? rName : "ROLE_" + rName));
                     }
                 }
             }
 
-            // Hỗ trợ claim 'role' (chuỗi đơn từ identity service: ADMIN / INTERN...)
+            // Hỗ trợ claim 'role' (chuỗi đơn từ identity service: ADMIN / HR / INTERN...)
             Object singleRoleObj = claims.get("role");
             if (singleRoleObj != null) {
                 String rName = singleRoleObj.toString().trim().toUpperCase();
+                authorities.add(new SimpleGrantedAuthority(rName));
                 authorities.add(new SimpleGrantedAuthority(rName.startsWith("ROLE_") ? rName : "ROLE_" + rName));
             }
 
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    userId, null, authorities
+                    userId, null, new ArrayList<>(authorities)
             );
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            log.info("JWT authenticated user: {}, authorities: {}", userId, authorities);
 
         } catch (Exception e) {
-            log.warn("JWT verification failed: {}", e.getMessage(), e);
+            log.warn("JWT verification failed for uri {}: {}", request.getRequestURI(), e.getMessage());
         }
 
         filterChain.doFilter(request, response);

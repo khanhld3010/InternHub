@@ -134,7 +134,7 @@ public class InternProfileController {
     @Operation(summary = "Lấy thông tin chi tiết hồ sơ thực tập sinh theo ID")
     @GetMapping("/{id:[0-9]+}")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR')")
-    public ResponseEntity<ApiResponse<InternResponse>> getInternById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<InternResponse>> getInternById(@PathVariable("id") Long id) {
         log.info("API: Lấy chi tiết hồ sơ thực tập sinh ID: {}", id);
         InternResponse response = internProfileService.getInternById(id);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy thông tin hồ sơ thành công", response));

@@ -448,7 +448,7 @@ public class InternProfileServiceImpl implements InternProfileService {
         }
 
         String candidateCode = String.format("INT-%s-%04d", yearMonth, nextSequence);
-        while (internProfileRepository.findByInternCode(candidateCode).isPresent()) {
+        while (internProfileRepository.findByInternCode(candidateCode).isPresent() || internProfileRepository.existsByInternCode(candidateCode)) {
             nextSequence++;
             candidateCode = String.format("INT-%s-%04d", yearMonth, nextSequence);
         }

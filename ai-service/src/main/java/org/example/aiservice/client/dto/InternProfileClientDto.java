@@ -24,5 +24,6 @@ public class InternProfileClientDto {
     private String appliedPosition;
     private String status;
     private Long programId;
+    private Long userId;
     private String notes;
 }

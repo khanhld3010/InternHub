@@ -5,13 +5,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.dto.response.ApiResponse;
 import org.example.aiservice.modules.screening.dto.request.BatchScreeningRequest;
+import org.example.aiservice.modules.screening.dto.request.ToggleBookmarkRequest;
 import org.example.aiservice.modules.screening.dto.response.BatchJobCreatedResponse;
 import org.example.aiservice.modules.screening.dto.response.BatchJobStatusResponse;
 import org.example.aiservice.modules.screening.dto.response.ScreeningResultDto;
 import org.example.aiservice.modules.screening.service.AiScreeningService;
+import org.example.aiservice.service.AiRateLimiterService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
@@ -21,15 +24,27 @@ import org.springframework.web.bind.annotation.*;
 public class AiScreeningController {
 
     private final AiScreeningService aiScreeningService;
+    private final AiRateLimiterService rateLimiterService;
 
     @PostMapping("/batch")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
     public ResponseEntity<ApiResponse<BatchJobCreatedResponse>> startBatchScreening(
             @Valid @RequestBody BatchScreeningRequest request,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            jakarta.servlet.http.HttpServletRequest httpServletRequest
     ) {
-        log.info("Nhận yêu cầu phân tích AI hàng loạt: programId={}, số lượng={}",
-                request.getProgramId(), request.getInternIds().size());
+        String callerId = userIdHeader;
+        if (callerId == null || callerId.isBlank()) {
+            callerId = httpServletRequest.getRemoteAddr();
+        }
+
+        log.info("Nhận yêu cầu phân tích AI hàng loạt: programId={}, số lượng={}, requester={}",
+                request.getProgramId(), request.getInternIds().size(), callerId);
+
+        // AI-12: Kiểm tra Rate Limiting & Quota cho CV_SCREENING (Fail-closed)
+        rateLimiterService.checkFeatureRateLimit("CV_SCREENING", callerId);
+
         BatchJobCreatedResponse response = aiScreeningService.startBatchScreening(request, authHeader);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.success(202, "Đã tiếp nhận yêu cầu phân tích hàng loạt bằng AI", response));
@@ -55,4 +70,31 @@ public class AiScreeningController {
         }
         return ResponseEntity.ok(ApiResponse.success(200, "Chi tiết đánh giá AI", result));
     }
+
+    @PostMapping("/bookmarks/toggle")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Boolean>> toggleCandidateBookmark(
+            @Valid @RequestBody ToggleBookmarkRequest request,
+            Authentication authentication
+    ) {
+        String username = authentication != null ? authentication.getName() : "HR";
+        boolean isBookmarked = aiScreeningService.toggleCandidateBookmark(
+                request.getProgramId(),
+                request.getInternId(),
+                username,
+                request.getNotes()
+        );
+        String message = isBookmarked ? "Đã ghim ứng viên thành công" : "Đã bỏ ghim ứng viên";
+        return ResponseEntity.ok(ApiResponse.success(200, message, isBookmarked));
+    }
+
+    @GetMapping("/bookmarks/programs/{programId}")
+    @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.List<Long>>> getBookmarkedInternIds(
+            @PathVariable("programId") Long programId
+    ) {
+        java.util.List<Long> ids = aiScreeningService.getBookmarkedInternIds(programId);
+        return ResponseEntity.ok(ApiResponse.success(200, "Danh sách ID ứng viên được ghim", ids));
+    }
 }
+

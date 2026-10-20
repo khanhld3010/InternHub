@@ -4,7 +4,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.dto.response.ApiResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -98,11 +101,11 @@ public class IdentityServiceClient {
         String url = identityServiceUrl + "/api/auth/register";
         log.info("Gọi sang identity-service để tạo tài khoản mới: url={}, username={}", url, registerRequest.get("username"));
         try {
-            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-Internal-Call", "true");
 
-            org.springframework.http.HttpEntity<Map<String, Object>> requestEntity = new org.springframework.http.HttpEntity<>(registerRequest, headers);
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(registerRequest, headers);
             ResponseEntity<ApiResponse<Map<String, Object>>> response = restTemplate.exchange(
                     url,
                     HttpMethod.POST,
@@ -118,5 +121,30 @@ public class IdentityServiceClient {
             throw new RuntimeException("Không thể tạo tài khoản người dùng trên Identity Service: " + e.getMessage(), e);
         }
         throw new RuntimeException("Tạo tài khoản không thành công, không nhận được phản hồi hợp lệ");
+    }
+
+    public boolean toggleUserAccountStatus(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        String url = identityServiceUrl + "/api/users/" + userId + "/status";
+        log.info("Gọi sang identity-service để khóa/mở khóa tài khoản: userId={}, url={}", userId, url);
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Internal-Call", "true");
+
+            HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+            restTemplate.exchange(
+                    url,
+                    HttpMethod.PATCH,
+                    requestEntity,
+                    new ParameterizedTypeReference<ApiResponse<Map<String, Object>>>() {}
+            );
+            log.info("Đã gửi yêu cầu cập nhật trạng thái tài khoản userId={} sang identity-service thành công", userId);
+            return true;
+        } catch (Exception e) {
+            log.error("Lỗi khi gọi sang identity-service để cập nhật trạng thái tài khoản userId={}: {}", userId, e.getMessage());
+            return false;
+        }
     }
 }

@@ -5,9 +5,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.internservice.attendance.dto.request.AttendanceAppealRequest;
 import org.example.internservice.attendance.dto.request.CheckInConfirmRequest;
 import org.example.internservice.attendance.dto.request.CheckInInitiateRequest;
 import org.example.internservice.attendance.dto.request.CheckOutRequest;
+import org.example.internservice.attendance.dto.request.ConfirmForgottenCheckoutRequest;
 import org.example.internservice.attendance.dto.request.QuickCheckOutRequest;
 import org.example.internservice.attendance.dto.request.ReviewAttendanceRequest;
 import org.example.internservice.attendance.dto.response.AttendanceResponse;
@@ -24,6 +26,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -109,10 +113,10 @@ public class AttendanceController {
     }
 
     @Operation(summary = "Phê duyệt hoặc từ chối ca chấm công ngoại lệ (HR / ADMIN)")
-    @org.springframework.web.bind.annotation.PatchMapping("/{id}/review")
+    @PatchMapping("/{id}/review")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN')")
     public ResponseEntity<ApiResponse<AttendanceResponse>> reviewAttendance(
-            @org.springframework.web.bind.annotation.PathVariable("id") Long attendanceId,
+            @PathVariable("id") Long attendanceId,
             @Valid @RequestBody ReviewAttendanceRequest request,
             Authentication authentication
     ) {
@@ -120,6 +124,34 @@ public class AttendanceController {
         log.info("HR [{}] thực hiện xử lý duyệt ca chấm công ID {}: Status={}", reviewerUsername, attendanceId, request.getReviewStatus());
         AttendanceResponse response = attendanceService.reviewAttendance(attendanceId, request, reviewerUsername);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Xử lý duyệt ca chấm công thành công", response));
+    }
+
+    @Operation(summary = "Thực tập sinh gửi giải trình / khiếu nại chấm công (INTERN)")
+    @PostMapping("/{id}/appeal")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<ApiResponse<AttendanceResponse>> appealAttendance(
+            @PathVariable("id") Long attendanceId,
+            @Valid @RequestBody AttendanceAppealRequest request,
+            Authentication authentication
+    ) {
+        Long userId = extractUserId(authentication);
+        log.info("Intern userId [{}] gửi giải trình chấm công ID {}: {}", userId, attendanceId, request.getReason());
+        AttendanceResponse response = attendanceService.appealAttendance(userId, attendanceId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Gửi giải trình chấm công thành công", response));
+    }
+
+    @Operation(summary = "Mentor hoặc HR xác nhận giờ ra thực tế cho ca quên check-out (MENTOR / HR / ADMIN)")
+    @PostMapping("/{id}/confirm-checkout")
+    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<AttendanceResponse>> confirmForgottenCheckout(
+            @PathVariable("id") Long attendanceId,
+            @Valid @RequestBody ConfirmForgottenCheckoutRequest request,
+            Authentication authentication
+    ) {
+        String confirmedBy = authentication != null ? authentication.getName() : "MENTOR_HR";
+        log.info("Người dùng [{}] xác nhận giờ check-out thực tế cho ca chấm công ID {}: {}", confirmedBy, attendanceId, request.getActualCheckOutTime());
+        AttendanceResponse response = attendanceService.confirmForgottenCheckout(attendanceId, request, confirmedBy);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Xác nhận giờ check-out thành công", response));
     }
 
     @Operation(summary = "Check-out chấm công cuối ngày (Yêu cầu tọa độ GPS)")

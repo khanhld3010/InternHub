@@ -4,6 +4,8 @@ import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -53,8 +55,12 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
 
     Optional<InternProfile> findByInternCode(String internCode);
 
-    @org.springframework.data.jpa.repository.Query("SELECT MAX(i.internCode) FROM InternProfile i WHERE i.internCode LIKE CONCAT('INT-', :yearMonth, '-%')")
-    String findMaxInternCodeByYearMonth(@org.springframework.data.repository.query.Param("yearMonth") String yearMonth);
+    Optional<InternProfile> findFirstByEmailOrderByCreatedAtDesc(String email);
+
+    boolean existsByInternCode(String internCode);
+
+    @Query("SELECT MAX(i.internCode) FROM InternProfile i WHERE i.internCode LIKE CONCAT('INT-', :yearMonth, '-%')")
+    String findMaxInternCodeByYearMonth(@Param("yearMonth") String yearMonth);
 
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 

@@ -1,18 +1,26 @@
 package org.example.internservice.attendance.service.impl;
 
+import org.example.internservice.allowance.repository.InternAllowanceRecordRepository;
+import org.example.internservice.attendance.dto.request.AttendanceAppealRequest;
 import org.example.internservice.attendance.dto.request.CheckInConfirmRequest;
 import org.example.internservice.attendance.dto.request.CheckInInitiateRequest;
 import org.example.internservice.attendance.dto.request.CheckOutRequest;
+import org.example.internservice.attendance.dto.request.ConfirmForgottenCheckoutRequest;
+import org.example.internservice.attendance.dto.request.ReviewAttendanceRequest;
 import org.example.internservice.attendance.dto.response.AttendanceResponse;
 import org.example.internservice.attendance.dto.response.CheckInQrResponse;
 import org.example.internservice.attendance.dto.response.MonthlyAttendanceSummaryResponse;
 import org.example.internservice.attendance.dto.response.TodayAttendanceResponse;
 import org.example.internservice.attendance.entity.Attendance;
 import org.example.internservice.attendance.entity.OfficeLocation;
+import org.example.internservice.attendance.entity.enums.AttendanceReviewStatus;
 import org.example.internservice.attendance.entity.enums.AttendanceStatus;
+import org.example.internservice.attendance.repository.AttendanceAuditLogRepository;
 import org.example.internservice.attendance.repository.AttendanceRepository;
+import org.example.internservice.attendance.repository.InternDeviceRepository;
 import org.example.internservice.attendance.repository.OfficeLocationRepository;
 import org.example.internservice.attendance.service.CheckInQrTokenManager;
+import org.example.internservice.attendance.service.SseEmitterRegistry;
 import org.example.internservice.attendance.service.TrustLevelEvaluator;
 import org.example.internservice.attendance.util.FrontendUrlResolver;
 import org.example.internservice.attendance.util.HaversineDistanceCalculator;
@@ -32,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -71,16 +80,19 @@ class AttendanceServiceImplTest {
     private FrontendUrlResolver frontendUrlResolver;
 
     @Mock
-    private org.example.internservice.attendance.service.TrustLevelEvaluator trustLevelEvaluator;
+    private TrustLevelEvaluator trustLevelEvaluator;
 
     @Mock
-    private org.example.internservice.attendance.repository.AttendanceAuditLogRepository auditLogRepository;
+    private AttendanceAuditLogRepository auditLogRepository;
 
     @Mock
-    private org.example.internservice.attendance.repository.InternDeviceRepository internDeviceRepository;
+    private InternDeviceRepository internDeviceRepository;
 
     @Mock
-    private org.example.internservice.attendance.service.SseEmitterRegistry sseEmitterRegistry;
+    private SseEmitterRegistry sseEmitterRegistry;
+
+    @Mock
+    private InternAllowanceRecordRepository allowanceRecordRepository;
 
     @Mock
     private org.example.internservice.leave.repository.LeaveRequestRepository leaveRequestRepository;
@@ -378,6 +390,150 @@ class AttendanceServiceImplTest {
     }
 
     @Test
+    @DisplayName("Thực tập sinh gửi giải trình chấm công khi bị từ chối hoặc cần duyệt lại thành công")
+    void appealAttendance_validRequest_shouldSetPendingReviewAndSaveAudit() {
+        Attendance attendance = Attendance.builder()
+                .internId(1L)
+                .workDate(LocalDate.now())
+                .checkInTime(LocalDateTime.now())
+                .status(AttendanceStatus.LATE)
+                .reviewStatus(org.example.internservice.attendance.entity.enums.AttendanceReviewStatus.PENDING_REVIEW)
+                .build();
+        attendance.setId(50L);
+
+        org.example.internservice.attendance.dto.request.AttendanceAppealRequest request =
+                org.example.internservice.attendance.dto.request.AttendanceAppealRequest.builder()
+                        .reason("GPS trôi do làm việc tầng hầm B1, kèm ảnh chụp thẻ từ")
+                        .evidenceUrl("https://storage.internhub.com/appeals/evidence-50.png")
+                        .build();
+
+        when(internProfileRepository.findByUserId(10L)).thenReturn(Optional.of(mockIntern));
+        when(attendanceRepository.findById(50L)).thenReturn(Optional.of(attendance));
+        when(attendanceRepository.save(any(Attendance.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AttendanceResponse response = attendanceService.appealAttendance(10L, 50L, request);
+
+        assertNotNull(response);
+        assertEquals(50L, response.getId());
+        assertEquals("PENDING_REVIEW", response.getReviewStatus());
+        assertTrue(attendance.getNotes().contains("GPS trôi do làm việc tầng hầm B1"));
+        verify(attendanceRepository).save(any(Attendance.class));
+    }
+
+    @Test
+    @DisplayName("Mentor hoặc HR xác nhận giờ ra thực tế cho ca quên check-out thành công và cập nhật lại status")
+    void confirmForgottenCheckout_validActualTime_shouldUpdateWorkingHoursAndStatus() {
+        LocalDate workDate = LocalDate.of(2026, 10, 16);
+        LocalDateTime checkIn = LocalDateTime.of(workDate, LocalTime.of(8, 0));
+        Attendance attendance = Attendance.builder()
+                .internId(1L)
+                .workDate(workDate)
+                .checkInTime(checkIn)
+                .status(AttendanceStatus.FORGOTTEN_CHECKOUT)
+                .build();
+        attendance.setId(77L);
+
+        ConfirmForgottenCheckoutRequest request = ConfirmForgottenCheckoutRequest.builder()
+                .actualCheckOutTime(LocalTime.of(17, 30))
+                .confirmationNote("Thực tập sinh xác nhận ra về đúng 17:30 cùng team")
+                .build();
+
+        when(attendanceRepository.findById(77L)).thenReturn(Optional.of(attendance));
+        when(attendanceRepository.save(any(Attendance.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AttendanceResponse response = attendanceService.confirmForgottenCheckout(77L, request, "mentor_quang");
+
+        assertNotNull(response);
+        assertEquals(77L, response.getId());
+        assertEquals(AttendanceStatus.ON_TIME, attendance.getStatus());
+        assertEquals(9.5, attendance.getTotalWorkingHours());
+        assertEquals(AttendanceReviewStatus.HR_APPROVED, attendance.getReviewStatus());
+        assertEquals("mentor_quang", attendance.getReviewedBy());
+        assertTrue(attendance.getNotes().contains("mentor_quang"));
+        verify(attendanceRepository).save(any(Attendance.class));
+    }
+
+    @Test
+    @DisplayName("Khóa sổ kỳ công: Ném BadRequestException khi cố tình sửa kết quả chấm công thuộc kỳ phụ cấp đã APPROVED hoặc PAID")
+    void reviewAttendance_whenAllowancePeriodLocked_shouldThrowBadRequestException() {
+        LocalDate workDate = LocalDate.of(2026, 9, 15);
+        Attendance attendance = Attendance.builder()
+                .internId(10L)
+                .workDate(workDate)
+                .status(AttendanceStatus.LATE)
+                .build();
+        attendance.setId(88L);
+
+        ReviewAttendanceRequest request = ReviewAttendanceRequest.builder()
+                .reviewStatus(AttendanceReviewStatus.HR_APPROVED)
+                .reviewNote("Sửa chấm công tháng cũ")
+                .build();
+
+        when(attendanceRepository.findById(88L)).thenReturn(Optional.of(attendance));
+        when(allowanceRecordRepository.existsByInternProfileIdAndPeriodMonthAndStatusIn(
+                eq(10L), eq("2026-09"), any())).thenReturn(true);
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                attendanceService.reviewAttendance(88L, request, "hr_admin"));
+
+        assertTrue(ex.getMessage().contains("đã được phê duyệt hoặc chi trả"));
+        assertTrue(ex.getMessage().contains("đã bị khóa sổ"));
+    }
+
+    @Test
+    @DisplayName("Khóa sổ kỳ công: Cập nhật chấm công thành công khi kỳ phụ cấp chưa khóa (ở trạng thái DRAFT hoặc chưa tạo)")
+    void reviewAttendance_whenAllowancePeriodNotLocked_shouldSucceed() {
+        LocalDate workDate = LocalDate.of(2026, 10, 15);
+        Attendance attendance = Attendance.builder()
+                .internId(10L)
+                .workDate(workDate)
+                .status(AttendanceStatus.LATE)
+                .build();
+        attendance.setId(89L);
+
+        ReviewAttendanceRequest request = ReviewAttendanceRequest.builder()
+                .reviewStatus(AttendanceReviewStatus.HR_APPROVED)
+                .reviewNote("Duyệt giải trình hợp lệ")
+                .build();
+
+        when(attendanceRepository.findById(89L)).thenReturn(Optional.of(attendance));
+        when(allowanceRecordRepository.existsByInternProfileIdAndPeriodMonthAndStatusIn(
+                eq(10L), eq("2026-10"), any())).thenReturn(false);
+        when(attendanceRepository.save(any(Attendance.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AttendanceResponse response = attendanceService.reviewAttendance(89L, request, "hr_admin");
+
+        assertNotNull(response);
+        assertEquals(89L, response.getId());
+        assertEquals("HR_APPROVED", response.getReviewStatus());
+        verify(attendanceRepository).save(any(Attendance.class));
+    }
+
+    @Test
+    @DisplayName("Lỗi 36 [P0]: Thực tập sinh có trạng thái không phải INTERNING (COMPLETED, ON_HOLD, PENDING...) bị chặn thao tác chấm công")
+    void checkIn_whenInternNotInterning_shouldThrowBadRequestException() {
+        CheckInInitiateRequest request = CheckInInitiateRequest.builder()
+                .latitude(21.028515)
+                .longitude(105.854440)
+                .clientBaseUrl("https://internhub.example.com")
+                .build();
+
+        InternProfile completedIntern = InternProfile.builder()
+                .userId(20L)
+                .internCode("INT-2026-COMP")
+                .fullName("Nguyen Van Hoan Thanh")
+                .status(InternStatus.COMPLETED)
+                .build();
+        completedIntern.setId(2L);
+
+        when(internProfileRepository.findByUserId(20L)).thenReturn(Optional.of(completedIntern));
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                attendanceService.initiateCheckIn(20L, request));
+
+        assertTrue(ex.getMessage().contains("Chỉ thực tập sinh đang trong giai đoạn thực tập chính thức (INTERNING) mới được phép thực hiện chấm công"));
+    }
+=======
     @DisplayName("Check-in ca chiều khi có đơn nghỉ phép nửa ngày sáng MORNING hợp lệ không bị phạt LATE")
     void confirmCheckIn_withApprovedMorningLeave_checkInAfternoon_markedOnTime() {
         CheckInConfirmRequest request = CheckInConfirmRequest.builder()

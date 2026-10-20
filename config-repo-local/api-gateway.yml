@@ -80,6 +80,13 @@ spring:
               uri: lb://intern-and-program-service
               predicates:
                 - Path=/api/interns, /api/interns/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 15
+                    redis-rate-limiter.burstCapacity: 30
+                    redis-rate-limiter.requestedTokens: 1
+                    key-resolver: "#{@ipKeyResolver}"
 
             - id: program-service
               uri: lb://intern-and-program-service
@@ -99,7 +106,7 @@ spring:
             - id: mentor-service
               uri: lb://intern-and-program-service
               predicates:
-                - Path=/api/mentor, /api/mentor/**, /api/mentors, /api/mentors/**
+                - Path=/api/mentor, /api/mentor/**, /api/mentors, /api/mentors/**, /api/v1/mentor, /api/v1/mentor/**
 
             - id: evaluation-service
               uri: lb://intern-and-program-service
@@ -199,7 +206,7 @@ spring:
             - id: ai-service
               uri: lb://ai-service
               predicates:
-                - Path=/api/ai, /api/ai/**
+                - Path=/api/ai, /api/ai/**, /api/v1/ai, /api/v1/ai/**
 
 
 

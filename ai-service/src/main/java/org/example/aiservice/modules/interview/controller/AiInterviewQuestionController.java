@@ -7,6 +7,7 @@ import org.example.aiservice.modules.interview.dto.request.GenerateInterviewQues
 import org.example.aiservice.modules.interview.dto.request.UpdateInterviewQuestionSetRequest;
 import org.example.aiservice.modules.interview.dto.response.InterviewQuestionSetResponse;
 import org.example.aiservice.modules.interview.service.AiInterviewQuestionService;
+import org.example.aiservice.service.AiRateLimiterService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,7 @@ import java.util.List;
 public class AiInterviewQuestionController {
 
     private final AiInterviewQuestionService aiInterviewQuestionService;
+    private final AiRateLimiterService rateLimiterService;
 
     @PostMapping("/generate")
     @PreAuthorize("hasAnyRole('HR', 'MENTOR', 'ADMIN') or hasAuthority('AI_INTERVIEW_MANAGE')")
@@ -31,8 +33,12 @@ public class AiInterviewQuestionController {
             @RequestHeader(value = "X-User-Name", required = false, defaultValue = "HR/Mentor") String userName,
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
     ) {
-        log.info("REST request to generate interview questions: programId={}, internId={}, role={}",
-                request.getProgramId(), request.getInternId(), request.getTargetRole());
+        log.info("REST request to generate interview questions: programId={}, internId={}, role={}, requester={}",
+                request.getProgramId(), request.getInternId(), request.getTargetRole(), userId);
+        
+        // AI-12: Kiểm tra Rate Limiting & Quota cho INTERVIEW_GENERATOR (Fail-closed)
+        rateLimiterService.checkFeatureRateLimit("INTERVIEW_GENERATOR", userId);
+
         InterviewQuestionSetResponse response = aiInterviewQuestionService.generateQuestions(
                 request, userId, userName, authHeader);
         return ResponseEntity.ok(response);

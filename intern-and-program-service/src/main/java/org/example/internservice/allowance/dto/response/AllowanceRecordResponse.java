@@ -24,6 +24,7 @@ public class AllowanceRecordResponse {
     private String internEmail;
     private Long contractId;
     private String contractNumber;
+    private String contractStatus;
     private String periodMonth;
 
     private AllowanceCalculationType calculationType;

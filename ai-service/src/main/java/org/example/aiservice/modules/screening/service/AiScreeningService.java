@@ -12,4 +12,9 @@ public interface AiScreeningService {
     BatchJobStatusResponse getBatchJobStatus(String jobId);
 
     ScreeningResultDto getInternEvaluation(Long internId);
+
+    boolean toggleCandidateBookmark(Long programId, Long internId, String createdBy, String notes);
+
+    java.util.List<Long> getBookmarkedInternIds(Long programId);
 }
+

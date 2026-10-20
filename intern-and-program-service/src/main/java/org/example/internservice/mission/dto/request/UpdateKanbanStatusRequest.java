@@ -26,4 +26,6 @@ public class UpdateKanbanStatusRequest {
 
     @Size(max = 2000, message = "Ghi chú hoàn thành không được vượt quá 2000 ký tự")
     private String completionNote;
+
+    private Long version;
 }

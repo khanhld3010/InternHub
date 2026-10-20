@@ -60,13 +60,18 @@ public class AllowanceServiceImpl implements AllowanceService {
         YearMonth ym = YearMonth.parse(periodMonth);
         int standardWorkingDays = WorkingCalendarHelper.calculateStandardWorkingDays(ym.getYear(), ym.getMonthValue());
 
-        List<Contract> activeContracts = contractRepository.findAllByOrderByCreatedAtDesc().stream()
-                .filter(c -> c.getStatus() == DynamicContractStatus.ACTIVE || c.getStatus() == DynamicContractStatus.SIGNED)
+        List<Contract> validContracts = contractRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(c -> c.getStatus() == DynamicContractStatus.ACTIVE 
+                        || c.getStatus() == DynamicContractStatus.SIGNED
+                        || c.getStatus() == DynamicContractStatus.DRAFT
+                        || c.getStatus() == DynamicContractStatus.SENT
+                        || c.getStatus() == DynamicContractStatus.INTERN_CONFIRMED
+                        || c.getStatus() == DynamicContractStatus.WAITING_EFFECTIVE_DATE)
                 .collect(Collectors.toList());
 
         List<AllowanceRecordResponse> previews = new ArrayList<>();
 
-        for (Contract contract : activeContracts) {
+        for (Contract contract : validContracts) {
             InternProfile intern = contract.getInternProfile();
             if (intern == null || intern.getUserId() == null) continue;
 
@@ -89,6 +94,7 @@ public class AllowanceServiceImpl implements AllowanceService {
                     .internEmail(intern.getEmail())
                     .contractId(contract.getId())
                     .contractNumber(contract.getContractNumber())
+                    .contractStatus(contract.getStatus() != null ? contract.getStatus().name() : null)
                     .periodMonth(periodMonth)
                     .calculationType(AllowanceCalculationType.MONTHLY)
                     .baseAllowance(contract.getAllowanceAmount() != null ? contract.getAllowanceAmount() : BigDecimal.ZERO)
@@ -118,13 +124,18 @@ public class AllowanceServiceImpl implements AllowanceService {
         YearMonth ym = YearMonth.parse(periodMonth);
         int standardWorkingDays = WorkingCalendarHelper.calculateStandardWorkingDays(ym.getYear(), ym.getMonthValue());
 
-        List<Contract> activeContracts = contractRepository.findAllByOrderByCreatedAtDesc().stream()
-                .filter(c -> c.getStatus() == DynamicContractStatus.ACTIVE || c.getStatus() == DynamicContractStatus.SIGNED)
+        List<Contract> validContracts = contractRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(c -> c.getStatus() == DynamicContractStatus.ACTIVE 
+                        || c.getStatus() == DynamicContractStatus.SIGNED
+                        || c.getStatus() == DynamicContractStatus.DRAFT
+                        || c.getStatus() == DynamicContractStatus.SENT
+                        || c.getStatus() == DynamicContractStatus.INTERN_CONFIRMED
+                        || c.getStatus() == DynamicContractStatus.WAITING_EFFECTIVE_DATE)
                 .collect(Collectors.toList());
 
         List<InternAllowanceRecord> savedRecords = new ArrayList<>();
 
-        for (Contract contract : activeContracts) {
+        for (Contract contract : validContracts) {
             InternProfile intern = contract.getInternProfile();
             if (intern == null || intern.getUserId() == null) continue;
 
@@ -428,12 +439,31 @@ public class AllowanceServiceImpl implements AllowanceService {
                     .findByInternIdAndWorkDateBetweenOrderByWorkDateAsc(intern.getId(), effectiveStart, effectiveEnd);
 
             actualDays = (int) attendances.stream()
-                    .filter(a -> a.getCheckInTime() != null && a.getStatus() != AttendanceStatus.ABSENT)
+                    .filter(a -> a.getCheckInTime() != null 
+                            && a.getStatus() != AttendanceStatus.ABSENT 
+                            && (a.getStatus() != AttendanceStatus.FORGOTTEN_CHECKOUT || (a.getTotalWorkingHours() != null && a.getTotalWorkingHours() > 0.0)))
                     .count();
         }
 
         // Tinh ngay nghi phep hop le trong khoang hieu luc hop dong
-        int paidLeaveDays = 0; // Se lay them tu LeaveRequestRepository neu co don approved trong khoang nay
+        int paidLeaveDays = 0;
+        if (!effectiveStart.isAfter(effectiveEnd)) {
+            List<org.example.internservice.leave.entity.LeaveRequest> approvedLeaves = 
+                    leaveRequestRepository.findApprovedLeavesBetween(intern.getId(), effectiveStart, effectiveEnd);
+
+            for (org.example.internservice.leave.entity.LeaveRequest leave : approvedLeaves) {
+                LocalDate leaveStart = leave.getStartDate().isBefore(effectiveStart) ? effectiveStart : leave.getStartDate();
+                LocalDate leaveEnd = leave.getEndDate().isAfter(effectiveEnd) ? effectiveEnd : leave.getEndDate();
+                
+                // Đếm số ngày làm việc thực tế (trừ T7, CN) trong khoảng nghỉ phép
+                for (LocalDate date = leaveStart; !date.isAfter(leaveEnd); date = date.plusDays(1)) {
+                    java.time.DayOfWeek dow = date.getDayOfWeek();
+                    if (dow != java.time.DayOfWeek.SATURDAY && dow != java.time.DayOfWeek.SUNDAY) {
+                        paidLeaveDays++;
+                    }
+                }
+            }
+        }
 
         BigDecimal base = contract.getAllowanceAmount() != null ? contract.getAllowanceAmount() : BigDecimal.ZERO;
         BigDecimal dailyRate = standardWorkingDays > 0
@@ -462,6 +492,7 @@ public class AllowanceServiceImpl implements AllowanceService {
                 .internEmail(r.getInternProfile() != null ? r.getInternProfile().getEmail() : null)
                 .contractId(r.getContract() != null ? r.getContract().getId() : null)
                 .contractNumber(r.getContract() != null ? r.getContract().getContractNumber() : null)
+                .contractStatus(r.getContract() != null && r.getContract().getStatus() != null ? r.getContract().getStatus().name() : null)
                 .periodMonth(r.getPeriodMonth())
                 .calculationType(r.getCalculationType())
                 .baseAllowance(r.getBaseAllowance())

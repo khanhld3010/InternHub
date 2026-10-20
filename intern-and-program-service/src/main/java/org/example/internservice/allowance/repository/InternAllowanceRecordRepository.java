@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,4 +33,7 @@ public interface InternAllowanceRecordRepository extends JpaRepository<InternAll
     @Query("SELECT COUNT(r) FROM InternAllowanceRecord r " +
            "WHERE r.periodMonth = :periodMonth AND r.status != 'DRAFT'")
     long countLockedRecordsInPeriod(@Param("periodMonth") String periodMonth);
+
+    boolean existsByInternProfileIdAndPeriodMonthAndStatusIn(
+            Long internProfileId, String periodMonth, Collection<AllowanceStatus> statuses);
 }

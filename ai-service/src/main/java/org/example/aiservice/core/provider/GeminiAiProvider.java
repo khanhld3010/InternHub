@@ -15,13 +15,12 @@ import org.example.aiservice.modules.screening.dto.response.ScreeningResultDto;
 import org.example.aiservice.modules.screening.enums.AiRecommendation;
 import org.example.aiservice.security.AesGcmEncryptionUtil;
 import org.example.aiservice.service.AiConfigAdminService;
+import org.example.aiservice.service.AiPromptTemplateService;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 @Slf4j
 @Component
@@ -32,6 +31,7 @@ public class GeminiAiProvider implements AiProvider {
     private final AiConfigAdminService configAdminService;
     private final AesGcmEncryptionUtil encryptionUtil;
     private final ObjectMapper objectMapper;
+    private final AiPromptTemplateService promptTemplateService;
 
     @Override
     public ScreeningResultDto evaluateCandidate(
@@ -62,7 +62,15 @@ public class GeminiAiProvider implements AiProvider {
         }
 
         try {
-            String prompt = buildPrompt(cvText, candidateInfoJson, programCriteriaJson, rulesJson);
+            Map<String, Object> promptVars = new HashMap<>();
+            promptVars.put("rulesJson", rulesJson != null ? rulesJson : "{}");
+            promptVars.put("programCriteriaJson", programCriteriaJson != null ? programCriteriaJson : "{}");
+            promptVars.put("candidateInfoJson", candidateInfoJson != null ? candidateInfoJson : "{}");
+            promptVars.put("cvText", (cvText != null && !cvText.isBlank()) ? cvText : "(Không có nội dung CV hoặc file rỗng)");
+
+            String fallbackPrompt = buildPrompt(cvText, candidateInfoJson, programCriteriaJson, rulesJson);
+            String prompt = promptTemplateService.getResolvedPrompt("SCREENING_USER_PROMPT", promptVars, fallbackPrompt);
+
             String systemInstruction = "Bạn là chuyên gia thẩm định hồ sơ tuyển dụng nhân sự (Senior HR Technical Recruiter). " +
                     "Hãy phân tích và trả về DUY NHẤT một chuỗi JSON chuẩn 100%, không bọc trong markdown block.";
 

@@ -1,5 +1,7 @@
 package org.example.employeeservice.service;
 
+import org.example.employeeservice.dto.request.UpdateProfileRequest;
+import org.example.employeeservice.dto.request.UpdateUserProfileRequest;
 import org.example.employeeservice.dto.response.UserResponse;
 import org.example.employeeservice.entity.User;
 
@@ -17,9 +19,9 @@ public interface UserService {
 
     UserResponse toggleUserStatus(Integer id);
 
-    UserResponse updateCurrentUserProfile(String username, org.example.employeeservice.dto.request.UpdateUserProfileRequest request);
+    UserResponse updateCurrentUserProfile(String username, UpdateUserProfileRequest request);
     UserResponse getUserByUsername(String username);
     UserResponse getCurrentUserProfile(String username);
 
-    UserResponse updateOwnProfile(String username, org.example.employeeservice.dto.request.UpdateProfileRequest request);
+    UserResponse updateOwnProfile(String username, UpdateProfileRequest request);
 }
