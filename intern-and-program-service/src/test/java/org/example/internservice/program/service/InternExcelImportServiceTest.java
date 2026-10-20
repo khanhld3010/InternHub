@@ -5,6 +5,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.intern.entity.InternProfile;
+import org.example.internservice.intern.entity.enums.CandidateType;
 import org.example.internservice.intern.entity.enums.Gender;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternProfileRepository;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -222,7 +224,11 @@ class InternExcelImportServiceTest {
         assertThat(result.getImportedInternCodes()).hasSize(2);
         assertThat(result.getImportedInternCodes().get(0)).contains("INT-");
 
-        verify(internProfileRepository).saveAll(anyList());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<InternProfile>> captor = ArgumentCaptor.forClass(List.class);
+        verify(internProfileRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).isNotEmpty();
+        assertThat(captor.getValue()).allMatch(p -> p.getCandidateType() == CandidateType.UNIVERSITY);
         verify(programRepository).save(sampleProgram);
     }
 

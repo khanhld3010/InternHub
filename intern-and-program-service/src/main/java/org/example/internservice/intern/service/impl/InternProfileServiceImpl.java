@@ -66,6 +66,7 @@ public class InternProfileServiceImpl implements InternProfileService {
     private final ApplicationEventPublisher eventPublisher;
     private final org.example.internservice.intern.client.NotificationEventDispatcher notificationDispatcher;
     private final org.example.internservice.intern.service.MentorAccessHelper mentorAccessHelper;
+    private final org.example.internservice.intern.repository.InternDocumentRepository internDocumentRepository;
 
     @Override
     @Transactional
@@ -430,22 +431,39 @@ public class InternProfileServiceImpl implements InternProfileService {
 
     private synchronized String generateInternCode() {
         String yearMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
-        LocalDateTime startOfMonth = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        LocalDateTime endOfMonth = startOfMonth.plusMonths(1).minusNanos(1);
+        String maxCode = internProfileRepository.findMaxInternCodeByYearMonth(yearMonth);
+        long nextSequence = 1;
 
-        long count = internProfileRepository.countByCreatedAtBetween(startOfMonth, endOfMonth) + 1;
-        String candidateCode = String.format("INT-%s-%04d", yearMonth, count);
-
-        // Đảm bảo không đụng độ mã trong môi trường đa luồng / phân tán
-        while (internProfileRepository.existsByInternCode(candidateCode)) {
-            count++;
-            candidateCode = String.format("INT-%s-%04d", yearMonth, count);
+        if (maxCode != null && maxCode.length() >= 16) {
+            try {
+                String seqStr = maxCode.substring(maxCode.lastIndexOf('-') + 1);
+                nextSequence = Long.parseLong(seqStr) + 1;
+            } catch (NumberFormatException e) {
+                log.warn("Không thể parse sequence từ max internCode {}: {}", maxCode, e.getMessage());
+            }
+        } else {
+            LocalDateTime startOfMonth = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+            LocalDateTime endOfMonth = startOfMonth.plusMonths(1).minusNanos(1);
+            nextSequence = internProfileRepository.countByCreatedAtBetween(startOfMonth, endOfMonth) + 1;
         }
 
+        String candidateCode = String.format("INT-%s-%04d", yearMonth, nextSequence);
+        while (internProfileRepository.findByInternCode(candidateCode).isPresent() || internProfileRepository.existsByInternCode(candidateCode)) {
+            nextSequence++;
+            candidateCode = String.format("INT-%s-%04d", yearMonth, nextSequence);
+        }
         return candidateCode;
     }
 
     private InternResponse mapToResponse(InternProfile profile) {
+        boolean hasCv = profile.getId() != null && internDocumentRepository.existsByInternProfileIdAndDocumentType(
+                profile.getId(),
+                org.example.internservice.intern.entity.enums.DocumentType.CV
+        );
+        return mapToResponse(profile, hasCv);
+    }
+
+    private InternResponse mapToResponse(InternProfile profile, Boolean hasCv) {
         return InternResponse.builder()
                 .id(profile.getId())
                 .userId(profile.getUserId())
@@ -486,6 +504,7 @@ public class InternProfileServiceImpl implements InternProfileService {
                 .mentorReassignmentReason(profile.getMentorReassignmentReason())
                 .groupId(profile.getGroup() != null ? profile.getGroup().getId() : null)
                 .groupName(profile.getGroup() != null ? profile.getGroup().getName() : null)
+                .hasCv(hasCv != null ? hasCv : false)
                 .createdAt(profile.getCreatedAt())
                 .updatedAt(profile.getUpdatedAt())
                 .build();
@@ -959,8 +978,15 @@ public class InternProfileServiceImpl implements InternProfileService {
 
         Specification<InternProfile> spec = InternProfileSpecification.getSpecification(request, enforceInternIds);
         Page<InternProfile> internPage = internProfileRepository.findAll(spec, sanitizedPageable);
-        return PageResponse.from(internPage, this::mapToResponse);
 
+        java.util.List<Long> internIds = internPage.getContent().stream().map(InternProfile::getId).toList();
+        Set<Long> internIdsWithCv = internIds.isEmpty() ? Set.of() :
+                internDocumentRepository.findInternProfileIdsWithDocumentType(
+                        internIds,
+                        org.example.internservice.intern.entity.enums.DocumentType.CV
+                );
+
+        return PageResponse.from(internPage, profile -> mapToResponse(profile, internIdsWithCv.contains(profile.getId())));
     }
 
     private Pageable sanitizePageable(Pageable pageable) {
@@ -993,10 +1019,40 @@ public class InternProfileServiceImpl implements InternProfileService {
 
     @Override
     public InternResponse getMyProfileByUserId(Long userId) {
-        log.info("Lấy thông tin hồ sơ cho userId: {}", userId);
-        return internProfileRepository.findByUserId(userId)
-                .map(this::mapToResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh liên kết với tài khoản người dùng ID: " + userId));
+        return getMyProfileByUserId(userId, null);
+    }
+
+    @Override
+    public InternResponse getMyProfileByUserId(Long userId, Long programId) {
+        log.info("Lấy thông tin hồ sơ cho userId: {}, programId: {}", userId, programId);
+        InternProfile profile;
+        if (programId != null) {
+            profile = internProfileRepository.findByUserIdAndProgramId(userId, programId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh cho kỳ thực tập ID: " + programId));
+        } else {
+            profile = internProfileRepository.findByUserId(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh liên kết với tài khoản người dùng ID: " + userId));
+        }
+        log.info("Đã chọn hồ sơ cho userId: {} -> id: {}, internCode: {}, status: {}, programId: {}",
+                userId, profile.getId(), profile.getInternCode(), profile.getStatus(), profile.getProgram() != null ? profile.getProgram().getId() : null);
+        return mapToResponse(profile);
+    }
+
+    @Override
+    public List<InternResponse> getMyProfiles(Long userId) {
+        log.info("Lấy danh sách toàn bộ hồ sơ các kỳ thực tập của userId: {}", userId);
+        List<InternProfile> profiles = internProfileRepository.findAllByUserIdOrderByIdDesc(userId);
+        if (profiles.isEmpty()) {
+            return List.of();
+        }
+        List<Long> internIds = profiles.stream().map(InternProfile::getId).toList();
+        Set<Long> internIdsWithCv = internDocumentRepository.findInternProfileIdsWithDocumentType(
+                internIds,
+                org.example.internservice.intern.entity.enums.DocumentType.CV
+        );
+        return profiles.stream()
+                .map(p -> mapToResponse(p, internIdsWithCv.contains(p.getId())))
+                .toList();
     }
 
     @Override
@@ -1049,11 +1105,12 @@ public class InternProfileServiceImpl implements InternProfileService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public InternResponse getInternById(Long id) {
-        log.info("Lấy thông tin chi tiết hồ sơ thực tập sinh với ID: {}", id);
-        return internProfileRepository.findById(id)
-                .map(this::mapToResponse)
+        log.info("Lấy thông tin chi tiết hồ sơ thực tập sinh ID: {}", id);
+        InternProfile profile = internProfileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với ID: " + id));
+        return mapToResponse(profile);
     }
 }
 

@@ -4,6 +4,8 @@ import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.InternStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -31,15 +33,34 @@ public interface InternProfileRepository extends JpaRepository<InternProfile, Lo
 
     boolean existsByPhoneAndProgramIdAndStatusIn(String phone, Long programId, List<InternStatus> statuses);
 
-    Optional<InternProfile> findByUserId(Long userId);
-
     List<InternProfile> findAllByUserId(Long userId);
+
+    List<InternProfile> findAllByUserIdOrderByIdDesc(Long userId);
+
+    Optional<InternProfile> findByUserIdAndProgramId(Long userId, Long programId);
+
+    default Optional<InternProfile> findByUserId(Long userId) {
+        if (userId == null) {
+            return Optional.empty();
+        }
+        List<InternProfile> list = findAllByUserIdOrderByIdDesc(userId);
+        if (list.isEmpty()) {
+            return Optional.empty();
+        }
+        return list.stream()
+                .filter(p -> p.getStatus() == InternStatus.INTERNING)
+                .findFirst()
+                .or(() -> Optional.of(list.get(0)));
+    }
 
     Optional<InternProfile> findByInternCode(String internCode);
 
     Optional<InternProfile> findFirstByEmailOrderByCreatedAtDesc(String email);
 
     boolean existsByInternCode(String internCode);
+
+    @Query("SELECT MAX(i.internCode) FROM InternProfile i WHERE i.internCode LIKE CONCAT('INT-', :yearMonth, '-%')")
+    String findMaxInternCodeByYearMonth(@Param("yearMonth") String yearMonth);
 
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 

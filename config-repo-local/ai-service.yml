@@ -60,6 +60,10 @@ app:
     url: http://${NOTIFICATION_SERVICE_HOST:notification-service}:8085
     internal-token: ${INTERNAL_SERVICE_TOKEN:internhub-internal-secret-token-2026}
 
+services:
+  intern-service:
+    url: http://${INTERN_SERVICE_HOST:intern-and-program-service}:8082
+
 # AI-20: Resilience4j Circuit Breaker & TimeLimiter Configuration
 resilience4j:
   circuitbreaker:
@@ -84,4 +88,3 @@ resilience4j:
       geminiClient:
         timeout-duration: 15000ms
         cancel-running-future: true
-

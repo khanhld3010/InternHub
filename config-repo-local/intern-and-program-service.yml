@@ -38,6 +38,10 @@ app:
   storage:
     support-docs-dir: ${SUPPORT_DOCS_DIR:/uploads/support-documents}
 
+services:
+  ai-service:
+    url: ${AI_SERVICE_URL:http://service-ai:8086}
+
 eureka:
   client:
     service-url:
