@@ -533,7 +533,8 @@ class AttendanceServiceImplTest {
 
         assertTrue(ex.getMessage().contains("Chỉ thực tập sinh đang trong giai đoạn thực tập chính thức (INTERNING) mới được phép thực hiện chấm công"));
     }
-=======
+
+    @Test
     @DisplayName("Check-in ca chiều khi có đơn nghỉ phép nửa ngày sáng MORNING hợp lệ không bị phạt LATE")
     void confirmCheckIn_withApprovedMorningLeave_checkInAfternoon_markedOnTime() {
         CheckInConfirmRequest request = CheckInConfirmRequest.builder()
