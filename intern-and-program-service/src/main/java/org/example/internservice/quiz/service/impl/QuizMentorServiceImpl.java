@@ -56,6 +56,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -107,6 +108,7 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public QuizGenerationJobResponse startAsyncAiQuiz(GenerateAiQuizRequest request, CustomUserDetails userDetails) {
         verifyMentorAccess(request.getProgramId(), userDetails);
 
@@ -148,6 +150,7 @@ public class QuizMentorServiceImpl implements QuizMentorService {
 
     @Override
     @Async("quizAiTaskExecutor")
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void executeAsyncAiQuiz(String jobId, GenerateAiQuizRequest request, CustomUserDetails userDetails) {
         log.info("Bắt đầu thực thi đa luồng tiến trình sinh Quiz AI: jobId={}", jobId);
         QuizGenerationJobResponse jobStatus = loadJobState(jobId);
@@ -212,7 +215,7 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public QuizDetailResponse generateAiQuiz(GenerateAiQuizRequest request, CustomUserDetails userDetails) {
         log.info("Mentor yêu cầu AI sinh bài Quiz cho Program ID: {}, Group ID: {}, Week: {}",
                 request.getProgramId(), request.getGroupId(), request.getWeekNumber());
