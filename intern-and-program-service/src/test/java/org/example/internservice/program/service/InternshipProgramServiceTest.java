@@ -27,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
@@ -173,6 +174,92 @@ class InternshipProgramServiceTest {
         assertThat(response.getIsHistorical()).isTrue();
         assertThat(response.getCurrentInterns()).isEqualTo(8L);
     }
+
+    @Test
+    @DisplayName("Tự phục hồi (Self-Healing): Tự động đồng bộ lên mã lớn nhất khi sequence bị tụt hậu")
+    void createProgram_SelfHealing_WhenSequenceIsBehindActualMaxInDb() {
+        LocalDate startDate = LocalDate.now().plusDays(1);
+        LocalDate endDate = startDate.plusDays(30);
+        String yearMonth = startDate.format(DateTimeFormatter.ofPattern("yyyyMM"));
+
+        CreateProgramRequest request = CreateProgramRequest.builder()
+                .name("Chương trình Self Healing")
+                .departmentId(1L)
+                .startDate(startDate)
+                .endDate(endDate)
+                .maxInterns(20)
+                .isHistorical(false)
+                .build();
+
+        ProgramCodeSequence laggingSeq = ProgramCodeSequence.builder()
+                .yearMonth(yearMonth)
+                .currentSeq(12L) // Bảng sequence đang tụt hậu ở 12
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(devDepartment));
+        when(sequenceRepository.findByYearMonthWithLock(yearMonth)).thenReturn(Optional.of(laggingSeq));
+        when(programRepository.findMaxProgramCodeByYearMonth(yearMonth)).thenReturn(String.format("PRG-%s-0017", yearMonth)); // DB thực tế đã có tới 17
+        when(programRepository.existsByProgramCode(any())).thenReturn(false);
+        when(programRepository.save(any(InternshipProgram.class))).thenAnswer(invocation -> {
+            InternshipProgram p = invocation.getArgument(0);
+            p.setId(103L);
+            return p;
+        });
+
+        ProgramDetailResponse response = programService.createProgram(request, "hr_test");
+
+        assertThat(response).isNotNull();
+        // Kỳ vọng tự động vượt qua 12 và 17 để sinh mã 0018
+        assertThat(response.getProgramCode()).isEqualTo(String.format("PRG-%s-0018", yearMonth));
+        assertThat(laggingSeq.getCurrentSeq()).isEqualTo(18L);
+    }
+
+    @Test
+    @DisplayName("Tự phục hồi (Self-Healing): Bỏ qua mã nếu mã candidateCode đã tồn tại ngắt quãng")
+    void createProgram_SelfHealing_WhenCandidateCodeAlreadyExists_ShouldAdvance() {
+        LocalDate startDate = LocalDate.now().plusDays(1);
+        LocalDate endDate = startDate.plusDays(30);
+        String yearMonth = startDate.format(DateTimeFormatter.ofPattern("yyyyMM"));
+
+        CreateProgramRequest request = CreateProgramRequest.builder()
+                .name("Chương trình Self Healing Gap")
+                .departmentId(1L)
+                .startDate(startDate)
+                .endDate(endDate)
+                .maxInterns(20)
+                .isHistorical(false)
+                .build();
+
+        ProgramCodeSequence seq = ProgramCodeSequence.builder()
+                .yearMonth(yearMonth)
+                .currentSeq(17L)
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        String code0018 = String.format("PRG-%s-0018", yearMonth);
+        String code0019 = String.format("PRG-%s-0019", yearMonth);
+
+        when(departmentRepository.findById(1L)).thenReturn(Optional.of(devDepartment));
+        when(sequenceRepository.findByYearMonthWithLock(yearMonth)).thenReturn(Optional.of(seq));
+        when(programRepository.findMaxProgramCodeByYearMonth(yearMonth)).thenReturn(String.format("PRG-%s-0017", yearMonth));
+        // Giả lập mã PRG-yyyyMM-0018 đã tồn tại ngắt quãng, nhưng 0019 chưa có
+        when(programRepository.existsByProgramCode(code0018)).thenReturn(true);
+        when(programRepository.existsByProgramCode(code0019)).thenReturn(false);
+        when(programRepository.save(any(InternshipProgram.class))).thenAnswer(invocation -> {
+            InternshipProgram p = invocation.getArgument(0);
+            p.setId(104L);
+            return p;
+        });
+
+        ProgramDetailResponse response = programService.createProgram(request, "hr_test");
+
+        assertThat(response).isNotNull();
+        // Kỳ vọng tự động bỏ qua 0018 và cấp 0019
+        assertThat(response.getProgramCode()).isEqualTo(code0019);
+        assertThat(seq.getCurrentSeq()).isEqualTo(19L);
+    }
+
 
     @Test
     @DisplayName("Cập nhật chương trình ONGOING: Ném BadRequest nếu cố tình sửa startDate")

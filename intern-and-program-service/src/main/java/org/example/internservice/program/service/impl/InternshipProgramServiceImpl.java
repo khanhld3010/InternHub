@@ -153,12 +153,39 @@ public class InternshipProgramServiceImpl implements InternshipProgramService {
                         .updatedAt(LocalDateTime.now())
                         .build());
 
-        long nextSeq = seqEntity.getCurrentSeq() + 1;
+        long currentSeq = seqEntity.getCurrentSeq() != null ? seqEntity.getCurrentSeq() : 0L;
+
+        // Self-Healing: Đối soát mã lớn nhất thực tế đang có trong bảng internship_programs
+        String maxCode = programRepository.findMaxProgramCodeByYearMonth(yearMonth);
+        if (maxCode != null && maxCode.length() >= 15) {
+            try {
+                String seqStr = maxCode.substring(maxCode.lastIndexOf('-') + 1);
+                long maxActualSeq = Long.parseLong(seqStr);
+                if (maxActualSeq > currentSeq) {
+                    log.info("Phát hiện sequence tụt hậu cho tháng {}: currentSeq={}, maxActualSeq={}. Thực hiện đồng bộ tự phục hồi.",
+                            yearMonth, currentSeq, maxActualSeq);
+                    currentSeq = maxActualSeq;
+                }
+            } catch (NumberFormatException | IndexOutOfBoundsException e) {
+                log.warn("Không thể parse sequence từ max programCode {}: {}", maxCode, e.getMessage());
+            }
+        }
+
+        long nextSeq = currentSeq + 1;
+        String candidateCode = String.format("PRG-%s-%04d", yearMonth, nextSeq);
+
+        // Vòng lặp phòng thủ chiều sâu: Bỏ qua mã nếu đã vô tình tồn tại trong cơ sở dữ liệu
+        while (programRepository.existsByProgramCode(candidateCode)) {
+            log.warn("Mã chương trình {} đã tồn tại, tự động tăng sequence để tránh xung đột", candidateCode);
+            nextSeq++;
+            candidateCode = String.format("PRG-%s-%04d", yearMonth, nextSeq);
+        }
+
         seqEntity.setCurrentSeq(nextSeq);
         seqEntity.setUpdatedAt(LocalDateTime.now());
         sequenceRepository.save(seqEntity);
 
-        return String.format("PRG-%s-%04d", yearMonth, nextSeq);
+        return candidateCode;
     }
 
     @Override
