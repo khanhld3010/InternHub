@@ -16,6 +16,7 @@
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **v1.0** | 2026-10-14 | AI Senior Backend Pair-Programmer & User | `TM-104` | Khởi tạo Đặc Tả Kỹ Thuật | Khởi tạo tài liệu đặc tả 14 phần chuẩn hóa cho phân hệ Quiz AI. Kết hợp nguồn dữ liệu báo cáo tuần (`learnings_and_knowledge`) với Google Gemini Structured Output, hỗ trợ trắc nghiệm đơn/đa lựa chọn, cấu hình số lần làm bài (`maxAttempts`), tự động chấm điểm tức thì và đồng bộ thẻ nhiệm vụ Kanban. |
 | **v1.1** | 2026-10-14 | AI Senior Backend Pair-Programmer & User | `TM-104` | Cập nhật quy tắc bảo mật đáp án | Bổ sung ràng buộc bảo mật: Bài Quiz bắt buộc phải hoàn thành nộp bài trước (trạng thái `SUBMITTED` hoặc `TIMED_OUT`), hệ thống mới mở khóa và hiển thị đáp án đúng (`correctOptionIds`) cùng lời giải thích chi tiết (`explanation`). |
+| **v1.2** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Tái cấu trúc tích hợp Kanban Task Modal | Hợp nhất luồng tạo đề Quiz AI vào trực tiếp Modal Giao Việc Kanban (`MissionItemModal`). Mentor bấm nút tạo câu hỏi để mở form cấu hình (số câu, độ khó, chủ đề bám theo task), hệ thống tổng hợp prompt template chuẩn gửi Gemini AI, liên kết bài Quiz với Task Kanban và phân công tự động cho TTS phụ trách. Mở quyền `/api/ai/quiz/**` trong `ai-service` cho FeignClient nội bộ. |
 
 ---
 
@@ -51,16 +52,20 @@
 
 1. **Phân hệ `ServiceAI` (Port 8086):**
    - Bổ sung Prompt Template và JSON Schema cho chức năng sinh đề thi trắc nghiệm (`SINGLE_CHOICE` và `MULTIPLE_CHOICE`).
-   - Endpoint nội bộ: `POST /api/ai/quiz/generate` nhận thông tin ngữ cảnh (chủ đề, kiến thức báo cáo tuần, số lượng câu, độ khó).
+   - Endpoint nội bộ: `POST /api/ai/quiz/generate` nhận thông tin ngữ cảnh (chủ đề, kiến thức báo cáo tuần hoặc tiêu đề task Kanban, số lượng câu, độ khó).
+   - Cấu hình bảo mật `SecurityConfig`: Mở quyền `permitAll()` cho route `/api/ai/quiz/**` để FeignClient nội bộ từ `intern-and-program-service` gọi thông suốt mà không phát sinh lỗi 403.
    - Cơ chế Mock Mode (`GEMINI_MOCK_MODE=true`) sinh dữ liệu mẫu giả lập chuẩn xác khi dev/test không có Internet hoặc không có API Key.
 2. **Phân hệ `intern-and-program-service` (Port 8082):**
-   - **Tích hợp FeignClient:** Gọi sang `ServiceAI` truyền ngữ cảnh lấy từ bảng `intern_weekly_reports`.
+   - **Tích hợp FeignClient:** Gọi sang `ServiceAI` truyền ngữ cảnh lấy từ Báo cáo tuần (`InternWeeklyReport`) hoặc từ Tiêu đề công việc Kanban (`MissionItem`).
+   - **Hỗ trợ 2 chế độ sinh đề AI (`POST /api/quizzes/generate-ai`):**
+     - Chế độ 1: Bóc tách kiến thức từ Báo cáo tuần (`groupId` + `weekNumber`).
+     - Chế độ 2: Sinh nhanh theo chủ đề công việc (`topic`), không bắt buộc có nhóm hoặc tuần.
    - **Mô hình dữ liệu Quiz:** Tạo 6 bảng CSDL kế thừa `BaseEntity` (`quizzes`, `quiz_questions`, `quiz_question_options`, `quiz_assignments`, `quiz_submissions`, `quiz_submission_answers`).
    - **Quản lý vòng đời Quiz:** Tạo nháp $\rightarrow$ Cập nhật câu hỏi $\rightarrow$ Xuất bản $\rightarrow$ Lưu trữ.
    - **Cơ chế Phân công (Assignment Engine):**
-     - Giao cho **1 TTS cụ thể**: Tạo 1 bản ghi `quiz_assignments` với `intern_id`.
+     - Giao cho **1 hoặc nhiều TTS cụ thể**: Tạo các bản ghi `quiz_assignments` theo danh sách `internIds` được giao task.
      - Giao cho **1 Nhóm TTS (`InternGroup`)**: Hệ thống tự động quét toàn bộ TTS thuộc nhóm và tạo bản ghi phân công cho từng học viên.
-   - **Đồng bộ Kanban Mission:** Tự động gọi `MissionItemService` tạo thẻ nhiệm vụ `[Quiz]` khi xuất bản bài thi, và cập nhật `COMPLETED` khi học viên làm đạt.
+   - **Đồng bộ Kanban Mission:** Tự động liên kết `quiz_id` với thẻ nhiệm vụ `MissionItem`, và tự động cập nhật `COMPLETED` khi học viên làm đạt điểm qua môn.
    - **Bộ máy Chấm Điểm Tự Động (Auto-grading Engine):** Chấm điểm tức thì, xác định Đạt/Trượt (`passed`), tính điểm cao nhất trong các lượt thi (`attempt_number`).
    - **Bảo mật RBAC:** Kiểm tra chặt chẽ quyền Mentor đối với chương trình thông qua `verifyMentorAccess`, chống IDOR truy cập chéo giữa các chương trình.
 

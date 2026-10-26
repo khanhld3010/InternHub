@@ -49,7 +49,7 @@ public class AiMultiConfigService {
 
     private record ProfilePreset(String name, String desc, String model, BigDecimal temp, int tokens, String sysInstruction) {}
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AiMultiConfigResponse getMultiConfig() {
         AiGlobalConfig global = getOrCreateGlobalConfig();
         List<AiFeatureProfile> profiles = getAllProfilesWithDefaults();
@@ -155,7 +155,7 @@ public class AiMultiConfigService {
                 .build();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TestProfileResponse testProfile(String featureKey, TestProfileRequest request) {
         AiFeatureProfile profile = getProfileOrDefault(featureKey);
         if (!Boolean.TRUE.equals(profile.getIsActive())) {
