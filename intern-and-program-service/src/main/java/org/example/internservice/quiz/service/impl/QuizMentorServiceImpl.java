@@ -50,16 +50,23 @@ import org.example.internservice.quiz.repository.QuizQuestionRepository;
 import org.example.internservice.quiz.repository.QuizRepository;
 import org.example.internservice.quiz.repository.QuizSubmissionRepository;
 import org.example.internservice.quiz.service.QuizMentorService;
+import org.example.internservice.quiz.dto.response.QuizGenerationJobResponse;
 import org.example.internservice.security.CustomUserDetails;
+import org.springframework.context.ApplicationContext;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -80,6 +87,129 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     private final ProgramMentorRepository programMentorRepository;
     private final AiServiceClient aiServiceClient;
     private final QuizKanbanSyncHelper kanbanSyncHelper;
+    private final ApplicationContext applicationContext;
+
+    private final Map<String, QuizGenerationJobResponse> jobStateMap = new ConcurrentHashMap<>();
+
+    private void saveJobState(String jobId, QuizGenerationJobResponse status) {
+        jobStateMap.put(jobId, status);
+    }
+
+    private QuizGenerationJobResponse loadJobState(String jobId) {
+        return jobStateMap.get(jobId);
+    }
+
+    private void updateJobStage(String jobId, QuizGenerationJobResponse job, int percent, String stage) {
+        job.setPercent(percent);
+        job.setCurrentStage(stage);
+        job.setUpdatedAt(LocalDateTime.now());
+        saveJobState(jobId, job);
+    }
+
+    @Override
+    public QuizGenerationJobResponse startAsyncAiQuiz(GenerateAiQuizRequest request, CustomUserDetails userDetails) {
+        verifyMentorAccess(request.getProgramId(), userDetails);
+
+        String jobId = "job-quiz-" + UUID.randomUUID().toString().substring(0, 8);
+        log.info("Khởi tạo tác vụ sinh Quiz AI async: jobId={}, programId={}, topic={}",
+                jobId, request.getProgramId(), request.getTopic());
+
+        QuizGenerationJobResponse initialStatus = QuizGenerationJobResponse.builder()
+                .jobId(jobId)
+                .programId(request.getProgramId())
+                .topic(request.getTopic())
+                .difficulty(request.getDifficulty() != null ? request.getDifficulty().name() : null)
+                .questionCount(request.getQuestionCount())
+                .status("PROCESSING")
+                .percent(0)
+                .currentStage("Đang khởi tạo tiến trình sinh bài Quiz AI...")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        saveJobState(jobId, initialStatus);
+
+        // Kích hoạt xử lý đa luồng chạy nền không chặn luồng chính
+        QuizMentorService asyncService = null;
+        try {
+            asyncService = applicationContext.getBean(QuizMentorService.class);
+        } catch (Exception e) {
+            log.warn("Không thể lấy QuizMentorService từ ApplicationContext: {}", e.getMessage());
+        }
+
+        if (asyncService != null) {
+            asyncService.executeAsyncAiQuiz(jobId, request, userDetails);
+        } else {
+            executeAsyncAiQuiz(jobId, request, userDetails);
+        }
+
+        return initialStatus;
+    }
+
+    @Override
+    @Async("quizAiTaskExecutor")
+    public void executeAsyncAiQuiz(String jobId, GenerateAiQuizRequest request, CustomUserDetails userDetails) {
+        log.info("Bắt đầu thực thi đa luồng tiến trình sinh Quiz AI: jobId={}", jobId);
+        QuizGenerationJobResponse jobStatus = loadJobState(jobId);
+        if (jobStatus == null) return;
+
+        try {
+            // Stage 1 (25%): Phân tích chủ đề & cấu trúc bài kiểm tra
+            updateJobStage(jobId, jobStatus, 25, "Đang phân tích chủ đề & cấu trúc bài kiểm tra...");
+
+            // Stage 2 (60%): Gemini AI biên soạn câu hỏi & giải thích đáp án
+            int qCount = (request.getQuestionCount() != null && request.getQuestionCount() > 0)
+                    ? request.getQuestionCount() : 5;
+            updateJobStage(jobId, jobStatus, 60, "Gemini AI đang biên soạn " + qCount + " câu hỏi trắc nghiệm & giải thích đáp án...");
+
+            // Tái sử dụng 100% logic sinh câu hỏi và lưu CSDL của generateAiQuiz
+            QuizMentorService proxyService = null;
+            try {
+                proxyService = applicationContext.getBean(QuizMentorService.class);
+            } catch (Exception e) {
+                log.warn("Không thể lấy proxyService từ ApplicationContext: {}", e.getMessage());
+            }
+
+            QuizDetailResponse detailResponse = (proxyService != null)
+                    ? proxyService.generateAiQuiz(request, userDetails)
+                    : generateAiQuiz(request, userDetails);
+
+            // Stage 3 (85%): Chuẩn hóa dữ liệu & lưu trữ bài Quiz
+            updateJobStage(jobId, jobStatus, 85, "Đang chuẩn hóa dữ liệu và hoàn tất bài Quiz...");
+
+            // Stage 4 (100%): Hoàn tất! Bài trắc nghiệm đã sẵn sàng
+            jobStatus.setStatus("COMPLETED");
+            jobStatus.setPercent(100);
+            jobStatus.setCurrentStage("Hoàn tất! Bài trắc nghiệm đã sẵn sàng.");
+            jobStatus.setQuizId(detailResponse.getId());
+            jobStatus.setResult(detailResponse);
+            jobStatus.setUpdatedAt(LocalDateTime.now());
+            saveJobState(jobId, jobStatus);
+            log.info("Hoàn tất tiến trình sinh Quiz AI thành công: jobId={}, quizId={}", jobId, detailResponse.getId());
+
+        } catch (Exception e) {
+            log.error("Lỗi trong quá trình thực thi async sinh Quiz: jobId={}, error={}", jobId, e.getMessage(), e);
+            jobStatus.setStatus("FAILED");
+            jobStatus.setPercent(100);
+            jobStatus.setErrorMessage(e.getMessage());
+            jobStatus.setCurrentStage("Quá trình sinh bài Quiz thất bại: " + e.getMessage());
+            jobStatus.setUpdatedAt(LocalDateTime.now());
+            saveJobState(jobId, jobStatus);
+        }
+    }
+
+    @Override
+    public QuizGenerationJobResponse getAiQuizJobStatus(String jobId) {
+        QuizGenerationJobResponse job = loadJobState(jobId);
+        if (job == null) {
+            return QuizGenerationJobResponse.builder()
+                    .jobId(jobId)
+                    .status("NOT_FOUND")
+                    .currentStage("Không tìm thấy tiến trình")
+                    .build();
+        }
+        return job;
+    }
 
     @Override
     @Transactional

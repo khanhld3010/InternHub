@@ -17,6 +17,7 @@
 | **v1.0** | 2026-10-14 | AI Senior Backend Pair-Programmer & User | `TM-104` | Khởi tạo Đặc Tả Kỹ Thuật | Khởi tạo tài liệu đặc tả 14 phần chuẩn hóa cho phân hệ Quiz AI. Kết hợp nguồn dữ liệu báo cáo tuần (`learnings_and_knowledge`) với Google Gemini Structured Output, hỗ trợ trắc nghiệm đơn/đa lựa chọn, cấu hình số lần làm bài (`maxAttempts`), tự động chấm điểm tức thì và đồng bộ thẻ nhiệm vụ Kanban. |
 | **v1.1** | 2026-10-14 | AI Senior Backend Pair-Programmer & User | `TM-104` | Cập nhật quy tắc bảo mật đáp án | Bổ sung ràng buộc bảo mật: Bài Quiz bắt buộc phải hoàn thành nộp bài trước (trạng thái `SUBMITTED` hoặc `TIMED_OUT`), hệ thống mới mở khóa và hiển thị đáp án đúng (`correctOptionIds`) cùng lời giải thích chi tiết (`explanation`). |
 | **v1.2** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Tái cấu trúc tích hợp Kanban Task Modal | Hợp nhất luồng tạo đề Quiz AI vào trực tiếp Modal Giao Việc Kanban (`MissionItemModal`). Mentor bấm nút tạo câu hỏi để mở form cấu hình (số câu, độ khó, chủ đề bám theo task), hệ thống tổng hợp prompt template chuẩn gửi Gemini AI, liên kết bài Quiz với Task Kanban và phân công tự động cho TTS phụ trách. Mở quyền `/api/ai/quiz/**` trong `ai-service` cho FeignClient nội bộ. |
+| **v1.3** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Kiến Trúc Đa Luồng Bất Đồng Bộ (Async Non-blocking) & Polling Job tương tự TM-103 | Tách luồng sinh bài Quiz AI sang Thread Pool bất đồng bộ `quizAiTaskExecutor` (`@Async`); cung cấp endpoint `POST /api/quizzes/generate-async` trả về HTTP 202 Accepted kèm `jobId` trong `< 30ms`; quản lý tiến độ 4 chặng (25% - 60% - 85% - 100%) qua ConcurrentHashMap/Redis TTL; cung cấp endpoint `GET /api/quizzes/jobs/{jobId}`; loại bỏ hoàn toàn độ trễ blocking 15-20s, bảo đảm không làm gián đoạn thao tác của Mentor khi giao việc Kanban. |
 
 ---
 
@@ -57,9 +58,14 @@
    - Cơ chế Mock Mode (`GEMINI_MOCK_MODE=true`) sinh dữ liệu mẫu giả lập chuẩn xác khi dev/test không có Internet hoặc không có API Key.
 2. **Phân hệ `intern-and-program-service` (Port 8082):**
    - **Tích hợp FeignClient:** Gọi sang `ServiceAI` truyền ngữ cảnh lấy từ Báo cáo tuần (`InternWeeklyReport`) hoặc từ Tiêu đề công việc Kanban (`MissionItem`).
-   - **Hỗ trợ 2 chế độ sinh đề AI (`POST /api/quizzes/generate-ai`):**
+   - **Hỗ trợ 2 chế độ sinh đề AI (`POST /api/quizzes/generate-ai` và `POST /api/quizzes/generate-async`):**
      - Chế độ 1: Bóc tách kiến thức từ Báo cáo tuần (`groupId` + `weekNumber`).
      - Chế độ 2: Sinh nhanh theo chủ đề công việc (`topic`), không bắt buộc có nhóm hoặc tuần.
+   - **Cơ chế Đa luồng Chạy ngầm Bất đồng bộ (Async Non-blocking Job Processing tương tự TM-103):**
+     - Endpoint bất đồng bộ `POST /api/quizzes/generate-async`: Cấp phát mã tác vụ `jobId` (`job-quiz-xxxxxxxx`), phân phối vào Thread Pool `quizAiTaskExecutor` (`@Async`) và phản hồi ngay `HTTP 202 Accepted` trong `< 30ms`.
+     - Quản lý vòng đời tiến độ 4 chặng: `PROCESSING` (25% -> 60% -> 85%) -> `COMPLETED` (100%) hoặc `FAILED`.
+     - Endpoint kiểm tra tiến độ `GET /api/quizzes/jobs/{jobId}`: Cho phép Client polling ngầm định kỳ (2000ms), trả về trạng thái, phần trăm và đối tượng `QuizDetailResponse` khi hoàn tất.
+     - Xóa bỏ triệt để tình trạng khóa cứng màn hình và triệt tiêu lỗi Axios Timeout 10s khi sinh nhiều câu hỏi trắc nghiệm chuyên sâu.
    - **Mô hình dữ liệu Quiz:** Tạo 6 bảng CSDL kế thừa `BaseEntity` (`quizzes`, `quiz_questions`, `quiz_question_options`, `quiz_assignments`, `quiz_submissions`, `quiz_submission_answers`).
    - **Quản lý vòng đời Quiz:** Tạo nháp $\rightarrow$ Cập nhật câu hỏi $\rightarrow$ Xuất bản $\rightarrow$ Lưu trữ.
    - **Cơ chế Phân công (Assignment Engine):**
@@ -423,6 +429,78 @@ CREATE TABLE quiz_submission_answers (
         ]
       }
     ]
+  }
+}
+```
+
+#### 1b. Yêu cầu AI sinh bài Quiz Đa Luồng Bất Đồng Bộ (Async Non-blocking Job Processing tương tự TM-103)
+
+- **Endpoint:** `POST /api/quizzes/generate-async`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Tiếp nhận yêu cầu sinh câu hỏi trắc nghiệm bằng AI, tạo tác vụ ngầm `jobId`, phân phối vào Thread Pool `quizAiTaskExecutor` và phản hồi HTTP 202 Accepted ngay lập tức trong thời gian `< 30ms`. Toàn bộ quá trình gọi Gemini AI (12 - 20s) được đẩy xuống background.
+- **Request Body:** Tương tự `POST /api/quizzes/generate-ai` (`programId`, `topic`, `difficulty`, `questionCount`, `groupId?`, `weekNumber?`).
+- **Response 202 Accepted:**
+```json
+{
+  "success": true,
+  "statusCode": 202,
+  "message": "Đã tiếp nhận yêu cầu sinh bài Quiz bằng AI, tiến trình đang chạy ngầm",
+  "data": {
+    "jobId": "job-quiz-8f2c3a1b",
+    "programId": 12,
+    "topic": "Spring Boot Data JPA, N+1 Query & Transaction Management",
+    "difficulty": "MEDIUM",
+    "status": "PROCESSING",
+    "percent": 0,
+    "currentStage": "Đang khởi tạo tiến trình sinh bài Quiz AI...",
+    "quizId": null,
+    "result": null,
+    "errorMessage": null,
+    "createdAt": "2026-10-26T12:00:00.000",
+    "updatedAt": "2026-10-26T12:00:00.000"
+  }
+}
+```
+
+#### 1c. Kiểm tra trạng thái và tiến độ của tác vụ AI sinh bài Quiz
+
+- **Endpoint:** `GET /api/quizzes/jobs/{jobId}`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Polling tiến độ định kỳ (mỗi 2000ms). Trả về thông tin trạng thái theo 4 chặng:
+  - `percent = 25`: "Đang phân tích chủ đề & cấu trúc bài kiểm tra..."
+  - `percent = 60`: "Gemini AI đang biên soạn các câu hỏi trắc nghiệm & giải thích đáp án..."
+  - `percent = 85`: "Đang chuẩn hóa dữ liệu và lưu trữ bài Quiz vào hệ thống..."
+  - `percent = 100`: "Hoàn tất! Bài trắc nghiệm đã sẵn sàng." (Kèm `quizId` và `result: QuizDetailResponse`).
+- **Response 200 OK (Khi hoàn tất - COMPLETED):**
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Lấy trạng thái tiến trình sinh bài Quiz thành công",
+  "data": {
+    "jobId": "job-quiz-8f2c3a1b",
+    "programId": 12,
+    "topic": "Spring Boot Data JPA, N+1 Query & Transaction Management",
+    "difficulty": "MEDIUM",
+    "status": "COMPLETED",
+    "percent": 100,
+    "currentStage": "Hoàn tất! Bài trắc nghiệm đã sẵn sàng.",
+    "quizId": 45,
+    "result": {
+      "quizId": 45,
+      "programId": 12,
+      "title": "Bài Quiz Ôn Tập: Spring Boot Data JPA",
+      "topic": "Spring Boot Data JPA",
+      "difficulty": "MEDIUM",
+      "timeLimitMinutes": 15,
+      "passingScore": 70,
+      "totalQuestions": 10,
+      "status": "DRAFT",
+      "questions": [ ... ]
+    },
+    "errorMessage": null,
+    "createdAt": "2026-10-26T12:00:00.000",
+    "updatedAt": "2026-10-26T12:00:15.000"
   }
 }
 ```
