@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.example.internservice.common.entity.BaseEntity;
 import org.example.internservice.quiz.entity.enums.QuestionType;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,7 @@ public class QuizQuestion extends BaseEntity {
     @Column(name = "explanation", columnDefinition = "TEXT")
     private String explanation;
 
+    @BatchSize(size = 50)
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("orderIndex ASC")
     @Builder.Default
