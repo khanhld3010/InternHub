@@ -157,8 +157,8 @@ sequenceDiagram
     Core-->>Intern: Đề thi (Ẩn trường isCorrect và explanation)
     Intern->>Core: POST /api/interns/me/quiz-submissions/{submissionId}/submit (danh sách câu trả lời)
     Core->>Core: Thuật toán Auto-grading (All-or-Nothing), tính score, passed
-    alt TTS đạt điểm qua môn (passed = true)
-        Core->>Mission: updateItemStatus(itemId, COMPLETED, note="Đạt điểm Quiz")
+    alt TTS nộp bài thi Quiz (SUBMITTED / TIMED_OUT)
+        Core->>Mission: markKanbanTaskCompleted(itemId, COMPLETED, note="Đã hoàn thành bài Quiz...")
     end
     Core-->>Intern: 200 OK (Điểm số, Tỷ lệ đúng %, Đáp án đúng & Lời giải thích chi tiết)
 ```
@@ -191,7 +191,7 @@ sequenceDiagram
 - **FR-6 (Secure Quiz Taking):** Thực tập sinh xem danh sách bài thi và bắt đầu làm bài (`/start`). Trong suốt thời gian làm bài thi, hệ thống ẩn 100% đáp án đúng (`isCorrect`) và lời giải thích (`explanation`) để bảo mật đề thi tuyệt đối.
 - **FR-7 (Post-Completion Instant Auto-Grading & Detailed Feedback):** Yêu cầu bài Quiz **phải được hoàn thành trước** (học viên bấm Nộp bài hoặc hệ thống tự động đóng khi hết giờ $\rightarrow$ trạng thái `SUBMITTED`/`TIMED_OUT`), sau đó hệ thống mới chấm điểm tự động và **mở khóa hiển thị đáp án đúng cùng lời giải thích chi tiết** cho từng câu hỏi.
 - **FR-8 (Retake Management & Highest Score Tracking):** Nếu bài Quiz cho phép làm lại (`maxAttempts > 1`), TTS có thể thi lại; hệ thống lưu trữ lịch sử tất cả các lần thi và tự động lấy lần có điểm cao nhất làm điểm đánh giá chính thức.
-- **FR-9 (Kanban Auto-Completion):** Khi TTS đạt điểm qua môn (`passed = true`), hệ thống tự động cập nhật thẻ nhiệm vụ Kanban tương ứng sang trạng thái `COMPLETED`.
+- **FR-9 (Kanban Auto-Completion & Transition):** Khi TTS nộp bài thi Quiz (`SUBMITTED`/`TIMED_OUT`), hệ thống tự động đồng bộ và chuyển thẻ nhiệm vụ Kanban tương ứng sang trạng thái `COMPLETED` với ghi chú kết quả chi tiết. Đồng thời trên giao diện Kanban và Modal chi tiết nhiệm vụ, TTS có thể chủ động bấm nút "Hoàn thành" để chuyển thẻ Quiz sang cột Hoàn thành hoặc "Mở lại làm tiếp" khi cần.
 - **FR-10 (Mentor Scoreboard & Analytics):** Cung cấp API cho Mentor xem thống kê bảng điểm của toàn bộ học viên trong nhóm hoặc chương trình (điểm cao nhất, số lần thi, trạng thái hoàn thành).
 
 ---
