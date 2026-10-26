@@ -29,6 +29,7 @@ public class QuizTakingResponse {
     private Integer attemptNumber;
     private Integer maxAttempts;
     private LocalDateTime startedAt;
+    private Integer remainingSeconds;
 
     @Builder.Default
     private List<QuizTakingQuestionResponse> questions = new ArrayList<>();
