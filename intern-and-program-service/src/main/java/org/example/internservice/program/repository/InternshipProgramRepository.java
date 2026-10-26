@@ -24,6 +24,9 @@ public interface InternshipProgramRepository extends JpaRepository<InternshipPro
 
     boolean existsByProgramCode(String programCode);
 
+    @Query("SELECT MAX(p.programCode) FROM InternshipProgram p WHERE p.programCode LIKE CONCAT('PRG-', :yearMonth, '-%')")
+    String findMaxProgramCodeByYearMonth(@Param("yearMonth") String yearMonth);
+
     @Query("SELECT p FROM InternshipProgram p WHERE p.status = 'OPEN' AND :today >= p.startDate AND :today <= p.endDate")
     List<InternshipProgram> findOpenProgramsReadyToStart(@Param("today") LocalDate today);
 

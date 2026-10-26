@@ -11,6 +11,15 @@
 
 ---
 
+## 0. Nhật Ký Thay Đổi & Giải Trình Kỹ Thuật (Revision History & Change Rationale)
+
+| Phiên bản | Ngày | Người thực hiện | Task / Jira | Loại thay đổi | Lý do & Giải trình kỹ thuật (Rationale) |
+| :---: | :---: | :---: | :---: | :---: | :--- |
+| **v1.0** | 2026-09-23 | Team Backend & Frontend | `TM-15`, `TM-18` | Tạo mới | Đặc tả thiết kế ban đầu cho tính năng quản lý chương trình thực tập. |
+| **v1.1** | 2026-10-23 | Senior Backend AI Agent | `TM-15` (Sub-task Fix) | Nâng cấp kiến trúc sinh mã | Bổ sung cơ chế Self-Healing Sequence tự phục hồi cho `program_code_sequence` và `generateUniqueProgramCode` nhằm loại bỏ hoàn toàn lỗi duplicate entry HTTP 500. Chi tiết xem tại [TM-15-self-healing-program-sequence-spec.md](file:///d:/codegym_final_project/InternHub/docs/specs/TM-15-self-healing-program-sequence-spec.md). |
+
+---
+
 ## 1. Feature Overview (Tổng Quan Tính Năng)
 
 - **Mục tiêu cốt lõi:**  
