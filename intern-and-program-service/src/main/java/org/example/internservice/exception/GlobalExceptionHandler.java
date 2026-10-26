@@ -2,6 +2,7 @@ package org.example.internservice.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.dto.response.ApiResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -148,6 +149,13 @@ public class GlobalExceptionHandler {
         log.warn("Optimistic locking conflict detected: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(HttpStatus.CONFLICT.value(), "Dữ liệu đã được người dùng khác cập nhật đồng thời. Vui lòng làm mới trang và thử lại."));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
+        log.warn("Data integrity conflict detected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(HttpStatus.CONFLICT.value(), "Xung đột dữ liệu: Mã định danh hoặc thông tin tài nguyên đã tồn tại trong hệ thống. Vui lòng kiểm tra lại."));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
