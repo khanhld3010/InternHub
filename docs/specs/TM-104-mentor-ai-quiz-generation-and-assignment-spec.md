@@ -18,6 +18,7 @@
 | **v1.1** | 2026-10-14 | AI Senior Backend Pair-Programmer & User | `TM-104` | Cập nhật quy tắc bảo mật đáp án | Bổ sung ràng buộc bảo mật: Bài Quiz bắt buộc phải hoàn thành nộp bài trước (trạng thái `SUBMITTED` hoặc `TIMED_OUT`), hệ thống mới mở khóa và hiển thị đáp án đúng (`correctOptionIds`) cùng lời giải thích chi tiết (`explanation`). |
 | **v1.2** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Tái cấu trúc tích hợp Kanban Task Modal | Hợp nhất luồng tạo đề Quiz AI vào trực tiếp Modal Giao Việc Kanban (`MissionItemModal`). Mentor bấm nút tạo câu hỏi để mở form cấu hình (số câu, độ khó, chủ đề bám theo task), hệ thống tổng hợp prompt template chuẩn gửi Gemini AI, liên kết bài Quiz với Task Kanban và phân công tự động cho TTS phụ trách. Mở quyền `/api/ai/quiz/**` trong `ai-service` cho FeignClient nội bộ. |
 | **v1.3** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Kiến Trúc Đa Luồng Bất Đồng Bộ (Async Non-blocking) & Polling Job tương tự TM-103 | Tách luồng sinh bài Quiz AI sang Thread Pool bất đồng bộ `quizAiTaskExecutor` (`@Async`); cung cấp endpoint `POST /api/quizzes/generate-async` trả về HTTP 202 Accepted kèm `jobId` trong `< 30ms`; quản lý tiến độ 4 chặng (25% - 60% - 85% - 100%) qua ConcurrentHashMap/Redis TTL; cung cấp endpoint `GET /api/quizzes/jobs/{jobId}`; loại bỏ hoàn toàn độ trễ blocking 15-20s, bảo đảm không làm gián đoạn thao tác của Mentor khi giao việc Kanban. |
+| **v1.4** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Đồng bộ DTO, Tính Server Timer & Tối Ưu Hóa Đồng Bộ Kanban | 1. Bổ sung `@JsonProperty("attemptsUsed")` alias cho `attemptsTaken` trong `QuizAssignmentResponse` để đồng bộ 100% với Frontend, khắc phục triệt để lỗi đánh giá sai "Đã hết lượt thi".<br>2. Bổ sung trường `remainingSeconds` tính từ Server trong `QuizTakingResponse` nhằm chống lệch múi giờ (Timezone Mismatch UTC vs GMT+7) gây auto-submit ngoài ý muốn.<br>3. Quy định chuẩn hóa luồng giao việc từ Kanban: Khi giao việc kèm Quiz đính kèm, Backend `QuizKanbanSyncHelper` chỉ tạo duy nhất 1 thẻ `[Quiz]` có `submissionUrl` cho mỗi TTS được giao, loại bỏ hoàn toàn tình trạng trùng lặp/thừa thẻ công việc. |
 
 ---
 
@@ -571,6 +572,7 @@ CREATE TABLE quiz_submission_answers (
       "dueDate": "2026-10-25",
       "maxAttempts": 2,
       "attemptsTaken": 1,
+      "attemptsUsed": 1,
       "highestScore": 80,
       "passed": true,
       "status": "COMPLETED"
@@ -582,7 +584,7 @@ CREATE TABLE quiz_submission_answers (
 #### 2. Bắt đầu làm bài thi (Start Quiz Attempt)
 - **Endpoint:** `POST /api/interns/me/quiz-assignments/{assignmentId}/start`
 - **Quyền:** `ROLE_INTERN`
-- **Response 200 OK (Đã ẩn toàn bộ đáp án đúng để chống gian lận):**
+- **Response 200 OK (Đã ẩn toàn bộ đáp án đúng để chống gian lận; trả về remainingSeconds tính từ Server):**
 ```json
 {
   "success": true,
@@ -594,6 +596,7 @@ CREATE TABLE quiz_submission_answers (
     "attemptNumber": 2,
     "timeLimitMinutes": 20,
     "startedAt": "2026-10-14T10:30:00",
+    "remainingSeconds": 1200,
     "questions": [
       {
         "id": 201,
