@@ -1,7 +1,7 @@
-# Specification: Cơ Chế Tự Phục Hồi Sinh Mã Chương Trình & Xử Lý Toàn Vẹn Dữ Liệu (TM-15-FIX)
+# Specification: Cơ Chế Tự Phục Hồi Sinh Mã Chương Trình & Xử Lý Toàn Vẹn Dữ Liệu (TM-105-FIX)
 
 > **Trạng thái:** DRAFT  
-> **Lưu trữ tại:** `InternHub/docs/specs/TM-15-self-healing-program-sequence-spec.md`  
+> **Lưu trữ tại:** `InternHub/docs/specs/TM-105-self-healing-program-sequence-spec.md`  
 > **Áp dụng quy tắc:** [Persistent Spec & Change Rationale](file:///d:/Certificate_CodeGym/Module%206/InternHub/.agents/04-development-guide.md), [InternHub Backend Rules](file:///d:/codegym_final_project/InternHub/AGENTS.md)
 
 ---
@@ -13,14 +13,14 @@
 
 | Phiên bản | Ngày | Người thực hiện | Task / Jira | Loại thay đổi | Lý do & Giải trình kỹ thuật (Rationale) |
 | :---: | :---: | :---: | :---: | :---: | :--- |
-| **v1.0** | 2026-10-23 | Senior Backend AI Agent | `TM-15` | Sửa lỗi & Nâng cấp kiến trúc | Khắc phục triệt để lỗi HTTP 500 khi gọi `POST /api/programs` do va chạm Unique Key `program_code` (`PRG-202610-0013`). Xây dựng cơ chế Self-Healing Sequence tự động đối soát với cơ sở dữ liệu và phòng ngừa xung đột vĩnh viễn. |
+| **v1.0** | 2026-10-23 | Senior Backend AI Agent | `TM-105` | Sửa lỗi & Nâng cấp kiến trúc | Khắc phục triệt để lỗi HTTP 500 khi gọi `POST /api/programs` do va chạm Unique Key `program_code` (`PRG-202610-0013`). Xây dựng cơ chế Self-Healing Sequence tự động đối soát với cơ sở dữ liệu và phòng ngừa xung đột vĩnh viễn. |
 
 ---
 
 ## 1. Feature Overview (Tổng Quan Tính Năng)
 
 - **Feature Name:** Cơ Chế Tự Phục Hồi Sinh Mã Chương Trình Thực Tập & Xử Lý Toàn Vẹn Dữ Liệu (Self-Healing Program Code Sequence & Data Integrity Hardening)
-- **Jira Ticket:** [TM-15](https://robluccibn9935.atlassian.net/browse/TM-15) (Sub-task: `TM-15-FIX-PROGRAM-CODE-COLLISION`)
+- **Jira Ticket:** [TM-105](https://robluccibn9935.atlassian.net/browse/TM-105) (Sub-task: `TM-105-FIX-PROGRAM-CODE-COLLISION`)
 - **Target Microservice:** `intern-and-program-service` (Port 8082, định tuyến qua `api-gateway` 8080)
 - **Target Users & Roles:** `ADMIN`, `HR`
 - **Change Level:** **L2** (Cải tiến Logic Service, bổ sung Query Repository đối soát, chuẩn hóa Global Exception Handling)
