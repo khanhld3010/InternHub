@@ -81,7 +81,7 @@ public class QuizKanbanSyncHelper {
                     .priority(MissionPriority.MEDIUM)
                     .status(MissionItemStatus.TODO)
                     .dueDate(assignment.getDueDate())
-                    .submissionUrl("/intern/quizzes/" + assignment.getId())
+                    .submissionUrl("/intern/quizzes/" + assignment.getId() + "/take")
                     .assignees(new HashSet<>(Collections.singletonList(intern)))
                     .orderIndex(0)
                     .build();
