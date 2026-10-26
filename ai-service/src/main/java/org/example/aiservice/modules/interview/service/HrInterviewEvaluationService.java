@@ -31,6 +31,8 @@ public class HrInterviewEvaluationService {
     private final InterviewQuestionRepository questionRepository;
     private final InterviewAnswerRepository answerRepository;
     private final AsyncInterviewEvaluationCoordinator evaluationCoordinator;
+    private final org.example.aiservice.service.AiJobEventPublisher aiJobEventPublisher;
+    private final org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
 
     /**
      * Lấy hồ sơ đánh giá chi tiết (Evaluation Dossier) của phiên thi hiện hành
@@ -228,36 +230,68 @@ public class HrInterviewEvaluationService {
         InterviewSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
 
-        int nextVersion = currentEval.getVersion() + 1;
+        // 1. Redis Distributed Lock SETNX chống spam click (TTL 60s)
+        String lockKey = "ai:lock:regrade:" + sessionId;
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", java.time.Duration.ofSeconds(60));
+        if (Boolean.FALSE.equals(acquired)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bài thi đang trong tiến trình AI thẩm định, vui lòng đợi.");
+        }
 
-        // Tạo bản ghi mới cho lượt chấm này
-        InterviewEvaluation newEval = InterviewEvaluation.builder()
-                .sessionId(sessionId)
-                .version(nextVersion)
-                .isActive(true)
-                .gradingStatus(GradingStatus.PENDING)
-                .hrStatus(HrEvaluationStatus.PENDING_REVIEW)
-                .proctoringStatus(evaluationCoordinator.calculateProctoringStatus(session))
-                .modelName("gemini-1.5-pro")
-                .regradeReason(request.getReason())
-                .requestedBy(hrUserId)
-                .retryCount(0)
-                .build();
+        try {
+            int nextVersion = currentEval.getVersion() + 1;
+            String jobId = java.util.UUID.randomUUID().toString();
+            Long userId = null;
+            if (hrUserId != null && !hrUserId.trim().isEmpty()) {
+                try {
+                    userId = Long.parseLong(hrUserId.trim());
+                } catch (NumberFormatException nfe) {
+                    log.warn("hrUserId '{}' không phải là định dạng số, sử dụng mặc định 0L cho hệ thống", hrUserId);
+                    userId = 0L;
+                }
+            } else {
+                userId = 0L;
+            }
 
-        InterviewEvaluation saved = evaluationRepository.save(newEval);
+            // Tạo bản ghi mới cho lượt chấm này
+            InterviewEvaluation newEval = InterviewEvaluation.builder()
+                    .sessionId(sessionId)
+                    .version(nextVersion)
+                    .isActive(true)
+                    .gradingStatus(GradingStatus.PENDING)
+                    .hrStatus(HrEvaluationStatus.PENDING_REVIEW)
+                    .proctoringStatus(evaluationCoordinator.calculateProctoringStatus(session))
+                    .modelName("gemini-1.5-pro")
+                    .regradeReason(request.getReason())
+                    .requestedBy(hrUserId)
+                    .retryCount(0)
+                    .build();
 
-        // Kích hoạt chấm điểm ngầm cho phiên bản mới
-        evaluationCoordinator.coordinateEvaluationAsync(sessionId, "HR_MANUAL_REGRADE", request.getReason());
+            InterviewEvaluation saved = evaluationRepository.save(newEval);
 
-        log.info("HR {} kích hoạt Regrade session={}, newVersion={}", hrUserId, sessionId, nextVersion);
+            // Bắn sự kiện QUEUED lên Redis
+            aiJobEventPublisher.publishQueued(jobId, userId, org.example.aiservice.dto.response.AiJobType.INTERVIEW_REGRADE,
+                    String.valueOf(sessionId), "Đã tiếp nhận yêu cầu chấm lại bài thi...");
 
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("sessionId", sessionId);
-        resp.put("newEvaluationId", saved.getId());
-        resp.put("newVersion", nextVersion);
-        resp.put("gradingStatus", GradingStatus.PENDING);
-        resp.put("message", "Đã tiếp nhận yêu cầu chấm lại phiên thi. Hệ thống đang tạo phiên bản đánh giá mới trong nền.");
+            // Kích hoạt chấm điểm ngầm cho phiên bản mới kèm jobId
+            evaluationCoordinator.coordinateEvaluationAsync(sessionId, "HR_MANUAL_REGRADE", request.getReason(), jobId, userId);
 
-        return resp;
+            log.info("HR {} kích hoạt Regrade session={}, newVersion={}, jobId={}", hrUserId, sessionId, nextVersion, jobId);
+
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("jobId", jobId);
+            resp.put("sessionId", sessionId);
+            resp.put("newEvaluationId", saved.getId());
+            resp.put("newVersion", nextVersion);
+            resp.put("status", "QUEUED");
+            resp.put("gradingStatus", GradingStatus.PENDING);
+            resp.put("message", "Đã tiếp nhận yêu cầu chấm lại phiên thi. Hệ thống đang tiến hành xử lý ngầm.");
+
+            return resp;
+        } catch (Exception ex) {
+            // Giải phóng khóa ngay lập tức nếu khởi tạo thất bại để không giam giữ người dùng
+            redisTemplate.delete(lockKey);
+            log.error("Khởi tạo tiến trình Regrade thất bại cho session={}, đã giải phóng lockKey: {}", sessionId, ex.getMessage(), ex);
+            throw ex;
+        }
     }
 }

@@ -75,4 +75,31 @@ public class UserController {
         UserResponse response = userService.updateOwnProfile(username, request);
         return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật thông tin cá nhân thành công", response));
     }
+
+    @Operation(summary = "Admin đặt lại mật khẩu cho người dùng")
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USER_MANAGE')")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @PathVariable Integer id,
+            @RequestBody(required = false) java.util.Map<String, String> body) {
+        String newPassword = body != null ? body.get("newPassword") : "123456";
+        log.info("API: Admin đặt lại mật khẩu cho userId={}", id);
+        userService.resetUserPassword(id, newPassword);
+        return ResponseEntity.ok(ApiResponse.success(200, "Đặt lại mật khẩu thành công", null));
+    }
+
+    @Operation(summary = "Admin cập nhật vai trò cho người dùng")
+    @PatchMapping("/{id}/role")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USER_MANAGE')")
+    public ResponseEntity<ApiResponse<UserResponse>> updateUserRole(
+            @PathVariable Integer id,
+            @RequestBody java.util.Map<String, String> body) {
+        String roleName = body != null ? body.get("role") : null;
+        if (roleName == null || roleName.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(400, "Tên vai trò không được để trống"));
+        }
+        log.info("API: Admin cập nhật vai trò cho userId={} thành {}", id, roleName);
+        UserResponse updated = userService.updateUserRole(id, roleName.trim());
+        return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật vai trò người dùng thành công", updated));
+    }
 }

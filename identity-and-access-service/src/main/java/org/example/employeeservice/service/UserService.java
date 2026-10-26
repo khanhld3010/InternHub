@@ -24,4 +24,8 @@ public interface UserService {
     UserResponse getCurrentUserProfile(String username);
 
     UserResponse updateOwnProfile(String username, UpdateProfileRequest request);
+
+    void resetUserPassword(Integer userId, String newPassword);
+
+    UserResponse updateUserRole(Integer userId, String newRoleName);
 }
