@@ -9,8 +9,10 @@ import org.example.aiservice.client.InternServiceClient;
 import org.example.aiservice.client.dto.DocumentClientDto;
 import org.example.aiservice.client.dto.InternProfileClientDto;
 import org.example.aiservice.client.dto.ProgramClientDto;
-import org.example.aiservice.core.extractor.DocumentTextExtractor;
+import org.example.aiservice.core.DocumentTextExtractor;
 import org.example.aiservice.dto.response.ApiResponse;
+import org.example.aiservice.entity.AiFeatureProfile;
+import org.example.aiservice.entity.AiGlobalConfig;
 import org.example.aiservice.entity.AiSystemConfig;
 import org.example.aiservice.modules.interview.dto.request.GenerateInterviewQuestionsRequest;
 import org.example.aiservice.modules.interview.dto.request.UpdateInterviewQuestionSetRequest;
@@ -27,17 +29,26 @@ import org.example.aiservice.modules.interview.service.AiInterviewPromptBuilder;
 import org.example.aiservice.modules.interview.service.AiInterviewQuestionService;
 import org.example.aiservice.modules.screening.entity.InternAiEvaluation;
 import org.example.aiservice.modules.screening.repository.AiEvaluationRepository;
+import org.example.aiservice.repository.AiFeatureProfileRepository;
+import org.example.aiservice.repository.AiGlobalConfigRepository;
 import org.example.aiservice.security.AesGcmEncryptionUtil;
 import org.example.aiservice.service.AiConfigAdminService;
+import org.example.aiservice.modules.interview.dto.response.QuestionGenerationJobResponse;
+import org.springframework.context.ApplicationContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -54,6 +65,16 @@ public class AiInterviewQuestionServiceImpl implements AiInterviewQuestionServic
     private final InternServiceClient internServiceClient;
     private final DocumentTextExtractor documentTextExtractor;
     private final ObjectMapper objectMapper;
+    private final AiFeatureProfileRepository featureProfileRepository;
+    private final AiGlobalConfigRepository globalConfigRepository;
+    private final StringRedisTemplate redisTemplate;
+    private final ApplicationContext applicationContext;
+
+    private static final String REDIS_JOB_PREFIX = "ai:interview:job:";
+    private static final Duration JOB_TTL = Duration.ofHours(24);
+    private final Map<String, QuestionGenerationJobResponse> activeJobs = new ConcurrentHashMap<>();
+
+
 
     @Override
     @Transactional
@@ -276,35 +297,101 @@ public class AiInterviewQuestionServiceImpl implements AiInterviewQuestionServic
     }
 
     private String callGeminiForQuestions(String systemInstruction, String userPrompt) {
-        AiSystemConfig config = configAdminService.getOrCreateDefaultConfig();
-        String rawApiKey = null;
-        if (config.getApiKeyEncrypted() != null && !config.getApiKeyEncrypted().isBlank()) {
-            try {
-                rawApiKey = encryptionUtil.decrypt(config.getApiKeyEncrypted(), config.getKeyVersion());
-            } catch (Exception e) {
-                log.error("Lỗi giải mã API key: {}", e.getMessage());
-            }
-        }
-
-        if (rawApiKey == null || rawApiKey.isBlank() || rawApiKey.startsWith("mock-")) {
+        String rawApiKey = getResolvedApiKey();
+        if (rawApiKey == null || rawApiKey.isBlank()) {
             log.info("Dùng fallback mock JSON khi chưa cấu hình Gemini API Key thật");
             return generateMockQuestionsJson();
         }
 
+        String modelName = getResolvedModelName();
+        BigDecimal temp = getResolvedTemperature();
+        int maxTokens = getResolvedMaxTokens();
+
+        log.info("Gọi Google Gemini API sinh câu hỏi phỏng vấn: model={}, temp={}, maxTokens={}", modelName, temp, maxTokens);
+
         try {
-            return geminiApiClient.generateContent(
+            String response = geminiApiClient.generateContent(
                     rawApiKey,
-                    config.getModelName() != null ? config.getModelName() : "gemini-2.5-flash",
+                    modelName,
                     systemInstruction,
                     Collections.emptyList(),
                     userPrompt,
-                    BigDecimal.valueOf(0.4),
-                    4000
+                    temp,
+                    maxTokens
             );
+
+            if (response == null || response.isBlank() || response.equals(GeminiApiClient.FALLBACK_FRIENDLY_MESSAGE) || !looksLikeJson(response)) {
+                log.warn("Gemini không trả về nội dung JSON hợp lệ (nội dung: '{}'). Tự động kích hoạt bộ câu hỏi tiêu chuẩn.", response);
+                return generateMockQuestionsJson();
+            }
+
+            return response;
         } catch (Exception e) {
             log.warn("Gemini API gặp sự cố, chuyển sang kết quả dự phòng chuẩn: {}", e.getMessage());
             return generateMockQuestionsJson();
         }
+    }
+
+    private String getResolvedApiKey() {
+        AiSystemConfig config = configAdminService.getOrCreateDefaultConfig();
+        if (config.getApiKeyEncrypted() != null && !config.getApiKeyEncrypted().isBlank()) {
+            try {
+                String key = encryptionUtil.decrypt(config.getApiKeyEncrypted(), config.getKeyVersion());
+                if (key != null && !key.isBlank() && !key.startsWith("mock-")) {
+                    return key.trim();
+                }
+            } catch (Exception e) {
+                log.error("Lỗi giải mã API key từ AiSystemConfig: {}", e.getMessage());
+            }
+        }
+
+        return globalConfigRepository.findFirstByOrderByIdAsc()
+                .map(global -> {
+                    if (global.getApiKeyEncrypted() != null && !global.getApiKeyEncrypted().isBlank()) {
+                        try {
+                            String key = encryptionUtil.decrypt(global.getApiKeyEncrypted(), global.getKeyVersion());
+                            return (key != null && !key.isBlank() && !key.startsWith("mock-")) ? key.trim() : null;
+                        } catch (Exception e) {
+                            log.error("Lỗi giải mã API key từ AiGlobalConfig: {}", e.getMessage());
+                        }
+                    }
+                    return null;
+                })
+                .orElse(null);
+    }
+
+    private String getResolvedModelName() {
+        Optional<AiFeatureProfile> profileOpt = featureProfileRepository.findByFeatureKey("INTERVIEW_GENERATOR");
+        if (profileOpt.isPresent() && Boolean.TRUE.equals(profileOpt.get().getIsActive())) {
+            String profileModel = profileOpt.get().getModelName();
+            if (profileModel != null && !profileModel.isBlank() && !"gemini-1.5-flash".equalsIgnoreCase(profileModel)) {
+                return profileModel.trim();
+            }
+        }
+        AiSystemConfig config = configAdminService.getOrCreateDefaultConfig();
+        if (config.getModelName() != null && !config.getModelName().isBlank() && !"gemini-1.5-flash".equalsIgnoreCase(config.getModelName())) {
+            return config.getModelName().trim();
+        }
+        return "gemini-3.5-flash-lite";
+    }
+
+    private BigDecimal getResolvedTemperature() {
+        return featureProfileRepository.findByFeatureKey("INTERVIEW_GENERATOR")
+                .map(AiFeatureProfile::getTemperature)
+                .orElse(BigDecimal.valueOf(0.65));
+    }
+
+    private int getResolvedMaxTokens() {
+        return featureProfileRepository.findByFeatureKey("INTERVIEW_GENERATOR")
+                .map(AiFeatureProfile::getMaxTokens)
+                .orElse(3072);
+    }
+
+    private boolean looksLikeJson(String text) {
+        if (text == null) return false;
+        String cleaned = cleanJsonMarkdown(text).trim();
+        return (cleaned.startsWith("{") && cleaned.endsWith("}")) ||
+               (cleaned.startsWith("[") && cleaned.endsWith("]"));
     }
 
     private InterviewQuestionSetResponse parseAndPersistQuestionSet(
@@ -318,9 +405,24 @@ public class AiInterviewQuestionServiceImpl implements AiInterviewQuestionServic
             String userName,
             InternProfileClientDto intern
     ) {
+        JsonNode root;
         try {
-            JsonNode root = objectMapper.readTree(cleanJsonMarkdown(jsonText));
+            root = objectMapper.readTree(cleanJsonMarkdown(jsonText));
+            if (!root.has("questions") || !root.path("questions").isArray() || root.path("questions").isEmpty()) {
+                log.warn("Cấu trúc JSON từ AI thiếu danh sách câu hỏi: {}. Tự động dùng bộ câu hỏi dự phòng.", jsonText);
+                root = objectMapper.readTree(cleanJsonMarkdown(generateMockQuestionsJson()));
+            }
+        } catch (Exception e) {
+            log.warn("Không thể parse JSON từ AI (nội dung: '{}'). Tự động fallback: {}", jsonText, e.getMessage());
+            try {
+                root = objectMapper.readTree(cleanJsonMarkdown(generateMockQuestionsJson()));
+            } catch (Exception ex) {
+                log.error("Lỗi khi parse mock JSON: {}", ex.getMessage(), ex);
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể xử lý nội dung câu hỏi từ AI. Vui lòng thử lại.");
+            }
+        }
 
+        try {
             String title = root.path("title").asText(
                     scope == QuestionScope.CANDIDATE && intern != null
                             ? "Bộ câu hỏi phỏng vấn " + targetRole + " - Ứng viên " + intern.getFullName()
@@ -367,8 +469,8 @@ public class AiInterviewQuestionServiceImpl implements AiInterviewQuestionServic
             return mapToResponse(saved);
 
         } catch (Exception e) {
-            log.error("Lỗi khi parse và lưu bộ câu hỏi: {}", e.getMessage(), e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể xử lý nội dung câu hỏi từ AI. Vui lòng thử lại.");
+            log.error("Lỗi khi lưu bộ câu hỏi vào cơ sở dữ liệu: {}", e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể lưu bộ câu hỏi. Vui lòng thử lại.");
         }
     }
 
@@ -787,5 +889,221 @@ public class AiInterviewQuestionServiceImpl implements AiInterviewQuestionServic
         return normalized.replaceAll("[\\p{InCombiningDiacriticalMarks}]", "")
                 .replace("Đ", "D").replace("đ", "d")
                 .replaceAll("[^\\x20-\\x7E]", " ").trim();
+    }
+
+    @Override
+    public QuestionGenerationJobResponse startAsyncQuestionGeneration(
+            GenerateInterviewQuestionsRequest request,
+            String userId,
+            String userName,
+            String authHeader
+    ) {
+        String jobId = "job-iq-" + UUID.randomUUID().toString().substring(0, 8);
+        log.info("Khởi tạo tác vụ sinh câu hỏi phỏng vấn async: jobId={}, programId={}, internId={}",
+                jobId, request.getProgramId(), request.getInternId());
+
+        QuestionGenerationJobResponse initialStatus = QuestionGenerationJobResponse.builder()
+                .jobId(jobId)
+                .programId(request.getProgramId())
+                .internId(request.getInternId())
+                .targetRole(request.getTargetRole())
+                .status("PROCESSING")
+                .percent(0)
+                .currentStage("Đang khởi tạo tiến trình sinh câu hỏi AI...")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        saveJobState(jobId, initialStatus);
+
+        // Kích hoạt xử lý đa luồng chạy nền không chặn luồng chính
+        AiInterviewQuestionService asyncService = null;
+        try {
+            asyncService = applicationContext.getBean(AiInterviewQuestionService.class);
+        } catch (Exception e) {
+            log.warn("Không thể lấy AiInterviewQuestionService từ ApplicationContext: {}", e.getMessage());
+        }
+
+        if (asyncService != null) {
+            asyncService.executeAsyncQuestionGeneration(jobId, request, userId, userName, authHeader);
+        } else {
+            executeAsyncQuestionGeneration(jobId, request, userId, userName, authHeader);
+        }
+
+        return initialStatus;
+    }
+
+    @Override
+    @Async("aiInterviewTaskExecutor")
+    public void executeAsyncQuestionGeneration(
+            String jobId,
+            GenerateInterviewQuestionsRequest request,
+            String userId,
+            String userName,
+            String authHeader
+    ) {
+        log.info("Bắt đầu thực thi đa luồng tiến trình sinh câu hỏi: jobId={}", jobId);
+        QuestionGenerationJobResponse jobStatus = loadJobState(jobId);
+        if (jobStatus == null) return;
+
+        try {
+            // Stage 1: Đọc JD & CV (percent = 25%)
+            updateJobStage(jobId, jobStatus, 25, "Đang trích xuất mô tả kỳ thực tập (JD) và CV ứng viên...");
+
+            ProgramClientDto program = null;
+            try {
+                ApiResponse<ProgramClientDto> progRes = internServiceClient.getProgramById(request.getProgramId(), authHeader);
+                if (progRes != null && progRes.getData() != null) {
+                    program = progRes.getData();
+                }
+            } catch (Exception e) {
+                log.warn("Không thể lấy thông tin kỳ thực tập id={}: {}", request.getProgramId(), e.getMessage());
+            }
+
+            InternProfileClientDto intern = null;
+            String cvText = "";
+            InternAiEvaluation screening = null;
+            QuestionScope scope = QuestionScope.PROGRAM;
+
+            if (request.getInternId() != null) {
+                scope = QuestionScope.CANDIDATE;
+                try {
+                    ApiResponse<InternProfileClientDto> internRes = internServiceClient.getInternById(request.getInternId(), authHeader);
+                    if (internRes != null && internRes.getData() != null) {
+                        intern = internRes.getData();
+                    }
+                } catch (Exception e) {
+                    log.warn("Không thể lấy thông tin ứng viên id={}: {}", request.getInternId(), e.getMessage());
+                }
+
+                if (intern != null && intern.getInternCode() != null) {
+                    try {
+                        ApiResponse<List<DocumentClientDto>> docsRes = internServiceClient.getDocumentsByInternCode(intern.getInternCode(), authHeader);
+                        if (docsRes != null && docsRes.getData() != null) {
+                            Optional<DocumentClientDto> cvDocOpt = docsRes.getData().stream()
+                                    .filter(d -> "CV".equalsIgnoreCase(d.getDocumentType()) || "RESUME".equalsIgnoreCase(d.getDocumentType()))
+                                    .findFirst();
+                            if (cvDocOpt.isPresent()) {
+                                DocumentClientDto cvDoc = cvDocOpt.get();
+                                ResponseEntity<byte[]> fileRes = internServiceClient.downloadDocument(cvDoc.getId(), authHeader);
+                                if (fileRes != null && fileRes.getBody() != null) {
+                                    cvText = documentTextExtractor.extractText(fileRes.getBody(), cvDoc.getOriginalFileName());
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("Không thể tải CV cho ứng viên {}: {}", intern.getInternCode(), e.getMessage());
+                    }
+                }
+
+                if (Boolean.TRUE.equals(request.getIncludeScreeningDossier())) {
+                    screening = aiEvaluationRepository.findTopByInternIdOrderByCreatedAtDesc(request.getInternId())
+                            .orElse(null);
+                }
+            }
+
+            String targetRole = request.getTargetRole();
+            if ((targetRole == null || targetRole.isBlank()) && program != null) {
+                targetRole = program.getName();
+            }
+            if (targetRole == null || targetRole.isBlank()) {
+                targetRole = "Thực tập sinh Công nghệ";
+            }
+
+            int totalQ = (request.getTotalQuestions() != null && request.getTotalQuestions() > 0)
+                    ? request.getTotalQuestions() : 8;
+
+            // Stage 2: Kết nối Gemini LLM sinh câu hỏi (percent = 60%)
+            updateJobStage(jobId, jobStatus, 60, "Gemini AI đang sinh " + totalQ + " câu hỏi phỏng vấn và tiêu chí chấm điểm...");
+
+            String systemInstruction = promptBuilder.buildSystemInstruction();
+            String userPrompt = promptBuilder.buildUserPrompt(
+                    program, intern, cvText, screening, targetRole, totalQ, request.getCustomRequirements()
+            );
+
+            String generatedJson = callGeminiForQuestions(systemInstruction, userPrompt);
+
+            // Stage 3: Chuẩn hóa & lưu vào Database (percent = 85%)
+            updateJobStage(jobId, jobStatus, 85, "Đang chuẩn hóa dữ liệu và lưu trữ bộ câu hỏi...");
+
+            InterviewQuestionSetResponse response = parseAndPersistQuestionSet(
+                    generatedJson,
+                    request.getProgramId(),
+                    request.getInternId(),
+                    scope,
+                    targetRole,
+                    screening,
+                    userId,
+                    userName,
+                    intern
+            );
+
+            // Stage 4: Hoàn tất (percent = 100%)
+            jobStatus.setStatus("COMPLETED");
+            jobStatus.setPercent(100);
+            jobStatus.setCurrentStage("Hoàn tất! Bộ câu hỏi đã sẵn sàng.");
+            jobStatus.setQuestionSetId(response.getId());
+            jobStatus.setResult(response);
+            jobStatus.setUpdatedAt(LocalDateTime.now());
+            saveJobState(jobId, jobStatus);
+            log.info("Hoàn tất tiến trình sinh câu hỏi: jobId={}, setId={}", jobId, response.getId());
+
+        } catch (Exception e) {
+            log.error("Lỗi trong quá trình thực thi async sinh câu hỏi: jobId={}, error={}", jobId, e.getMessage(), e);
+            jobStatus.setStatus("FAILED");
+            jobStatus.setPercent(100);
+            jobStatus.setErrorMessage(e.getMessage());
+            jobStatus.setCurrentStage("Quá trình sinh câu hỏi thất bại: " + e.getMessage());
+            jobStatus.setUpdatedAt(LocalDateTime.now());
+            saveJobState(jobId, jobStatus);
+        }
+    }
+
+    @Override
+    public QuestionGenerationJobResponse getGenerationJobStatus(String jobId) {
+        QuestionGenerationJobResponse job = loadJobState(jobId);
+        if (job == null) {
+            return QuestionGenerationJobResponse.builder()
+                    .jobId(jobId)
+                    .status("NOT_FOUND")
+                    .currentStage("Không tìm thấy tiến trình")
+                    .build();
+        }
+        return job;
+    }
+
+    private void saveJobState(String jobId, QuestionGenerationJobResponse jobStatus) {
+        activeJobs.put(jobId, jobStatus);
+        if (redisTemplate != null) {
+            try {
+                String json = objectMapper.writeValueAsString(jobStatus);
+                redisTemplate.opsForValue().set(REDIS_JOB_PREFIX + jobId, json, JOB_TTL);
+            } catch (Exception e) {
+                log.warn("Không thể lưu trạng thái job vào Redis: {}", e.getMessage());
+            }
+        }
+    }
+
+    private QuestionGenerationJobResponse loadJobState(String jobId) {
+        if (redisTemplate != null) {
+            try {
+                String json = redisTemplate.opsForValue().get(REDIS_JOB_PREFIX + jobId);
+                if (json != null && !json.isBlank()) {
+                    QuestionGenerationJobResponse response = objectMapper.readValue(json, QuestionGenerationJobResponse.class);
+                    activeJobs.put(jobId, response);
+                    return response;
+                }
+            } catch (Exception e) {
+                log.warn("Không thể đọc trạng thái job từ Redis: {}", e.getMessage());
+            }
+        }
+        return activeJobs.get(jobId);
+    }
+
+    private void updateJobStage(String jobId, QuestionGenerationJobResponse jobStatus, int percent, String stage) {
+        jobStatus.setPercent(percent);
+        jobStatus.setCurrentStage(stage);
+        jobStatus.setUpdatedAt(LocalDateTime.now());
+        saveJobState(jobId, jobStatus);
     }
 }

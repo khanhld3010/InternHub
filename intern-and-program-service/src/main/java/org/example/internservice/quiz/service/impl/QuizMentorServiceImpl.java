@@ -28,17 +28,20 @@ import org.example.internservice.quiz.dto.request.CreateQuestionDto;
 import org.example.internservice.quiz.dto.request.CreateQuizRequest;
 import org.example.internservice.quiz.dto.request.GenerateAiQuizRequest;
 import org.example.internservice.quiz.dto.request.UpdateQuizRequest;
+import org.example.internservice.quiz.dto.response.QuizAnswerResultResponse;
 import org.example.internservice.quiz.dto.response.QuizDetailResponse;
 import org.example.internservice.quiz.dto.response.QuizInternReportDto;
 import org.example.internservice.quiz.dto.response.QuizOptionResponse;
 import org.example.internservice.quiz.dto.response.QuizQuestionResponse;
 import org.example.internservice.quiz.dto.response.QuizReportResponse;
+import org.example.internservice.quiz.dto.response.QuizResultResponse;
 import org.example.internservice.quiz.dto.response.QuizSummaryResponse;
 import org.example.internservice.quiz.entity.Quiz;
 import org.example.internservice.quiz.entity.QuizAssignment;
 import org.example.internservice.quiz.entity.QuizQuestion;
 import org.example.internservice.quiz.entity.QuizQuestionOption;
 import org.example.internservice.quiz.entity.QuizSubmission;
+import org.example.internservice.quiz.entity.QuizSubmissionAnswer;
 import org.example.internservice.quiz.entity.enums.AssignmentStatus;
 import org.example.internservice.quiz.entity.enums.AssignmentTargetType;
 import org.example.internservice.quiz.entity.enums.QuestionType;
@@ -50,16 +53,24 @@ import org.example.internservice.quiz.repository.QuizQuestionRepository;
 import org.example.internservice.quiz.repository.QuizRepository;
 import org.example.internservice.quiz.repository.QuizSubmissionRepository;
 import org.example.internservice.quiz.service.QuizMentorService;
+import org.example.internservice.quiz.dto.response.QuizGenerationJobResponse;
 import org.example.internservice.security.CustomUserDetails;
+import org.springframework.context.ApplicationContext;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -80,9 +91,134 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     private final ProgramMentorRepository programMentorRepository;
     private final AiServiceClient aiServiceClient;
     private final QuizKanbanSyncHelper kanbanSyncHelper;
+    private final ApplicationContext applicationContext;
+
+    private final Map<String, QuizGenerationJobResponse> jobStateMap = new ConcurrentHashMap<>();
+
+    private void saveJobState(String jobId, QuizGenerationJobResponse status) {
+        jobStateMap.put(jobId, status);
+    }
+
+    private QuizGenerationJobResponse loadJobState(String jobId) {
+        return jobStateMap.get(jobId);
+    }
+
+    private void updateJobStage(String jobId, QuizGenerationJobResponse job, int percent, String stage) {
+        job.setPercent(percent);
+        job.setCurrentStage(stage);
+        job.setUpdatedAt(LocalDateTime.now());
+        saveJobState(jobId, job);
+    }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public QuizGenerationJobResponse startAsyncAiQuiz(GenerateAiQuizRequest request, CustomUserDetails userDetails) {
+        verifyMentorAccess(request.getProgramId(), userDetails);
+
+        String jobId = "job-quiz-" + UUID.randomUUID().toString().substring(0, 8);
+        log.info("Khởi tạo tác vụ sinh Quiz AI async: jobId={}, programId={}, topic={}",
+                jobId, request.getProgramId(), request.getTopic());
+
+        QuizGenerationJobResponse initialStatus = QuizGenerationJobResponse.builder()
+                .jobId(jobId)
+                .programId(request.getProgramId())
+                .topic(request.getTopic())
+                .difficulty(request.getDifficulty() != null ? request.getDifficulty().name() : null)
+                .questionCount(request.getQuestionCount())
+                .status("PROCESSING")
+                .percent(0)
+                .currentStage("Đang khởi tạo tiến trình sinh bài Quiz AI...")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        saveJobState(jobId, initialStatus);
+
+        // Kích hoạt xử lý đa luồng chạy nền không chặn luồng chính
+        QuizMentorService asyncService = null;
+        try {
+            asyncService = applicationContext.getBean(QuizMentorService.class);
+        } catch (Exception e) {
+            log.warn("Không thể lấy QuizMentorService từ ApplicationContext: {}", e.getMessage());
+        }
+
+        if (asyncService != null) {
+            asyncService.executeAsyncAiQuiz(jobId, request, userDetails);
+        } else {
+            executeAsyncAiQuiz(jobId, request, userDetails);
+        }
+
+        return initialStatus;
+    }
+
+    @Override
+    @Async("quizAiTaskExecutor")
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void executeAsyncAiQuiz(String jobId, GenerateAiQuizRequest request, CustomUserDetails userDetails) {
+        log.info("Bắt đầu thực thi đa luồng tiến trình sinh Quiz AI: jobId={}", jobId);
+        QuizGenerationJobResponse jobStatus = loadJobState(jobId);
+        if (jobStatus == null) return;
+
+        try {
+            // Stage 1 (25%): Phân tích chủ đề & cấu trúc bài kiểm tra
+            updateJobStage(jobId, jobStatus, 25, "Đang phân tích chủ đề & cấu trúc bài kiểm tra...");
+
+            // Stage 2 (60%): Gemini AI biên soạn câu hỏi & giải thích đáp án
+            int qCount = (request.getQuestionCount() != null && request.getQuestionCount() > 0)
+                    ? request.getQuestionCount() : 5;
+            updateJobStage(jobId, jobStatus, 60, "Gemini AI đang biên soạn " + qCount + " câu hỏi trắc nghiệm & giải thích đáp án...");
+
+            // Tái sử dụng 100% logic sinh câu hỏi và lưu CSDL của generateAiQuiz
+            QuizMentorService proxyService = null;
+            try {
+                proxyService = applicationContext.getBean(QuizMentorService.class);
+            } catch (Exception e) {
+                log.warn("Không thể lấy proxyService từ ApplicationContext: {}", e.getMessage());
+            }
+
+            QuizDetailResponse detailResponse = (proxyService != null)
+                    ? proxyService.generateAiQuiz(request, userDetails)
+                    : generateAiQuiz(request, userDetails);
+
+            // Stage 3 (85%): Chuẩn hóa dữ liệu & lưu trữ bài Quiz
+            updateJobStage(jobId, jobStatus, 85, "Đang chuẩn hóa dữ liệu và hoàn tất bài Quiz...");
+
+            // Stage 4 (100%): Hoàn tất! Bài trắc nghiệm đã sẵn sàng
+            jobStatus.setStatus("COMPLETED");
+            jobStatus.setPercent(100);
+            jobStatus.setCurrentStage("Hoàn tất! Bài trắc nghiệm đã sẵn sàng.");
+            jobStatus.setQuizId(detailResponse.getId());
+            jobStatus.setResult(detailResponse);
+            jobStatus.setUpdatedAt(LocalDateTime.now());
+            saveJobState(jobId, jobStatus);
+            log.info("Hoàn tất tiến trình sinh Quiz AI thành công: jobId={}, quizId={}", jobId, detailResponse.getId());
+
+        } catch (Exception e) {
+            log.error("Lỗi trong quá trình thực thi async sinh Quiz: jobId={}, error={}", jobId, e.getMessage(), e);
+            jobStatus.setStatus("FAILED");
+            jobStatus.setPercent(100);
+            jobStatus.setErrorMessage(e.getMessage());
+            jobStatus.setCurrentStage("Quá trình sinh bài Quiz thất bại: " + e.getMessage());
+            jobStatus.setUpdatedAt(LocalDateTime.now());
+            saveJobState(jobId, jobStatus);
+        }
+    }
+
+    @Override
+    public QuizGenerationJobResponse getAiQuizJobStatus(String jobId) {
+        QuizGenerationJobResponse job = loadJobState(jobId);
+        if (job == null) {
+            return QuizGenerationJobResponse.builder()
+                    .jobId(jobId)
+                    .status("NOT_FOUND")
+                    .currentStage("Không tìm thấy tiến trình")
+                    .build();
+        }
+        return job;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public QuizDetailResponse generateAiQuiz(GenerateAiQuizRequest request, CustomUserDetails userDetails) {
         log.info("Mentor yêu cầu AI sinh bài Quiz cho Program ID: {}, Group ID: {}, Week: {}",
                 request.getProgramId(), request.getGroupId(), request.getWeekNumber());
@@ -255,6 +391,13 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     }
 
     @Override
+    public QuizDetailResponse getQuizDetailByAssignment(Long assignmentId, CustomUserDetails userDetails) {
+        QuizAssignment assignment = quizAssignmentRepository.findByIdWithQuizAndProgram(assignmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phân công bài thi ID: " + assignmentId));
+        return getQuizDetail(assignment.getQuiz().getId(), userDetails);
+    }
+
+    @Override
     public List<QuizSummaryResponse> getQuizzesByProgram(Long programId, CustomUserDetails userDetails) {
         verifyMentorAccess(programId, userDetails);
         List<Quiz> quizzes = quizRepository.findByProgramIdOrderByCreatedAtDesc(programId);
@@ -361,8 +504,10 @@ public class QuizMentorServiceImpl implements QuizMentorService {
             boolean passed = false;
             java.time.LocalDateTime latestSubmittedAt = null;
 
+            Long bestSubmissionId = null;
             if (!submissions.isEmpty()) {
                 QuizSubmission best = submissions.get(0);
+                bestSubmissionId = best.getId();
                 highestScore = best.getScore();
                 passed = best.getPassed();
                 latestSubmittedAt = best.getSubmittedAt();
@@ -378,6 +523,9 @@ public class QuizMentorServiceImpl implements QuizMentorService {
                     .fullName(intern.getFullName())
                     .email(intern.getEmail())
                     .groupName(intern.getGroup() != null ? intern.getGroup().getName() : "Chưa phân nhóm")
+                    .assignmentId(assign.getId())
+                    .submissionId(bestSubmissionId)
+                    .latestSubmissionId(bestSubmissionId)
                     .attemptsCount(attempts)
                     .highestScore(highestScore)
                     .totalPoints(quiz.getTotalPoints())
@@ -576,5 +724,80 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     private InternshipProgram getProgramOrThrow(Long programId) {
         return programRepository.findById(programId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình với ID: " + programId));
+    }
+
+    @Override
+    public QuizResultResponse getSubmissionResult(Long submissionId, CustomUserDetails userDetails) {
+        QuizSubmission submission = quizSubmissionRepository.findByIdWithDetails(submissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lượt làm bài với ID: " + submissionId));
+
+        Quiz quiz = submission.getQuiz();
+        verifyMentorAccess(quiz.getProgram().getId(), userDetails);
+
+        List<QuizAnswerResultResponse> answerResults = new ArrayList<>();
+        if (submission.getAnswers() != null) {
+            for (QuizSubmissionAnswer ans : submission.getAnswers()) {
+                QuizQuestion q = ans.getQuestion();
+                List<Long> selectedIds = parseSelectedOptionIds(ans.getSelectedOptionIds());
+                List<Long> correctIds = (q.getOptions() != null)
+                        ? q.getOptions().stream().filter(QuizQuestionOption::getIsCorrect).map(QuizQuestionOption::getId).toList()
+                        : Collections.emptyList();
+
+                List<QuizOptionResponse> optionResponses = (q.getOptions() != null)
+                        ? q.getOptions().stream().map(opt -> QuizOptionResponse.builder()
+                        .id(opt.getId())
+                        .optionLabel(opt.getOptionLabel())
+                        .optionText(opt.getOptionText())
+                        .isCorrect(opt.getIsCorrect())
+                        .orderIndex(opt.getOrderIndex())
+                        .build()).toList()
+                        : Collections.emptyList();
+
+                answerResults.add(QuizAnswerResultResponse.builder()
+                        .questionId(q.getId())
+                        .questionText(q.getQuestionText())
+                        .questionType(q.getQuestionType())
+                        .orderIndex(q.getOrderIndex())
+                        .points(q.getPoints())
+                        .isCorrect(ans.getIsCorrect())
+                        .scoreAwarded(ans.getScoreAwarded())
+                        .explanation(q.getExplanation())
+                        .selectedOptionIds(selectedIds)
+                        .correctOptionIds(correctIds)
+                        .options(optionResponses)
+                        .build());
+            }
+        }
+
+        return QuizResultResponse.builder()
+                .submissionId(submission.getId())
+                .assignmentId(submission.getAssignment() != null ? submission.getAssignment().getId() : null)
+                .quizId(quiz.getId())
+                .quizTitle(quiz.getTitle())
+                .attemptNumber(submission.getAttemptNumber())
+                .maxAttempts(quiz.getMaxAttempts())
+                .score(submission.getScore())
+                .totalPoints(submission.getTotalPoints())
+                .percentageScore(submission.getPercentageScore())
+                .passingScore(quiz.getPassingScore())
+                .passed(submission.getPassed())
+                .status(submission.getStatus())
+                .startedAt(submission.getStartedAt())
+                .submittedAt(submission.getSubmittedAt())
+                .answerResults(answerResults)
+                .build();
+    }
+
+    private List<Long> parseSelectedOptionIds(String idsStr) {
+        if (idsStr == null || idsStr.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<Long> result = new ArrayList<>();
+        for (String part : idsStr.split(",")) {
+            try {
+                result.add(Long.parseLong(part.trim()));
+            } catch (NumberFormatException ignored) {}
+        }
+        return result;
     }
 }

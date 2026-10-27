@@ -4,6 +4,8 @@ import org.example.aiservice.modules.interview.dto.request.GenerateInterviewQues
 import org.example.aiservice.modules.interview.dto.request.UpdateInterviewQuestionSetRequest;
 import org.example.aiservice.modules.interview.dto.response.InterviewQuestionSetResponse;
 
+import org.example.aiservice.modules.interview.dto.response.QuestionGenerationJobResponse;
+
 import java.util.List;
 
 public interface AiInterviewQuestionService {
@@ -14,6 +16,23 @@ public interface AiInterviewQuestionService {
             String userName,
             String authHeader
     );
+
+    QuestionGenerationJobResponse startAsyncQuestionGeneration(
+            GenerateInterviewQuestionsRequest request,
+            String userId,
+            String userName,
+            String authHeader
+    );
+
+    void executeAsyncQuestionGeneration(
+            String jobId,
+            GenerateInterviewQuestionsRequest request,
+            String userId,
+            String userName,
+            String authHeader
+    );
+
+    QuestionGenerationJobResponse getGenerationJobStatus(String jobId);
 
     InterviewQuestionSetResponse getQuestionSetById(Long id);
 
@@ -29,3 +48,4 @@ public interface AiInterviewQuestionService {
 
     byte[] exportInterviewEvaluationSheetPdf(Long setId);
 }
+

@@ -10,7 +10,7 @@ import org.example.aiservice.client.dto.DocumentClientDto;
 import org.example.aiservice.client.dto.InternProfileClientDto;
 import org.example.aiservice.client.dto.ProgramClientDto;
 import org.example.aiservice.dto.response.ApiResponse;
-import org.example.aiservice.core.extractor.DocumentTextExtractor;
+import org.example.aiservice.core.DocumentTextExtractor;
 import org.example.aiservice.core.provider.AiProvider;
 import org.example.aiservice.modules.screening.dto.request.BatchScreeningRequest;
 import org.example.aiservice.modules.screening.dto.response.BatchJobCreatedResponse;

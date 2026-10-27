@@ -6,9 +6,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.modules.interview.dto.request.GenerateInterviewQuestionsRequest;
 import org.example.aiservice.modules.interview.dto.request.UpdateInterviewQuestionSetRequest;
 import org.example.aiservice.modules.interview.dto.response.InterviewQuestionSetResponse;
+import org.example.aiservice.modules.interview.dto.response.QuestionGenerationJobResponse;
 import org.example.aiservice.modules.interview.service.AiInterviewQuestionService;
 import org.example.aiservice.service.AiRateLimiterService;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,6 +45,32 @@ public class AiInterviewQuestionController {
                 request, userId, userName, authHeader);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/generate-async")
+    @PreAuthorize("hasAnyRole('HR', 'MENTOR', 'ADMIN') or hasAuthority('AI_INTERVIEW_MANAGE')")
+    public ResponseEntity<QuestionGenerationJobResponse> generateQuestionsAsync(
+            @Valid @RequestBody GenerateInterviewQuestionsRequest request,
+            @RequestHeader(value = "X-User-Id", required = false, defaultValue = "system") String userId,
+            @RequestHeader(value = "X-User-Name", required = false, defaultValue = "HR/Mentor") String userName,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        log.info("REST request to generate interview questions async: programId={}, internId={}, role={}, requester={}",
+                request.getProgramId(), request.getInternId(), request.getTargetRole(), userId);
+
+        // AI-12: Kiểm tra Rate Limiting & Quota cho INTERVIEW_GENERATOR (Fail-closed)
+        rateLimiterService.checkFeatureRateLimit("INTERVIEW_GENERATOR", userId);
+
+        QuestionGenerationJobResponse response = aiInterviewQuestionService.startAsyncQuestionGeneration(
+                request, userId, userName, authHeader);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    @PreAuthorize("hasAnyRole('HR', 'MENTOR', 'ADMIN') or hasAuthority('AI_INTERVIEW_MANAGE')")
+    public ResponseEntity<QuestionGenerationJobResponse> getGenerationJobStatus(@PathVariable String jobId) {
+        return ResponseEntity.ok(aiInterviewQuestionService.getGenerationJobStatus(jobId));
+    }
+
 
     @GetMapping("/sets/{id}")
     @PreAuthorize("hasAnyRole('HR', 'MENTOR', 'ADMIN') or hasAuthority('AI_INTERVIEW_MANAGE')")

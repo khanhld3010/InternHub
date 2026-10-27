@@ -31,7 +31,8 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/api/v1/ai/interviews/candidate/exchange-token"
+                                "/api/v1/ai/interviews/candidate/exchange-token",
+                                "/api/ai/quiz/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

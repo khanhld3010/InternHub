@@ -1,4 +1,4 @@
-package org.example.aiservice.core.extractor;
+package org.example.aiservice.core;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;

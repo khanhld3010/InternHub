@@ -27,10 +27,9 @@ public interface QuizSubmissionRepository extends JpaRepository<QuizSubmission, 
             @Param("internId") Long internId
     );
 
-    @Query("SELECT qs FROM QuizSubmission qs " +
+    @Query("SELECT DISTINCT qs FROM QuizSubmission qs " +
             "LEFT JOIN FETCH qs.answers ans " +
             "LEFT JOIN FETCH ans.question q " +
-            "LEFT JOIN FETCH q.options " +
             "WHERE qs.id = :id")
     Optional<QuizSubmission> findByIdWithDetails(@Param("id") Long id);
 }

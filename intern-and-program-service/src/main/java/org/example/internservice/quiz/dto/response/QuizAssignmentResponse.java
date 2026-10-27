@@ -33,4 +33,9 @@ public class QuizAssignmentResponse {
     private Boolean passed;
     private AssignmentStatus status;
     private Long latestSubmissionId;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("attemptsUsed")
+    public Integer getAttemptsUsed() {
+        return attemptsTaken != null ? attemptsTaken : 0;
+    }
 }
