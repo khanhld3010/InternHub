@@ -20,6 +20,9 @@ public class QuizInternReportDto {
     private String fullName;
     private String email;
     private String groupName;
+    private Long assignmentId;
+    private Long submissionId;
+    private Long latestSubmissionId;
     private Integer attemptsCount;
     private Integer highestScore;
     private Integer totalPoints;

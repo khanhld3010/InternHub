@@ -11,6 +11,7 @@ import org.example.internservice.quiz.dto.request.UpdateQuizRequest;
 import org.example.internservice.quiz.dto.response.QuizDetailResponse;
 import org.example.internservice.quiz.dto.response.QuizGenerationJobResponse;
 import org.example.internservice.quiz.dto.response.QuizReportResponse;
+import org.example.internservice.quiz.dto.response.QuizResultResponse;
 import org.example.internservice.quiz.dto.response.QuizSummaryResponse;
 import org.example.internservice.quiz.service.QuizMentorService;
 import org.example.internservice.security.CustomUserDetails;
@@ -101,6 +102,15 @@ public class MentorQuizController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy chi tiết bài Quiz thành công", response));
     }
 
+    @GetMapping("/assignments/{assignmentId}")
+    public ResponseEntity<ApiResponse<QuizDetailResponse>> getQuizDetailByAssignment(
+            @PathVariable("assignmentId") Long assignmentId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        QuizDetailResponse response = quizMentorService.getQuizDetailByAssignment(assignmentId, userDetails);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy chi tiết bài Quiz theo assignment thành công", response));
+    }
+
     @GetMapping({"/programs/{programId}", "/program/{programId}"})
     public ResponseEntity<ApiResponse<List<QuizSummaryResponse>>> getQuizzesByProgram(
             @PathVariable("programId") Long programId,
@@ -127,5 +137,14 @@ public class MentorQuizController {
     ) {
         QuizReportResponse response = quizMentorService.getQuizReport(quizId, userDetails);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy báo cáo kết quả bài Quiz thành công", response));
+    }
+
+    @GetMapping("/submissions/{submissionId}")
+    public ResponseEntity<ApiResponse<QuizResultResponse>> getSubmissionResult(
+            @PathVariable("submissionId") Long submissionId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        QuizResultResponse response = quizMentorService.getSubmissionResult(submissionId, userDetails);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy chi tiết kết quả bài thi thành công", response));
     }
 }

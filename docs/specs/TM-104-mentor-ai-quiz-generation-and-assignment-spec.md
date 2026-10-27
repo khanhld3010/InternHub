@@ -19,6 +19,8 @@
 | **v1.2** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Tái cấu trúc tích hợp Kanban Task Modal | Hợp nhất luồng tạo đề Quiz AI vào trực tiếp Modal Giao Việc Kanban (`MissionItemModal`). Mentor bấm nút tạo câu hỏi để mở form cấu hình (số câu, độ khó, chủ đề bám theo task), hệ thống tổng hợp prompt template chuẩn gửi Gemini AI, liên kết bài Quiz với Task Kanban và phân công tự động cho TTS phụ trách. Mở quyền `/api/ai/quiz/**` trong `ai-service` cho FeignClient nội bộ. |
 | **v1.3** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Kiến Trúc Đa Luồng Bất Đồng Bộ (Async Non-blocking) & Polling Job tương tự TM-103 | Tách luồng sinh bài Quiz AI sang Thread Pool bất đồng bộ `quizAiTaskExecutor` (`@Async`); cung cấp endpoint `POST /api/quizzes/generate-async` trả về HTTP 202 Accepted kèm `jobId` trong `< 30ms`; quản lý tiến độ 4 chặng (25% - 60% - 85% - 100%) qua ConcurrentHashMap/Redis TTL; cung cấp endpoint `GET /api/quizzes/jobs/{jobId}`; loại bỏ hoàn toàn độ trễ blocking 15-20s, bảo đảm không làm gián đoạn thao tác của Mentor khi giao việc Kanban. |
 | **v1.4** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Đồng bộ DTO, Tính Server Timer & Tối Ưu Hóa Đồng Bộ Kanban | 1. Bổ sung `@JsonProperty("attemptsUsed")` alias cho `attemptsTaken` trong `QuizAssignmentResponse` để đồng bộ 100% với Frontend, khắc phục triệt để lỗi đánh giá sai "Đã hết lượt thi".<br>2. Bổ sung trường `remainingSeconds` tính từ Server trong `QuizTakingResponse` nhằm chống lệch múi giờ (Timezone Mismatch UTC vs GMT+7) gây auto-submit ngoài ý muốn.<br>3. Quy định chuẩn hóa luồng giao việc từ Kanban: Khi giao việc kèm Quiz đính kèm, Backend `QuizKanbanSyncHelper` chỉ tạo duy nhất 1 thẻ `[Quiz]` có `submissionUrl` cho mỗi TTS được giao, loại bỏ hoàn toàn tình trạng trùng lặp/thừa thẻ công việc. |
+| **v1.5** | 2026-10-27 | AI Senior Backend Pair-Programmer & User | `TM-104` | API Tra Cứu Quiz Theo Assignment Cho Mentor Kanban Inspection | Bổ sung endpoint `GET /api/quizzes/assignments/{assignmentId}` trong `MentorQuizController` và `QuizMentorService`. Tái sử dụng `quizAssignmentRepository.findByIdWithQuizAndProgram` kết hợp `getQuizDetail`, cho phép Mentor tra cứu trực tiếp toàn bộ câu hỏi/đáp án của đề thi từ thẻ Kanban mà không cần biết trước `quizId`. Phục vụ tính năng xem câu hỏi, đánh giá ý tưởng và đối chiếu dự án hiện tại ngay trên Kanban. |
+| **v1.6** | 2026-10-27 | AI Senior Backend Pair-Programmer & User | `TM-104` | API Cho Mentor Xem Lại Bài Làm Của Thực Tập Sinh Từ Báo Cáo | 1. Bổ sung endpoint `GET /api/quizzes/submissions/{submissionId}` trong `MentorQuizController` và `QuizMentorService`. Xác thực Mentor thuộc chương trình của Quiz, nạp đầy đủ đáp án đã chọn của học viên, đối soát đáp án đúng/sai và giải thích AI (`QuizResultResponse`).<br>2. Bổ sung trường `assignmentId` và `submissionId` vào `QuizInternReportDto` để Frontend Modal Báo Cáo Điểm Số (`QuizReportModal`) liên kết trực tiếp sang bài thi đã làm của từng học viên. |
 
 ---
 
@@ -544,9 +546,101 @@ CREATE TABLE quiz_submission_answers (
 ```
 
 #### 4. Xem thống kê bảng điểm của bài Quiz
+
 - **Endpoint:** `GET /api/quizzes/{quizId}/report`
 - **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
 - **Response 200 OK:** Trả về danh sách học viên, số lần đã thi, điểm cao nhất, trạng thái Đạt/Không đạt.
+
+#### 5. Tra cứu chi tiết bài Quiz theo Phân công (Kanban Inspection)
+
+- **Endpoint:** `GET /api/quizzes/assignments/{assignmentId}`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Cho phép Mentor/HR truy vấn toàn bộ thông tin đề thi và danh sách câu hỏi trắc nghiệm (`QuizDetailResponse`) dựa trên `assignmentId` lấy từ thẻ nhiệm vụ Kanban (`MissionItem.submissionUrl`). Tái sử dụng logic xác thực quyền truy cập chương trình và cơ chế nạp eager câu hỏi/đáp án/giải thích.
+- **Path Parameter:** `assignmentId` (Long, ID của bản ghi `quiz_assignments`).
+- **Response 200 OK:**
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Lấy chi tiết bài Quiz theo assignment thành công",
+  "data": {
+    "quizId": 45,
+    "programId": 12,
+    "title": "Bài Quiz Ôn Tập: Spring Boot Data JPA",
+    "topic": "Spring Boot Data JPA",
+    "difficulty": "MEDIUM",
+    "timeLimitMinutes": 15,
+    "passingScore": 70,
+    "totalQuestions": 10,
+    "status": "PUBLISHED",
+    "questions": [
+      {
+        "id": 201,
+        "questionText": "Nguyên nhân chính dẫn đến vấn đề N+1 Query trong Spring Data JPA là gì?",
+        "questionType": "SINGLE_CHOICE",
+        "points": 10,
+        "explanation": "N+1 Query xảy ra khi truy vấn 1 danh sách cha và sau đó Hibernate tự động thực thi N câu truy vấn phụ để nạp các quan hệ con.",
+        "options": [
+          { "id": 801, "optionLabel": "A", "optionText": "Do cấu hình fetch type EAGER hoặc lặp qua lazy collection trong vòng lặp", "isCorrect": true },
+          { "id": 802, "optionLabel": "B", "optionText": "Do không khai báo Primary Key cho Entity", "isCorrect": false },
+          { "id": 803, "optionLabel": "C", "optionText": "Do sử dụng Hibernate 6 thay vì Hibernate 5", "isCorrect": false },
+          { "id": 804, "optionLabel": "D", "optionText": "Do đặt tên method trong Repository sai chuẩn", "isCorrect": false }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### 6. Mentor Xem Chi Tiết Bài Làm Của Thực Tập Sinh (Mentor Submission Review Flow)
+
+- **Endpoint:** `GET /api/quizzes/submissions/{submissionId}`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Cho phép Mentor/HR/Admin xem lại toàn bộ bài làm cụ thể của học viên từ màn hình Báo Cáo Điểm Số (`QuizReportModal`). Hệ thống kiểm tra quyền Mentor có thuộc chương trình thực tập của Quiz hay không (`verifyMentorAccess`), sau đó nạp chi tiết câu hỏi, các đáp án học viên đã chọn (`selectedOptionIds`), đáp án đúng (`correctOptionIds`), điểm đạt được từng câu, và lời giải thích kỹ thuật (`explanation`) từ AI.
+- **Path Parameter:** `submissionId` (Long, ID của bản ghi `quiz_submissions`).
+- **Response 200 OK:**
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Lấy chi tiết kết quả bài thi thành công",
+  "data": {
+    "submissionId": 108,
+    "assignmentId": 12,
+    "quizId": 45,
+    "quizTitle": "Bài Quiz Ôn Tập: Spring Boot Data JPA",
+    "attemptNumber": 1,
+    "maxAttempts": 2,
+    "score": 80,
+    "totalPoints": 100,
+    "percentageScore": 80.0,
+    "passingScore": 70,
+    "passed": true,
+    "status": "SUBMITTED",
+    "startedAt": "2026-10-27T02:20:00.000",
+    "submittedAt": "2026-10-27T02:38:00.000",
+    "answerResults": [
+      {
+        "questionId": 201,
+        "questionText": "Nguyên nhân chính dẫn đến vấn đề N+1 Query trong Spring Data JPA là gì?",
+        "questionType": "SINGLE_CHOICE",
+        "points": 10,
+        "isCorrect": true,
+        "scoreAwarded": 10,
+        "explanation": "N+1 Query xảy ra khi truy vấn 1 danh sách cha và sau đó Hibernate tự động thực thi N câu truy vấn phụ để nạp các quan hệ con.",
+        "selectedOptionIds": [801],
+        "correctOptionIds": [801],
+        "options": [
+          { "id": 801, "optionLabel": "A", "optionText": "Do cấu hình fetch type EAGER hoặc lặp qua lazy collection trong vòng lặp", "isCorrect": true },
+          { "id": 802, "optionLabel": "B", "optionText": "Do không khai báo Primary Key cho Entity", "isCorrect": false }
+        ]
+      }
+    ]
+  }
+}
+```
 
 ---
 

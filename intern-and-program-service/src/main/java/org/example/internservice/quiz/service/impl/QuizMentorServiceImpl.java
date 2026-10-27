@@ -28,17 +28,20 @@ import org.example.internservice.quiz.dto.request.CreateQuestionDto;
 import org.example.internservice.quiz.dto.request.CreateQuizRequest;
 import org.example.internservice.quiz.dto.request.GenerateAiQuizRequest;
 import org.example.internservice.quiz.dto.request.UpdateQuizRequest;
+import org.example.internservice.quiz.dto.response.QuizAnswerResultResponse;
 import org.example.internservice.quiz.dto.response.QuizDetailResponse;
 import org.example.internservice.quiz.dto.response.QuizInternReportDto;
 import org.example.internservice.quiz.dto.response.QuizOptionResponse;
 import org.example.internservice.quiz.dto.response.QuizQuestionResponse;
 import org.example.internservice.quiz.dto.response.QuizReportResponse;
+import org.example.internservice.quiz.dto.response.QuizResultResponse;
 import org.example.internservice.quiz.dto.response.QuizSummaryResponse;
 import org.example.internservice.quiz.entity.Quiz;
 import org.example.internservice.quiz.entity.QuizAssignment;
 import org.example.internservice.quiz.entity.QuizQuestion;
 import org.example.internservice.quiz.entity.QuizQuestionOption;
 import org.example.internservice.quiz.entity.QuizSubmission;
+import org.example.internservice.quiz.entity.QuizSubmissionAnswer;
 import org.example.internservice.quiz.entity.enums.AssignmentStatus;
 import org.example.internservice.quiz.entity.enums.AssignmentTargetType;
 import org.example.internservice.quiz.entity.enums.QuestionType;
@@ -388,6 +391,13 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     }
 
     @Override
+    public QuizDetailResponse getQuizDetailByAssignment(Long assignmentId, CustomUserDetails userDetails) {
+        QuizAssignment assignment = quizAssignmentRepository.findByIdWithQuizAndProgram(assignmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phân công bài thi ID: " + assignmentId));
+        return getQuizDetail(assignment.getQuiz().getId(), userDetails);
+    }
+
+    @Override
     public List<QuizSummaryResponse> getQuizzesByProgram(Long programId, CustomUserDetails userDetails) {
         verifyMentorAccess(programId, userDetails);
         List<Quiz> quizzes = quizRepository.findByProgramIdOrderByCreatedAtDesc(programId);
@@ -494,8 +504,10 @@ public class QuizMentorServiceImpl implements QuizMentorService {
             boolean passed = false;
             java.time.LocalDateTime latestSubmittedAt = null;
 
+            Long bestSubmissionId = null;
             if (!submissions.isEmpty()) {
                 QuizSubmission best = submissions.get(0);
+                bestSubmissionId = best.getId();
                 highestScore = best.getScore();
                 passed = best.getPassed();
                 latestSubmittedAt = best.getSubmittedAt();
@@ -511,6 +523,9 @@ public class QuizMentorServiceImpl implements QuizMentorService {
                     .fullName(intern.getFullName())
                     .email(intern.getEmail())
                     .groupName(intern.getGroup() != null ? intern.getGroup().getName() : "Chưa phân nhóm")
+                    .assignmentId(assign.getId())
+                    .submissionId(bestSubmissionId)
+                    .latestSubmissionId(bestSubmissionId)
                     .attemptsCount(attempts)
                     .highestScore(highestScore)
                     .totalPoints(quiz.getTotalPoints())
@@ -709,5 +724,80 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     private InternshipProgram getProgramOrThrow(Long programId) {
         return programRepository.findById(programId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình với ID: " + programId));
+    }
+
+    @Override
+    public QuizResultResponse getSubmissionResult(Long submissionId, CustomUserDetails userDetails) {
+        QuizSubmission submission = quizSubmissionRepository.findByIdWithDetails(submissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lượt làm bài với ID: " + submissionId));
+
+        Quiz quiz = submission.getQuiz();
+        verifyMentorAccess(quiz.getProgram().getId(), userDetails);
+
+        List<QuizAnswerResultResponse> answerResults = new ArrayList<>();
+        if (submission.getAnswers() != null) {
+            for (QuizSubmissionAnswer ans : submission.getAnswers()) {
+                QuizQuestion q = ans.getQuestion();
+                List<Long> selectedIds = parseSelectedOptionIds(ans.getSelectedOptionIds());
+                List<Long> correctIds = (q.getOptions() != null)
+                        ? q.getOptions().stream().filter(QuizQuestionOption::getIsCorrect).map(QuizQuestionOption::getId).toList()
+                        : Collections.emptyList();
+
+                List<QuizOptionResponse> optionResponses = (q.getOptions() != null)
+                        ? q.getOptions().stream().map(opt -> QuizOptionResponse.builder()
+                        .id(opt.getId())
+                        .optionLabel(opt.getOptionLabel())
+                        .optionText(opt.getOptionText())
+                        .isCorrect(opt.getIsCorrect())
+                        .orderIndex(opt.getOrderIndex())
+                        .build()).toList()
+                        : Collections.emptyList();
+
+                answerResults.add(QuizAnswerResultResponse.builder()
+                        .questionId(q.getId())
+                        .questionText(q.getQuestionText())
+                        .questionType(q.getQuestionType())
+                        .orderIndex(q.getOrderIndex())
+                        .points(q.getPoints())
+                        .isCorrect(ans.getIsCorrect())
+                        .scoreAwarded(ans.getScoreAwarded())
+                        .explanation(q.getExplanation())
+                        .selectedOptionIds(selectedIds)
+                        .correctOptionIds(correctIds)
+                        .options(optionResponses)
+                        .build());
+            }
+        }
+
+        return QuizResultResponse.builder()
+                .submissionId(submission.getId())
+                .assignmentId(submission.getAssignment() != null ? submission.getAssignment().getId() : null)
+                .quizId(quiz.getId())
+                .quizTitle(quiz.getTitle())
+                .attemptNumber(submission.getAttemptNumber())
+                .maxAttempts(quiz.getMaxAttempts())
+                .score(submission.getScore())
+                .totalPoints(submission.getTotalPoints())
+                .percentageScore(submission.getPercentageScore())
+                .passingScore(quiz.getPassingScore())
+                .passed(submission.getPassed())
+                .status(submission.getStatus())
+                .startedAt(submission.getStartedAt())
+                .submittedAt(submission.getSubmittedAt())
+                .answerResults(answerResults)
+                .build();
+    }
+
+    private List<Long> parseSelectedOptionIds(String idsStr) {
+        if (idsStr == null || idsStr.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<Long> result = new ArrayList<>();
+        for (String part : idsStr.split(",")) {
+            try {
+                result.add(Long.parseLong(part.trim()));
+            } catch (NumberFormatException ignored) {}
+        }
+        return result;
     }
 }

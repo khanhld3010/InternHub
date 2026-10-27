@@ -6,6 +6,7 @@ import org.example.internservice.quiz.dto.request.GenerateAiQuizRequest;
 import org.example.internservice.quiz.dto.request.UpdateQuizRequest;
 import org.example.internservice.quiz.dto.response.QuizDetailResponse;
 import org.example.internservice.quiz.dto.response.QuizReportResponse;
+import org.example.internservice.quiz.dto.response.QuizResultResponse;
 import org.example.internservice.quiz.dto.response.QuizSummaryResponse;
 import org.example.internservice.quiz.dto.response.QuizGenerationJobResponse;
 import org.example.internservice.security.CustomUserDetails;
@@ -33,4 +34,8 @@ public interface QuizMentorService {
     void assignQuiz(Long quizId, AssignQuizRequest request, CustomUserDetails userDetails);
 
     QuizReportResponse getQuizReport(Long quizId, CustomUserDetails userDetails);
+
+    QuizDetailResponse getQuizDetailByAssignment(Long assignmentId, CustomUserDetails userDetails);
+
+    QuizResultResponse getSubmissionResult(Long submissionId, CustomUserDetails userDetails);
 }
