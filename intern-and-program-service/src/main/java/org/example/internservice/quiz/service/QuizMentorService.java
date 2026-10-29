@@ -6,7 +6,9 @@ import org.example.internservice.quiz.dto.request.GenerateAiQuizRequest;
 import org.example.internservice.quiz.dto.request.UpdateQuizRequest;
 import org.example.internservice.quiz.dto.response.QuizDetailResponse;
 import org.example.internservice.quiz.dto.response.QuizReportResponse;
+import org.example.internservice.quiz.dto.response.QuizResultResponse;
 import org.example.internservice.quiz.dto.response.QuizSummaryResponse;
+import org.example.internservice.quiz.dto.response.QuizGenerationJobResponse;
 import org.example.internservice.security.CustomUserDetails;
 
 import java.util.List;
@@ -14,6 +16,12 @@ import java.util.List;
 public interface QuizMentorService {
 
     QuizDetailResponse generateAiQuiz(GenerateAiQuizRequest request, CustomUserDetails userDetails);
+
+    QuizGenerationJobResponse startAsyncAiQuiz(GenerateAiQuizRequest request, CustomUserDetails userDetails);
+
+    void executeAsyncAiQuiz(String jobId, GenerateAiQuizRequest request, CustomUserDetails userDetails);
+
+    QuizGenerationJobResponse getAiQuizJobStatus(String jobId);
 
     QuizDetailResponse createQuiz(CreateQuizRequest request, CustomUserDetails userDetails);
 
@@ -26,4 +34,8 @@ public interface QuizMentorService {
     void assignQuiz(Long quizId, AssignQuizRequest request, CustomUserDetails userDetails);
 
     QuizReportResponse getQuizReport(Long quizId, CustomUserDetails userDetails);
+
+    QuizDetailResponse getQuizDetailByAssignment(Long assignmentId, CustomUserDetails userDetails);
+
+    QuizResultResponse getSubmissionResult(Long submissionId, CustomUserDetails userDetails);
 }

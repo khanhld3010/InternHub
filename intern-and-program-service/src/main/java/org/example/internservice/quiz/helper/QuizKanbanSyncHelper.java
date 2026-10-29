@@ -81,7 +81,7 @@ public class QuizKanbanSyncHelper {
                     .priority(MissionPriority.MEDIUM)
                     .status(MissionItemStatus.TODO)
                     .dueDate(assignment.getDueDate())
-                    .submissionUrl("/intern/quizzes/" + assignment.getId())
+                    .submissionUrl("/intern/quizzes/" + assignment.getId() + "/take")
                     .assignees(new HashSet<>(Collections.singletonList(intern)))
                     .orderIndex(0)
                     .build();
@@ -100,6 +100,11 @@ public class QuizKanbanSyncHelper {
 
     @Transactional
     public void markKanbanTaskCompleted(MissionItem missionItem, Integer score, Integer totalPoints, BigDecimal percentageScore) {
+        markKanbanTaskCompleted(missionItem, score, totalPoints, percentageScore, true);
+    }
+
+    @Transactional
+    public void markKanbanTaskCompleted(MissionItem missionItem, Integer score, Integer totalPoints, BigDecimal percentageScore, boolean passed) {
         if (missionItem == null) {
             return;
         }
@@ -107,8 +112,9 @@ public class QuizKanbanSyncHelper {
         try {
             missionItem.setStatus(MissionItemStatus.COMPLETED);
             missionItem.setSubmittedAt(LocalDateTime.now());
+            String resultText = passed ? "Đạt kết quả yêu cầu." : "Hoàn thành bài thi.";
             missionItem.setCompletionNote("Đã hoàn thành bài Quiz. Điểm số: " + score + "/" + totalPoints +
-                    " (" + percentageScore + "%). Đạt kết quả yêu cầu.");
+                    " (" + percentageScore + "%). " + resultText);
             missionItemRepository.save(missionItem);
             log.info("Đã tự động chuyển thẻ Kanban ID: {} sang COMPLETED", missionItem.getId());
         } catch (Exception e) {

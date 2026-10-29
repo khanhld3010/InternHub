@@ -16,6 +16,11 @@
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **v1.0** | 2026-10-14 | AI Senior Backend Pair-Programmer & User | `TM-104` | Khởi tạo Đặc Tả Kỹ Thuật | Khởi tạo tài liệu đặc tả 14 phần chuẩn hóa cho phân hệ Quiz AI. Kết hợp nguồn dữ liệu báo cáo tuần (`learnings_and_knowledge`) với Google Gemini Structured Output, hỗ trợ trắc nghiệm đơn/đa lựa chọn, cấu hình số lần làm bài (`maxAttempts`), tự động chấm điểm tức thì và đồng bộ thẻ nhiệm vụ Kanban. |
 | **v1.1** | 2026-10-14 | AI Senior Backend Pair-Programmer & User | `TM-104` | Cập nhật quy tắc bảo mật đáp án | Bổ sung ràng buộc bảo mật: Bài Quiz bắt buộc phải hoàn thành nộp bài trước (trạng thái `SUBMITTED` hoặc `TIMED_OUT`), hệ thống mới mở khóa và hiển thị đáp án đúng (`correctOptionIds`) cùng lời giải thích chi tiết (`explanation`). |
+| **v1.2** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Tái cấu trúc tích hợp Kanban Task Modal | Hợp nhất luồng tạo đề Quiz AI vào trực tiếp Modal Giao Việc Kanban (`MissionItemModal`). Mentor bấm nút tạo câu hỏi để mở form cấu hình (số câu, độ khó, chủ đề bám theo task), hệ thống tổng hợp prompt template chuẩn gửi Gemini AI, liên kết bài Quiz với Task Kanban và phân công tự động cho TTS phụ trách. Mở quyền `/api/ai/quiz/**` trong `ai-service` cho FeignClient nội bộ. |
+| **v1.3** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Kiến Trúc Đa Luồng Bất Đồng Bộ (Async Non-blocking) & Polling Job tương tự TM-103 | Tách luồng sinh bài Quiz AI sang Thread Pool bất đồng bộ `quizAiTaskExecutor` (`@Async`); cung cấp endpoint `POST /api/quizzes/generate-async` trả về HTTP 202 Accepted kèm `jobId` trong `< 30ms`; quản lý tiến độ 4 chặng (25% - 60% - 85% - 100%) qua ConcurrentHashMap/Redis TTL; cung cấp endpoint `GET /api/quizzes/jobs/{jobId}`; loại bỏ hoàn toàn độ trễ blocking 15-20s, bảo đảm không làm gián đoạn thao tác của Mentor khi giao việc Kanban. |
+| **v1.4** | 2026-10-26 | AI Senior Backend Pair-Programmer & User | `TM-104` | Đồng bộ DTO, Tính Server Timer & Tối Ưu Hóa Đồng Bộ Kanban | 1. Bổ sung `@JsonProperty("attemptsUsed")` alias cho `attemptsTaken` trong `QuizAssignmentResponse` để đồng bộ 100% với Frontend, khắc phục triệt để lỗi đánh giá sai "Đã hết lượt thi".<br>2. Bổ sung trường `remainingSeconds` tính từ Server trong `QuizTakingResponse` nhằm chống lệch múi giờ (Timezone Mismatch UTC vs GMT+7) gây auto-submit ngoài ý muốn.<br>3. Quy định chuẩn hóa luồng giao việc từ Kanban: Khi giao việc kèm Quiz đính kèm, Backend `QuizKanbanSyncHelper` chỉ tạo duy nhất 1 thẻ `[Quiz]` có `submissionUrl` cho mỗi TTS được giao, loại bỏ hoàn toàn tình trạng trùng lặp/thừa thẻ công việc. |
+| **v1.5** | 2026-10-27 | AI Senior Backend Pair-Programmer & User | `TM-104` | API Tra Cứu Quiz Theo Assignment Cho Mentor Kanban Inspection | Bổ sung endpoint `GET /api/quizzes/assignments/{assignmentId}` trong `MentorQuizController` và `QuizMentorService`. Tái sử dụng `quizAssignmentRepository.findByIdWithQuizAndProgram` kết hợp `getQuizDetail`, cho phép Mentor tra cứu trực tiếp toàn bộ câu hỏi/đáp án của đề thi từ thẻ Kanban mà không cần biết trước `quizId`. Phục vụ tính năng xem câu hỏi, đánh giá ý tưởng và đối chiếu dự án hiện tại ngay trên Kanban. |
+| **v1.6** | 2026-10-27 | AI Senior Backend Pair-Programmer & User | `TM-104` | API Cho Mentor Xem Lại Bài Làm Của Thực Tập Sinh Từ Báo Cáo | 1. Bổ sung endpoint `GET /api/quizzes/submissions/{submissionId}` trong `MentorQuizController` và `QuizMentorService`. Xác thực Mentor thuộc chương trình của Quiz, nạp đầy đủ đáp án đã chọn của học viên, đối soát đáp án đúng/sai và giải thích AI (`QuizResultResponse`).<br>2. Bổ sung trường `assignmentId` và `submissionId` vào `QuizInternReportDto` để Frontend Modal Báo Cáo Điểm Số (`QuizReportModal`) liên kết trực tiếp sang bài thi đã làm của từng học viên. |
 
 ---
 
@@ -51,16 +56,25 @@
 
 1. **Phân hệ `ServiceAI` (Port 8086):**
    - Bổ sung Prompt Template và JSON Schema cho chức năng sinh đề thi trắc nghiệm (`SINGLE_CHOICE` và `MULTIPLE_CHOICE`).
-   - Endpoint nội bộ: `POST /api/ai/quiz/generate` nhận thông tin ngữ cảnh (chủ đề, kiến thức báo cáo tuần, số lượng câu, độ khó).
+   - Endpoint nội bộ: `POST /api/ai/quiz/generate` nhận thông tin ngữ cảnh (chủ đề, kiến thức báo cáo tuần hoặc tiêu đề task Kanban, số lượng câu, độ khó).
+   - Cấu hình bảo mật `SecurityConfig`: Mở quyền `permitAll()` cho route `/api/ai/quiz/**` để FeignClient nội bộ từ `intern-and-program-service` gọi thông suốt mà không phát sinh lỗi 403.
    - Cơ chế Mock Mode (`GEMINI_MOCK_MODE=true`) sinh dữ liệu mẫu giả lập chuẩn xác khi dev/test không có Internet hoặc không có API Key.
 2. **Phân hệ `intern-and-program-service` (Port 8082):**
-   - **Tích hợp FeignClient:** Gọi sang `ServiceAI` truyền ngữ cảnh lấy từ bảng `intern_weekly_reports`.
+   - **Tích hợp FeignClient:** Gọi sang `ServiceAI` truyền ngữ cảnh lấy từ Báo cáo tuần (`InternWeeklyReport`) hoặc từ Tiêu đề công việc Kanban (`MissionItem`).
+   - **Hỗ trợ 2 chế độ sinh đề AI (`POST /api/quizzes/generate-ai` và `POST /api/quizzes/generate-async`):**
+     - Chế độ 1: Bóc tách kiến thức từ Báo cáo tuần (`groupId` + `weekNumber`).
+     - Chế độ 2: Sinh nhanh theo chủ đề công việc (`topic`), không bắt buộc có nhóm hoặc tuần.
+   - **Cơ chế Đa luồng Chạy ngầm Bất đồng bộ (Async Non-blocking Job Processing tương tự TM-103):**
+     - Endpoint bất đồng bộ `POST /api/quizzes/generate-async`: Cấp phát mã tác vụ `jobId` (`job-quiz-xxxxxxxx`), phân phối vào Thread Pool `quizAiTaskExecutor` (`@Async`) và phản hồi ngay `HTTP 202 Accepted` trong `< 30ms`.
+     - Quản lý vòng đời tiến độ 4 chặng: `PROCESSING` (25% -> 60% -> 85%) -> `COMPLETED` (100%) hoặc `FAILED`.
+     - Endpoint kiểm tra tiến độ `GET /api/quizzes/jobs/{jobId}`: Cho phép Client polling ngầm định kỳ (2000ms), trả về trạng thái, phần trăm và đối tượng `QuizDetailResponse` khi hoàn tất.
+     - Xóa bỏ triệt để tình trạng khóa cứng màn hình và triệt tiêu lỗi Axios Timeout 10s khi sinh nhiều câu hỏi trắc nghiệm chuyên sâu.
    - **Mô hình dữ liệu Quiz:** Tạo 6 bảng CSDL kế thừa `BaseEntity` (`quizzes`, `quiz_questions`, `quiz_question_options`, `quiz_assignments`, `quiz_submissions`, `quiz_submission_answers`).
    - **Quản lý vòng đời Quiz:** Tạo nháp $\rightarrow$ Cập nhật câu hỏi $\rightarrow$ Xuất bản $\rightarrow$ Lưu trữ.
    - **Cơ chế Phân công (Assignment Engine):**
-     - Giao cho **1 TTS cụ thể**: Tạo 1 bản ghi `quiz_assignments` với `intern_id`.
+     - Giao cho **1 hoặc nhiều TTS cụ thể**: Tạo các bản ghi `quiz_assignments` theo danh sách `internIds` được giao task.
      - Giao cho **1 Nhóm TTS (`InternGroup`)**: Hệ thống tự động quét toàn bộ TTS thuộc nhóm và tạo bản ghi phân công cho từng học viên.
-   - **Đồng bộ Kanban Mission:** Tự động gọi `MissionItemService` tạo thẻ nhiệm vụ `[Quiz]` khi xuất bản bài thi, và cập nhật `COMPLETED` khi học viên làm đạt.
+   - **Đồng bộ Kanban Mission:** Tự động liên kết `quiz_id` với thẻ nhiệm vụ `MissionItem`, và tự động cập nhật `COMPLETED` khi học viên làm đạt điểm qua môn.
    - **Bộ máy Chấm Điểm Tự Động (Auto-grading Engine):** Chấm điểm tức thì, xác định Đạt/Trượt (`passed`), tính điểm cao nhất trong các lượt thi (`attempt_number`).
    - **Bảo mật RBAC:** Kiểm tra chặt chẽ quyền Mentor đối với chương trình thông qua `verifyMentorAccess`, chống IDOR truy cập chéo giữa các chương trình.
 
@@ -145,8 +159,8 @@ sequenceDiagram
     Core-->>Intern: Đề thi (Ẩn trường isCorrect và explanation)
     Intern->>Core: POST /api/interns/me/quiz-submissions/{submissionId}/submit (danh sách câu trả lời)
     Core->>Core: Thuật toán Auto-grading (All-or-Nothing), tính score, passed
-    alt TTS đạt điểm qua môn (passed = true)
-        Core->>Mission: updateItemStatus(itemId, COMPLETED, note="Đạt điểm Quiz")
+    alt TTS nộp bài thi Quiz (SUBMITTED / TIMED_OUT)
+        Core->>Mission: markKanbanTaskCompleted(itemId, COMPLETED, note="Đã hoàn thành bài Quiz...")
     end
     Core-->>Intern: 200 OK (Điểm số, Tỷ lệ đúng %, Đáp án đúng & Lời giải thích chi tiết)
 ```
@@ -179,7 +193,7 @@ sequenceDiagram
 - **FR-6 (Secure Quiz Taking):** Thực tập sinh xem danh sách bài thi và bắt đầu làm bài (`/start`). Trong suốt thời gian làm bài thi, hệ thống ẩn 100% đáp án đúng (`isCorrect`) và lời giải thích (`explanation`) để bảo mật đề thi tuyệt đối.
 - **FR-7 (Post-Completion Instant Auto-Grading & Detailed Feedback):** Yêu cầu bài Quiz **phải được hoàn thành trước** (học viên bấm Nộp bài hoặc hệ thống tự động đóng khi hết giờ $\rightarrow$ trạng thái `SUBMITTED`/`TIMED_OUT`), sau đó hệ thống mới chấm điểm tự động và **mở khóa hiển thị đáp án đúng cùng lời giải thích chi tiết** cho từng câu hỏi.
 - **FR-8 (Retake Management & Highest Score Tracking):** Nếu bài Quiz cho phép làm lại (`maxAttempts > 1`), TTS có thể thi lại; hệ thống lưu trữ lịch sử tất cả các lần thi và tự động lấy lần có điểm cao nhất làm điểm đánh giá chính thức.
-- **FR-9 (Kanban Auto-Completion):** Khi TTS đạt điểm qua môn (`passed = true`), hệ thống tự động cập nhật thẻ nhiệm vụ Kanban tương ứng sang trạng thái `COMPLETED`.
+- **FR-9 (Kanban Auto-Completion & Transition):** Khi TTS nộp bài thi Quiz (`SUBMITTED`/`TIMED_OUT`), hệ thống tự động đồng bộ và chuyển thẻ nhiệm vụ Kanban tương ứng sang trạng thái `COMPLETED` với ghi chú kết quả chi tiết. Đồng thời trên giao diện Kanban và Modal chi tiết nhiệm vụ, TTS có thể chủ động bấm nút "Hoàn thành" để chuyển thẻ Quiz sang cột Hoàn thành hoặc "Mở lại làm tiếp" khi cần.
 - **FR-10 (Mentor Scoreboard & Analytics):** Cung cấp API cho Mentor xem thống kê bảng điểm của toàn bộ học viên trong nhóm hoặc chương trình (điểm cao nhất, số lần thi, trạng thái hoàn thành).
 
 ---
@@ -422,6 +436,78 @@ CREATE TABLE quiz_submission_answers (
 }
 ```
 
+#### 1b. Yêu cầu AI sinh bài Quiz Đa Luồng Bất Đồng Bộ (Async Non-blocking Job Processing tương tự TM-103)
+
+- **Endpoint:** `POST /api/quizzes/generate-async`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Tiếp nhận yêu cầu sinh câu hỏi trắc nghiệm bằng AI, tạo tác vụ ngầm `jobId`, phân phối vào Thread Pool `quizAiTaskExecutor` và phản hồi HTTP 202 Accepted ngay lập tức trong thời gian `< 30ms`. Toàn bộ quá trình gọi Gemini AI (12 - 20s) được đẩy xuống background.
+- **Request Body:** Tương tự `POST /api/quizzes/generate-ai` (`programId`, `topic`, `difficulty`, `questionCount`, `groupId?`, `weekNumber?`).
+- **Response 202 Accepted:**
+```json
+{
+  "success": true,
+  "statusCode": 202,
+  "message": "Đã tiếp nhận yêu cầu sinh bài Quiz bằng AI, tiến trình đang chạy ngầm",
+  "data": {
+    "jobId": "job-quiz-8f2c3a1b",
+    "programId": 12,
+    "topic": "Spring Boot Data JPA, N+1 Query & Transaction Management",
+    "difficulty": "MEDIUM",
+    "status": "PROCESSING",
+    "percent": 0,
+    "currentStage": "Đang khởi tạo tiến trình sinh bài Quiz AI...",
+    "quizId": null,
+    "result": null,
+    "errorMessage": null,
+    "createdAt": "2026-10-26T12:00:00.000",
+    "updatedAt": "2026-10-26T12:00:00.000"
+  }
+}
+```
+
+#### 1c. Kiểm tra trạng thái và tiến độ của tác vụ AI sinh bài Quiz
+
+- **Endpoint:** `GET /api/quizzes/jobs/{jobId}`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Polling tiến độ định kỳ (mỗi 2000ms). Trả về thông tin trạng thái theo 4 chặng:
+  - `percent = 25`: "Đang phân tích chủ đề & cấu trúc bài kiểm tra..."
+  - `percent = 60`: "Gemini AI đang biên soạn các câu hỏi trắc nghiệm & giải thích đáp án..."
+  - `percent = 85`: "Đang chuẩn hóa dữ liệu và lưu trữ bài Quiz vào hệ thống..."
+  - `percent = 100`: "Hoàn tất! Bài trắc nghiệm đã sẵn sàng." (Kèm `quizId` và `result: QuizDetailResponse`).
+- **Response 200 OK (Khi hoàn tất - COMPLETED):**
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Lấy trạng thái tiến trình sinh bài Quiz thành công",
+  "data": {
+    "jobId": "job-quiz-8f2c3a1b",
+    "programId": 12,
+    "topic": "Spring Boot Data JPA, N+1 Query & Transaction Management",
+    "difficulty": "MEDIUM",
+    "status": "COMPLETED",
+    "percent": 100,
+    "currentStage": "Hoàn tất! Bài trắc nghiệm đã sẵn sàng.",
+    "quizId": 45,
+    "result": {
+      "quizId": 45,
+      "programId": 12,
+      "title": "Bài Quiz Ôn Tập: Spring Boot Data JPA",
+      "topic": "Spring Boot Data JPA",
+      "difficulty": "MEDIUM",
+      "timeLimitMinutes": 15,
+      "passingScore": 70,
+      "totalQuestions": 10,
+      "status": "DRAFT",
+      "questions": [ ... ]
+    },
+    "errorMessage": null,
+    "createdAt": "2026-10-26T12:00:00.000",
+    "updatedAt": "2026-10-26T12:00:15.000"
+  }
+}
+```
+
 #### 2. Mentor chỉnh sửa câu hỏi/đáp án bài Quiz nháp
 - **Endpoint:** `PUT /api/quizzes/{quizId}`
 - **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
@@ -460,9 +546,101 @@ CREATE TABLE quiz_submission_answers (
 ```
 
 #### 4. Xem thống kê bảng điểm của bài Quiz
+
 - **Endpoint:** `GET /api/quizzes/{quizId}/report`
 - **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
 - **Response 200 OK:** Trả về danh sách học viên, số lần đã thi, điểm cao nhất, trạng thái Đạt/Không đạt.
+
+#### 5. Tra cứu chi tiết bài Quiz theo Phân công (Kanban Inspection)
+
+- **Endpoint:** `GET /api/quizzes/assignments/{assignmentId}`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Cho phép Mentor/HR truy vấn toàn bộ thông tin đề thi và danh sách câu hỏi trắc nghiệm (`QuizDetailResponse`) dựa trên `assignmentId` lấy từ thẻ nhiệm vụ Kanban (`MissionItem.submissionUrl`). Tái sử dụng logic xác thực quyền truy cập chương trình và cơ chế nạp eager câu hỏi/đáp án/giải thích.
+- **Path Parameter:** `assignmentId` (Long, ID của bản ghi `quiz_assignments`).
+- **Response 200 OK:**
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Lấy chi tiết bài Quiz theo assignment thành công",
+  "data": {
+    "quizId": 45,
+    "programId": 12,
+    "title": "Bài Quiz Ôn Tập: Spring Boot Data JPA",
+    "topic": "Spring Boot Data JPA",
+    "difficulty": "MEDIUM",
+    "timeLimitMinutes": 15,
+    "passingScore": 70,
+    "totalQuestions": 10,
+    "status": "PUBLISHED",
+    "questions": [
+      {
+        "id": 201,
+        "questionText": "Nguyên nhân chính dẫn đến vấn đề N+1 Query trong Spring Data JPA là gì?",
+        "questionType": "SINGLE_CHOICE",
+        "points": 10,
+        "explanation": "N+1 Query xảy ra khi truy vấn 1 danh sách cha và sau đó Hibernate tự động thực thi N câu truy vấn phụ để nạp các quan hệ con.",
+        "options": [
+          { "id": 801, "optionLabel": "A", "optionText": "Do cấu hình fetch type EAGER hoặc lặp qua lazy collection trong vòng lặp", "isCorrect": true },
+          { "id": 802, "optionLabel": "B", "optionText": "Do không khai báo Primary Key cho Entity", "isCorrect": false },
+          { "id": 803, "optionLabel": "C", "optionText": "Do sử dụng Hibernate 6 thay vì Hibernate 5", "isCorrect": false },
+          { "id": 804, "optionLabel": "D", "optionText": "Do đặt tên method trong Repository sai chuẩn", "isCorrect": false }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### 6. Mentor Xem Chi Tiết Bài Làm Của Thực Tập Sinh (Mentor Submission Review Flow)
+
+- **Endpoint:** `GET /api/quizzes/submissions/{submissionId}`
+- **Quyền:** `ROLE_MENTOR`, `ROLE_HR`, `ROLE_ADMIN`
+- **Mô tả:** Cho phép Mentor/HR/Admin xem lại toàn bộ bài làm cụ thể của học viên từ màn hình Báo Cáo Điểm Số (`QuizReportModal`). Hệ thống kiểm tra quyền Mentor có thuộc chương trình thực tập của Quiz hay không (`verifyMentorAccess`), sau đó nạp chi tiết câu hỏi, các đáp án học viên đã chọn (`selectedOptionIds`), đáp án đúng (`correctOptionIds`), điểm đạt được từng câu, và lời giải thích kỹ thuật (`explanation`) từ AI.
+- **Path Parameter:** `submissionId` (Long, ID của bản ghi `quiz_submissions`).
+- **Response 200 OK:**
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Lấy chi tiết kết quả bài thi thành công",
+  "data": {
+    "submissionId": 108,
+    "assignmentId": 12,
+    "quizId": 45,
+    "quizTitle": "Bài Quiz Ôn Tập: Spring Boot Data JPA",
+    "attemptNumber": 1,
+    "maxAttempts": 2,
+    "score": 80,
+    "totalPoints": 100,
+    "percentageScore": 80.0,
+    "passingScore": 70,
+    "passed": true,
+    "status": "SUBMITTED",
+    "startedAt": "2026-10-27T02:20:00.000",
+    "submittedAt": "2026-10-27T02:38:00.000",
+    "answerResults": [
+      {
+        "questionId": 201,
+        "questionText": "Nguyên nhân chính dẫn đến vấn đề N+1 Query trong Spring Data JPA là gì?",
+        "questionType": "SINGLE_CHOICE",
+        "points": 10,
+        "isCorrect": true,
+        "scoreAwarded": 10,
+        "explanation": "N+1 Query xảy ra khi truy vấn 1 danh sách cha và sau đó Hibernate tự động thực thi N câu truy vấn phụ để nạp các quan hệ con.",
+        "selectedOptionIds": [801],
+        "correctOptionIds": [801],
+        "options": [
+          { "id": 801, "optionLabel": "A", "optionText": "Do cấu hình fetch type EAGER hoặc lặp qua lazy collection trong vòng lặp", "isCorrect": true },
+          { "id": 802, "optionLabel": "B", "optionText": "Do không khai báo Primary Key cho Entity", "isCorrect": false }
+        ]
+      }
+    ]
+  }
+}
+```
 
 ---
 
@@ -488,6 +666,7 @@ CREATE TABLE quiz_submission_answers (
       "dueDate": "2026-10-25",
       "maxAttempts": 2,
       "attemptsTaken": 1,
+      "attemptsUsed": 1,
       "highestScore": 80,
       "passed": true,
       "status": "COMPLETED"
@@ -499,7 +678,7 @@ CREATE TABLE quiz_submission_answers (
 #### 2. Bắt đầu làm bài thi (Start Quiz Attempt)
 - **Endpoint:** `POST /api/interns/me/quiz-assignments/{assignmentId}/start`
 - **Quyền:** `ROLE_INTERN`
-- **Response 200 OK (Đã ẩn toàn bộ đáp án đúng để chống gian lận):**
+- **Response 200 OK (Đã ẩn toàn bộ đáp án đúng để chống gian lận; trả về remainingSeconds tính từ Server):**
 ```json
 {
   "success": true,
@@ -511,6 +690,7 @@ CREATE TABLE quiz_submission_answers (
     "attemptNumber": 2,
     "timeLimitMinutes": 20,
     "startedAt": "2026-10-14T10:30:00",
+    "remainingSeconds": 1200,
     "questions": [
       {
         "id": 201,

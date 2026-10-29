@@ -9,7 +9,9 @@ import org.example.internservice.quiz.dto.request.CreateQuizRequest;
 import org.example.internservice.quiz.dto.request.GenerateAiQuizRequest;
 import org.example.internservice.quiz.dto.request.UpdateQuizRequest;
 import org.example.internservice.quiz.dto.response.QuizDetailResponse;
+import org.example.internservice.quiz.dto.response.QuizGenerationJobResponse;
 import org.example.internservice.quiz.dto.response.QuizReportResponse;
+import org.example.internservice.quiz.dto.response.QuizResultResponse;
 import org.example.internservice.quiz.dto.response.QuizSummaryResponse;
 import org.example.internservice.quiz.service.QuizMentorService;
 import org.example.internservice.security.CustomUserDetails;
@@ -49,6 +51,28 @@ public class MentorQuizController {
                         "AI đã sinh thành công bộ câu hỏi bài Quiz nháp để Mentor kiểm duyệt", response));
     }
 
+    @PostMapping("/generate-async")
+    public ResponseEntity<ApiResponse<QuizGenerationJobResponse>> generateAiQuizAsync(
+            @Valid @RequestBody GenerateAiQuizRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        log.info("REST yêu cầu async AI sinh bài Quiz cho chương trình ID: {}, topic: {}", request.getProgramId(), request.getTopic());
+        QuizGenerationJobResponse response = quizMentorService.startAsyncAiQuiz(request, userDetails);
+
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ApiResponse.success(HttpStatus.ACCEPTED.value(),
+                        "Đã tiếp nhận yêu cầu sinh bài Quiz AI, tiến trình đang chạy ngầm", response));
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    public ResponseEntity<ApiResponse<QuizGenerationJobResponse>> getAiQuizJobStatus(
+            @PathVariable("jobId") String jobId
+    ) {
+        QuizGenerationJobResponse response = quizMentorService.getAiQuizJobStatus(jobId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                "Lấy trạng thái tiến trình sinh bài Quiz thành công", response));
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<QuizDetailResponse>> createQuiz(
             @Valid @RequestBody CreateQuizRequest request,
@@ -78,6 +102,15 @@ public class MentorQuizController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy chi tiết bài Quiz thành công", response));
     }
 
+    @GetMapping("/assignments/{assignmentId}")
+    public ResponseEntity<ApiResponse<QuizDetailResponse>> getQuizDetailByAssignment(
+            @PathVariable("assignmentId") Long assignmentId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        QuizDetailResponse response = quizMentorService.getQuizDetailByAssignment(assignmentId, userDetails);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy chi tiết bài Quiz theo assignment thành công", response));
+    }
+
     @GetMapping({"/programs/{programId}", "/program/{programId}"})
     public ResponseEntity<ApiResponse<List<QuizSummaryResponse>>> getQuizzesByProgram(
             @PathVariable("programId") Long programId,
@@ -104,5 +137,14 @@ public class MentorQuizController {
     ) {
         QuizReportResponse response = quizMentorService.getQuizReport(quizId, userDetails);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy báo cáo kết quả bài Quiz thành công", response));
+    }
+
+    @GetMapping("/submissions/{submissionId}")
+    public ResponseEntity<ApiResponse<QuizResultResponse>> getSubmissionResult(
+            @PathVariable("submissionId") Long submissionId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        QuizResultResponse response = quizMentorService.getSubmissionResult(submissionId, userDetails);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Lấy chi tiết kết quả bài thi thành công", response));
     }
 }

@@ -32,7 +32,7 @@ public class AiConfigAdminService {
     @Value("${ai.encryption.current-version:1}")
     private int currentKeyVersion;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AiConfigResponse getConfig() {
         AiSystemConfig config = getOrCreateDefaultConfig();
 
@@ -129,7 +129,7 @@ public class AiConfigAdminService {
         return configRepository.findFirstByOrderByIdAsc().orElseGet(() -> {
             AiSystemConfig def = AiSystemConfig.builder()
                     .provider("GEMINI")
-                    .modelName("gemini-1.5-flash")
+                    .modelName("gemini-3.5-flash-lite")
                     .temperature(new BigDecimal("0.30"))
                     .maxTokens(1024)
                     .systemInstruction("Bạn là Trợ lý ảo AI của nền tảng InternHub...")

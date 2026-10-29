@@ -183,6 +183,10 @@ public class QuizInternServiceImpl implements QuizInternService {
             }
         }
 
+        long elapsedSeconds = java.time.Duration.between(savedSubmission.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
+        int totalLimitSeconds = quiz.getTimeLimitMinutes() != null ? quiz.getTimeLimitMinutes() * 60 : 0;
+        int remainingSeconds = Math.max(0, (int) (totalLimitSeconds - elapsedSeconds));
+
         return QuizTakingResponse.builder()
                 .submissionId(savedSubmission.getId())
                 .assignmentId(assignment.getId())
@@ -196,6 +200,7 @@ public class QuizInternServiceImpl implements QuizInternService {
                 .attemptNumber(savedSubmission.getAttemptNumber())
                 .maxAttempts(quiz.getMaxAttempts())
                 .startedAt(savedSubmission.getStartedAt())
+                .remainingSeconds(remainingSeconds)
                 .questions(takingQuestions)
                 .build();
     }
@@ -298,11 +303,11 @@ public class QuizInternServiceImpl implements QuizInternService {
         log.info("Học viên {} đã nộp bài Quiz ID: {}. Điểm: {}/{}, Kết quả: {}",
                 intern.getInternCode(), quiz.getId(), totalScore, totalPoints, passed ? "ĐẠT" : "CHƯA ĐẠT");
 
-        // Đồng bộ hoàn thành Kanban Mission nếu đạt điểm
-        if (passed && submission.getAssignment() != null && submission.getAssignment().getMissionItem() != null) {
+        // Tự động đồng bộ hoàn thành thẻ Kanban khi đã nộp bài Quiz
+        if (submission.getAssignment() != null && submission.getAssignment().getMissionItem() != null) {
             kanbanSyncHelper.markKanbanTaskCompleted(
                     submission.getAssignment().getMissionItem(),
-                    totalScore, totalPoints, percentage
+                    totalScore, totalPoints, percentage, passed
             );
         }
 

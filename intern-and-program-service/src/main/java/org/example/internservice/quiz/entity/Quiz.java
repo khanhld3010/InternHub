@@ -22,6 +22,8 @@ import org.example.internservice.program.entity.InternshipProgram;
 import org.example.internservice.quiz.entity.enums.QuizDifficulty;
 import org.example.internservice.quiz.entity.enums.QuizStatus;
 
+import org.hibernate.annotations.BatchSize;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -86,6 +88,7 @@ public class Quiz extends BaseEntity {
     @Builder.Default
     private QuizStatus status = QuizStatus.DRAFT;
 
+    @BatchSize(size = 50)
     @OneToMany(mappedBy = "quiz", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("orderIndex ASC")
     @Builder.Default
