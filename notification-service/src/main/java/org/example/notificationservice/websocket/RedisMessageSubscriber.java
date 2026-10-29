@@ -132,7 +132,7 @@ public class RedisMessageSubscriber implements MessageListener {
                                 .content(content)
                                 .type(isSuccess ? "AI_SUCCESS" : "AI_ERROR")
                                 .referenceType(event.getJobType())
-                                .referenceId(event.getReferenceId() != null ? event.getReferenceId() : event.getJobId())
+                                .referenceId(event.getReferenceId() != null ? String.valueOf(event.getReferenceId()) : event.getJobId())
                                 .actionUrl("/hr/interview-management")
                                 .build();
 
