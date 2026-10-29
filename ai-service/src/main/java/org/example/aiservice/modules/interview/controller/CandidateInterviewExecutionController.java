@@ -15,12 +15,14 @@ import org.example.aiservice.modules.interview.service.InterviewAuditAndSubmissi
 import org.example.aiservice.security.PromptInjectionGuardService;
 import org.example.aiservice.service.AiRateLimiterService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/ai/interviews/candidate/sessions")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('CANDIDATE_INTERVIEW', 'INTERN', 'HR', 'ADMIN') or hasAuthority('ROLE_CANDIDATE_INTERVIEW')")
 public class CandidateInterviewExecutionController {
 
     private final CandidateSessionExecutionService executionService;

@@ -1,64 +1,36 @@
 package org.example.internservice.intern.service;
 
 import org.example.internservice.intern.dto.request.ReviewDocumentRequest;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.ConfirmUploadRequest;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlRequest;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse;
 import org.example.internservice.intern.dto.response.DocumentDownloadDto;
 import org.example.internservice.intern.dto.response.DocumentResponse;
+import org.example.internservice.security.CustomUserDetails;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 public interface InternDocumentService {
 
-    /**
-     * Tải lên tài liệu mới (CV hoặc đơn xin thực tập) cho hồ sơ thực tập sinh.
-     *
-     * @param internCode      Mã thực tập sinh (ví dụ: INT-202609-0001)
-     * @param file            Tệp tin đính kèm
-     * @param documentTypeStr Loại tài liệu ("CV" hoặc "INTERNSHIP_APPLICATION")
-     * @return Thông tin metadata của tài liệu đã lưu
-     */
     DocumentResponse uploadDocument(String internCode, MultipartFile file, String documentTypeStr);
 
-    /**
-     * Lấy danh sách toàn bộ tài liệu của một thực tập sinh theo internCode.
-     *
-     * @param internCode Mã thực tập sinh
-     * @return Danh sách metadata tài liệu xếp theo ngày nộp mới nhất
-     */
     List<DocumentResponse> getDocumentsByInternCode(String internCode);
 
-    /**
-     * Tải tệp tin tài liệu để download hoặc preview inline.
-     *
-     * @param documentId ID của tài liệu
-     * @return DTO chứa Resource nhị phân và tên file gốc
-     */
+    List<DocumentResponse> getDocumentsByInternCode(String internCode, CustomUserDetails userDetails);
+
     DocumentDownloadDto loadDocumentForDownload(Long documentId);
 
-    /**
-     * Cập nhật trạng thái xét duyệt tài liệu (Approve / Reject kèm lý do).
-     *
-     * @param documentId ID của tài liệu
-     * @param request    DTO chứa status (APPROVED, REJECTED) và rejectionReason
-     * @return Metadata tài liệu sau khi cập nhật
-     */
+    DocumentDownloadDto loadDocumentForDownload(Long documentId, CustomUserDetails userDetails);
+
     DocumentResponse reviewDocument(Long documentId, ReviewDocumentRequest request);
 
-    /**
-     * Yêu cầu cấp Presigned Upload URL trực tiếp lên Object Storage (S3/MinIO)
-     */
-    org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse createPresignedUploadUrl(
-            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlRequest request);
+    RequestUploadUrlResponse createPresignedUploadUrl(String internCode, RequestUploadUrlRequest request);
 
-    /**
-     * Xác nhận upload thành công lên S3 và ghi nhận bản ghi nghiệp vụ
-     */
-    DocumentResponse confirmUpload(
-            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.ConfirmUploadRequest request);
+    DocumentResponse confirmUpload(String internCode, ConfirmUploadRequest request);
 
-    /**
-     * Lấy Presigned URL xem/tải tài liệu an toàn từ Object Storage
-     */
-    org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse getDocumentViewUrl(Long documentId);
+    ViewDocumentUrlResponse getDocumentViewUrl(Long documentId);
+
+    ViewDocumentUrlResponse getDocumentViewUrl(Long documentId, CustomUserDetails userDetails);
 }
-

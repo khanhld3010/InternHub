@@ -286,7 +286,7 @@ class QuizMentorServiceImplTest {
                 .build();
         assign2.setId(2L);
 
-        when(assignmentRepository.findByQuizId(77L)).thenReturn(Arrays.asList(assign1, assign2));
+        when(assignmentRepository.findByQuizIdWithIntern(77L)).thenReturn(Arrays.asList(assign1, assign2));
 
         // Intern 1 đã làm bài đạt 90 điểm
         QuizSubmission sub1 = QuizSubmission.builder()
@@ -296,7 +296,6 @@ class QuizMentorServiceImplTest {
                 .passed(true)
                 .submittedAt(LocalDateTime.now().minusHours(2))
                 .build();
-        when(submissionRepository.findSubmissionsOrderByScoreDesc(1L, 51L)).thenReturn(Collections.singletonList(sub1));
 
         // Intern 2 đã làm bài không đạt 50 điểm
         QuizSubmission sub2 = QuizSubmission.builder()
@@ -306,7 +305,9 @@ class QuizMentorServiceImplTest {
                 .passed(false)
                 .submittedAt(LocalDateTime.now().minusHours(1))
                 .build();
-        when(submissionRepository.findSubmissionsOrderByScoreDesc(2L, 52L)).thenReturn(Collections.singletonList(sub2));
+
+        when(submissionRepository.findByAssignmentIdInOrderByScoreDesc(List.of(1L, 2L)))
+                .thenReturn(Arrays.asList(sub1, sub2));
 
         QuizReportResponse report = quizMentorService.getQuizReport(77L, mentorUserDetails);
 
@@ -318,4 +319,27 @@ class QuizMentorServiceImplTest {
         assertEquals(70.0, report.getAverageScore()); // (90 + 50) / 2 = 70.0
         assertEquals(2, report.getInternReports().size());
     }
+
+    @Test
+    void testGetQuizzesByProgram_Success_BatchAggregation() {
+        when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mentorProfile));
+        when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 5L)).thenReturn(true);
+
+        Quiz q1 = Quiz.builder().title("Q1").program(program).mentorId(5L).status(QuizStatus.PUBLISHED).build();
+        q1.setId(101L);
+        Quiz q2 = Quiz.builder().title("Q2").program(program).mentorId(5L).status(QuizStatus.PUBLISHED).build();
+        q2.setId(102L);
+
+        when(quizRepository.findByProgramIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(q1, q2));
+        when(assignmentRepository.countAssignmentsByQuizIdsGrouped(List.of(101L, 102L)))
+                .thenReturn(List.of(new Object[]{101L, 5L}, new Object[]{102L, 8L}));
+
+        var result = quizMentorService.getQuizzesByProgram(10L, mentorUserDetails);
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals(5, result.get(0).getAssignmentCount());
+        assertEquals(8, result.get(1).getAssignmentCount());
+    }
 }
+

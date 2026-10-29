@@ -2,7 +2,9 @@ package org.example.internservice.intern.service;
 
 import org.example.internservice.common.storage.FileStorageService;
 import org.example.internservice.exception.BadRequestException;
+import org.example.internservice.exception.ForbiddenException;
 import org.example.internservice.exception.ResourceNotFoundException;
+import org.example.internservice.intern.client.NotificationEventDispatcher;
 import org.example.internservice.intern.dto.request.ReviewDocumentRequest;
 import org.example.internservice.intern.dto.response.DocumentDownloadDto;
 import org.example.internservice.intern.dto.response.DocumentResponse;
@@ -14,15 +16,18 @@ import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternDocumentRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.service.impl.InternDocumentServiceImpl;
+import org.example.internservice.security.CustomUserDetails;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -44,7 +49,16 @@ class InternDocumentServiceReviewTest {
     @Mock
     private FileStorageService fileStorageService;
 
+    @Mock
+    private MentorAccessHelper mentorAccessHelper;
+
+    @Mock
+    private NotificationEventDispatcher notificationEventDispatcher;
+
+    @Spy
     @InjectMocks
+    private InternDocumentStorageHelper storageHelper;
+
     private InternDocumentServiceImpl internDocumentService;
 
     private InternProfile mockInternProfile;
@@ -52,11 +66,21 @@ class InternDocumentServiceReviewTest {
 
     @BeforeEach
     void setUp() {
+        internDocumentService = new InternDocumentServiceImpl(
+                internProfileRepository,
+                internDocumentRepository,
+                fileStorageService,
+                notificationEventDispatcher,
+                storageHelper
+        );
+
         mockInternProfile = InternProfile.builder()
                 .internCode("INT-202609-0001")
                 .fullName("Nguyễn Văn A")
                 .status(InternStatus.PENDING)
+                .userId(1001L)
                 .build();
+        mockInternProfile.setId(1L);
 
         mockDocument = InternDocument.builder()
                 .internProfile(mockInternProfile)
@@ -186,5 +210,44 @@ class InternDocumentServiceReviewTest {
                 internDocumentService.reviewDocument(999L, request));
 
         verify(internDocumentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("UT-BE-IDOR-01: Thực tập sinh khác cố truy cập tài liệu -> Ném ForbiddenException")
+    void loadDocument_whenOtherInternAccesses_shouldThrowForbiddenException() {
+        CustomUserDetails hackerIntern = CustomUserDetails.builder()
+                .userId(9999L)
+                .username("hacker_intern")
+                .role("INTERN")
+                .authorities(List.of(new SimpleGrantedAuthority("ROLE_INTERN")))
+                .build();
+
+        when(internDocumentRepository.findById(100L)).thenReturn(Optional.of(mockDocument));
+
+        ForbiddenException ex = assertThrows(
+                ForbiddenException.class,
+                () -> internDocumentService.loadDocumentForDownload(100L, hackerIntern)
+        );
+
+        assertTrue(ex.getMessage().contains("Bạn không có quyền xem hoặc tải tài liệu"));
+    }
+
+    @Test
+    @DisplayName("UT-BE-IDOR-02: Chính chủ thực tập sinh truy cập tài liệu -> Thành công tải về")
+    void loadDocument_whenOwnerAccesses_shouldSucceed() {
+        CustomUserDetails ownerIntern = CustomUserDetails.builder()
+                .userId(1001L)
+                .username("owner_intern")
+                .role("INTERN")
+                .authorities(List.of(new SimpleGrantedAuthority("ROLE_INTERN")))
+                .build();
+
+        Resource mockResource = new ByteArrayResource("PDF Content".getBytes());
+        when(internDocumentRepository.findById(100L)).thenReturn(Optional.of(mockDocument));
+        when(fileStorageService.loadFileAsResource(any())).thenReturn(mockResource);
+
+        DocumentDownloadDto dto = internDocumentService.loadDocumentForDownload(100L, ownerIntern);
+        assertNotNull(dto);
+        assertEquals("NguyenVanA_CV.pdf", dto.getOriginalFileName());
     }
 }

@@ -18,7 +18,6 @@ import org.example.internservice.mission.entity.enums.MissionItemStatus;
 import org.example.internservice.mission.entity.enums.MissionPriority;
 import org.example.internservice.mission.repository.MissionBoardRepository;
 import org.example.internservice.mission.repository.MissionItemRepository;
-import org.example.internservice.mission.service.MissionSyncEventPublisher;
 import org.example.internservice.mission.service.impl.MissionItemServiceImpl;
 import org.example.internservice.program.entity.Department;
 import org.example.internservice.program.entity.InternshipProgram;
@@ -62,9 +61,6 @@ class MissionItemServiceTest {
 
     @Mock
     private MentorProfileRepository mentorProfileRepository;
-
-    @Mock
-    private MissionSyncEventPublisher missionSyncEventPublisher;
 
     @InjectMocks
     private MissionItemServiceImpl missionItemService;

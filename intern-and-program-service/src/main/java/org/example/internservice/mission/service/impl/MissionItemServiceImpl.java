@@ -14,7 +14,6 @@ import org.example.internservice.mission.dto.request.UpdateItemStatusRequest;
 import org.example.internservice.mission.dto.request.UpdateMissionItemRequest;
 import org.example.internservice.mission.dto.response.AssigneeResponse;
 import org.example.internservice.mission.dto.response.MissionItemResponse;
-import org.example.internservice.mission.dto.response.MissionItemSyncEvent;
 import org.example.internservice.mission.entity.MissionBoard;
 import org.example.internservice.mission.entity.MissionItem;
 import org.example.internservice.mission.entity.enums.MissionItemStatus;
@@ -22,20 +21,17 @@ import org.example.internservice.mission.entity.enums.MissionPriority;
 import org.example.internservice.mission.repository.MissionBoardRepository;
 import org.example.internservice.mission.repository.MissionItemRepository;
 import org.example.internservice.mission.service.MissionItemService;
-import org.example.internservice.mission.service.MissionSyncEventPublisher;
 import org.example.internservice.program.repository.ProgramMentorRepository;
 import org.example.internservice.security.CustomUserDetails;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -50,7 +46,6 @@ public class MissionItemServiceImpl implements MissionItemService {
     private final InternProfileRepository internProfileRepository;
     private final ProgramMentorRepository programMentorRepository;
     private final MentorProfileRepository mentorProfileRepository;
-    private final MissionSyncEventPublisher missionSyncEventPublisher;
 
     @Override
     @Transactional
@@ -120,42 +115,9 @@ public class MissionItemServiceImpl implements MissionItemService {
             throw new BadRequestException("Trạng thái công việc không hợp lệ");
         }
 
-        MissionItemStatus oldStatus = item.getStatus();
         item.setStatus(request.getStatus());
         MissionItem updated = missionItemRepository.save(item);
         log.info("Cập nhật trạng thái MissionItem id={} sang {}", itemId, request.getStatus());
-
-        try {
-            List<Long> assigneeIds = updated.getAssignees() == null ? List.of() :
-                    updated.getAssignees().stream().map(InternProfile::getId).toList();
-
-            MissionItemSyncEvent syncEvent = MissionItemSyncEvent.builder()
-                    .eventId(UUID.randomUUID().toString())
-                    .action("STATUS_CHANGED")
-                    .itemId(updated.getId())
-                    .boardId(updated.getBoard() != null ? updated.getBoard().getId() : null)
-                    .programId(updated.getBoard() != null && updated.getBoard().getProgram() != null ? updated.getBoard().getProgram().getId() : null)
-                    .title(updated.getTitle())
-                    .description(updated.getDescription())
-                    .previousStatus(oldStatus)
-                    .newStatus(updated.getStatus())
-                    .priority(updated.getPriority())
-                    .dueDate(updated.getDueDate())
-                    .assigneeIds(assigneeIds)
-                    .submissionUrl(updated.getSubmissionUrl())
-                    .completionNote(updated.getCompletionNote())
-                    .actorId(userDetails != null ? userDetails.getUserId() : null)
-                    .actorName(userDetails != null ? userDetails.getUsername() : "Mentor")
-                    .actorRole("MENTOR")
-                    .version(updated.getVersion())
-                    .timestamp(Instant.now())
-                    .build();
-
-            missionSyncEventPublisher.publishSyncEvent(syncEvent);
-        } catch (Exception e) {
-            log.warn("Lỗi không chặn khi publish sync event cho item id={}: {}", itemId, e.getMessage());
-        }
-
         return mapToItemResponse(updated);
     }
 

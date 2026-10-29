@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -43,9 +44,21 @@ public class RoleManagementServiceImpl implements RoleManagementService {
     public List<RoleResponse> getAllRoles() {
         log.info("Lấy danh sách toàn bộ vai trò kèm số lượng user và permission");
         List<Role> roles = roleRepository.findAllWithPermissions();
+        if (roles.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Integer> roleIds = roles.stream().map(Role::getId).toList();
+        Map<Integer, Long> userCountMap = accountRepository.countAccountsByRoleIdsGrouped(roleIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Integer) row[0],
+                        row -> ((Number) row[1]).longValue(),
+                        (existing, replacement) -> existing
+                ));
 
         return roles.stream().map(role -> {
-            long userCount = accountRepository.countByRoleId(role.getId());
+            long userCount = userCountMap.getOrDefault(role.getId(), 0L);
             List<String> permCodes = (role.getPermissions() != null)
                     ? role.getPermissions().stream().map(Permission::getCode).sorted().collect(Collectors.toList())
                     : Collections.emptyList();

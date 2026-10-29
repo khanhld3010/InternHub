@@ -263,7 +263,7 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản gắn với người dùng ID: " + userId));
 
         String rawPassword = (newPassword != null && !newPassword.trim().isEmpty()) ? newPassword.trim() : "123456";
-        account.setPassword(passwordEncoder.encode(rawPassword));
+        account.setPasswordHash(passwordEncoder.encode(rawPassword));
         accountRepository.save(account);
         log.info("Đặt lại mật khẩu thành công cho userId={}", userId);
     }

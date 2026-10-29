@@ -28,6 +28,21 @@ public interface QuizSubmissionRepository extends JpaRepository<QuizSubmission, 
     );
 
     @Query("SELECT qs FROM QuizSubmission qs " +
+            "WHERE qs.intern.id = :internId AND qs.assignment.id IN :assignmentIds " +
+            "ORDER BY qs.score DESC, qs.submittedAt DESC")
+    List<QuizSubmission> findByInternIdAndAssignmentIdInOrderByScoreDesc(
+            @Param("internId") Long internId,
+            @Param("assignmentIds") java.util.Collection<Long> assignmentIds
+    );
+
+    @Query("SELECT qs FROM QuizSubmission qs " +
+            "WHERE qs.assignment.id IN :assignmentIds " +
+            "ORDER BY qs.score DESC, qs.submittedAt DESC")
+    List<QuizSubmission> findByAssignmentIdInOrderByScoreDesc(
+            @Param("assignmentIds") java.util.Collection<Long> assignmentIds
+    );
+
+    @Query("SELECT qs FROM QuizSubmission qs " +
             "LEFT JOIN FETCH qs.answers ans " +
             "LEFT JOIN FETCH ans.question q " +
             "LEFT JOIN FETCH q.options " +

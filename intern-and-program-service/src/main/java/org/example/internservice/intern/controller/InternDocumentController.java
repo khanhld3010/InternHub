@@ -53,10 +53,11 @@ public class InternDocumentController {
     @GetMapping("/{internCode}/documents")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR', 'INTERN')")
     public ResponseEntity<ApiResponse<List<DocumentResponse>>> getDocumentsByInternCode(
-            @PathVariable("internCode") String internCode
+            @PathVariable("internCode") String internCode,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.internservice.security.CustomUserDetails userDetails
     ) {
-        log.info("API Lấy danh sách tài liệu cho thực tập sinh: {}", internCode);
-        List<DocumentResponse> documents = internDocumentService.getDocumentsByInternCode(internCode);
+        log.info("API Lấy danh sách tài liệu cho thực tập sinh: {}, user: {}", internCode, userDetails != null ? userDetails.getUsername() : "anonymous");
+        List<DocumentResponse> documents = internDocumentService.getDocumentsByInternCode(internCode, userDetails);
         return ResponseEntity.ok(ApiResponse.success(200, "Lấy danh sách tài liệu thành công", documents));
     }
 
@@ -65,10 +66,12 @@ public class InternDocumentController {
     @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR', 'INTERN')")
     public ResponseEntity<Resource> downloadDocument(
             @PathVariable("documentId") Long documentId,
-            @RequestParam(name = "disposition", defaultValue = "inline") String disposition
+            @RequestParam(name = "disposition", defaultValue = "inline") String disposition,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.internservice.security.CustomUserDetails userDetails
     ) {
-        log.info("API Tải/Xem tài liệu: documentId={}, disposition={}", documentId, disposition);
-        DocumentDownloadDto downloadDto = internDocumentService.loadDocumentForDownload(documentId);
+        log.info("API Tải/Xem tài liệu: documentId={}, disposition={}, user: {}",
+                documentId, disposition, userDetails != null ? userDetails.getUsername() : "anonymous");
+        DocumentDownloadDto downloadDto = internDocumentService.loadDocumentForDownload(documentId, userDetails);
 
         String originalFileName = downloadDto.getOriginalFileName();
         String contentType = downloadDto.getContentType();
@@ -129,10 +132,12 @@ public class InternDocumentController {
     @GetMapping("/documents/{documentId}/view-url")
     @PreAuthorize("hasAnyRole('HR', 'ADMIN', 'MENTOR', 'INTERN')")
     public ResponseEntity<ApiResponse<org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse>> getViewDocumentUrl(
-            @PathVariable("documentId") Long documentId
+            @PathVariable("documentId") Long documentId,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.internservice.security.CustomUserDetails userDetails
     ) {
-        log.info("API Lấy link xem tài liệu S3: documentId={}", documentId);
-        var response = internDocumentService.getDocumentViewUrl(documentId);
+        log.info("API Lấy link xem tài liệu S3: documentId={}, user: {}",
+                documentId, userDetails != null ? userDetails.getUsername() : "anonymous");
+        var response = internDocumentService.getDocumentViewUrl(documentId, userDetails);
         return ResponseEntity.ok(ApiResponse.success(200, "Lấy URL xem tài liệu thành công", response));
     }
 }

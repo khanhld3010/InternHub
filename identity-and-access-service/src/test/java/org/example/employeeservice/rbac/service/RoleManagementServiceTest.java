@@ -96,8 +96,8 @@ class RoleManagementServiceTest {
     @DisplayName("Lấy danh sách vai trò thành công kèm số lượng user và permission")
     void getAllRoles_shouldReturnListWithCounts() {
         when(roleRepository.findAllWithPermissions()).thenReturn(List.of(hrRole, customRole));
-        when(accountRepository.countByRoleId(2)).thenReturn(5L);
-        when(accountRepository.countByRoleId(10)).thenReturn(0L);
+        when(accountRepository.countAccountsByRoleIdsGrouped(List.of(2, 10)))
+                .thenReturn(List.of(new Object[]{2, 5L}, new Object[]{10, 0L}));
 
         List<RoleResponse> result = roleManagementService.getAllRoles();
 

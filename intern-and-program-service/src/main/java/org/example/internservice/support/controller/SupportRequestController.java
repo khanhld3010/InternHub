@@ -98,7 +98,7 @@ public class SupportRequestController {
             @PathVariable Long id,
             @AuthenticationPrincipal CustomUserDetails user) {
         Resource fileResource = supportRequestService.loadAttachmentFile(id, user.getUserId(), user.getRole(), false);
-        String filename = supportRequestService.getAttachmentFilename(id, false);
+        String filename = supportRequestService.getAttachmentFilename(id, false, user.getUserId(), user.getRole());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
@@ -113,7 +113,7 @@ public class SupportRequestController {
             @PathVariable Long id,
             @AuthenticationPrincipal CustomUserDetails user) {
         Resource fileResource = supportRequestService.loadAttachmentFile(id, user.getUserId(), user.getRole(), true);
-        String filename = supportRequestService.getAttachmentFilename(id, true);
+        String filename = supportRequestService.getAttachmentFilename(id, true, user.getUserId(), user.getRole());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")

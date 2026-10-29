@@ -315,4 +315,103 @@ class QuizInternServiceImplTest {
 
         assertTrue(ex.getMessage().contains("hoàn thành nộp bài trước"));
     }
+
+    @Test
+    @DisplayName("IDOR - Học viên khác cố ý xem kết quả bài Quiz của người khác -> Ném ForbiddenException (HTTP 403)")
+    void testGetSubmissionResult_WhenOtherInternAccesses_ThrowsForbiddenException() {
+        when(internProfileRepository.findByUserId(200L)).thenReturn(Optional.of(internProfile));
+
+        InternProfile otherIntern = InternProfile.builder()
+                .userId(999L)
+                .fullName("Hacker Intern")
+                .internCode("TTS-2026-999")
+                .build();
+        otherIntern.setId(99L);
+
+        QuizSubmission victimSubmission = QuizSubmission.builder()
+                .assignment(mockAssignment)
+                .quiz(mockQuiz)
+                .intern(otherIntern)
+                .attemptNumber(1)
+                .status(SubmissionStatus.SUBMITTED)
+                .startedAt(LocalDateTime.now().minusMinutes(10))
+                .build();
+        victimSubmission.setId(888L);
+
+        when(submissionRepository.findByIdWithDetails(888L)).thenReturn(Optional.of(victimSubmission));
+
+        org.example.internservice.exception.ForbiddenException ex = assertThrows(
+                org.example.internservice.exception.ForbiddenException.class,
+                () -> quizInternService.getSubmissionResult(888L, internUserDetails)
+        );
+
+        assertTrue(ex.getMessage().contains("Bạn không phải là chủ sở hữu của lượt làm bài này"));
+    }
+
+    @Test
+    @DisplayName("IDOR - Học viên khác cố ý nộp trộm bài Quiz của người khác -> Ném ForbiddenException (HTTP 403)")
+    void testSubmitQuizAttempt_WhenOtherInternAccesses_ThrowsForbiddenException() {
+        when(internProfileRepository.findByUserId(200L)).thenReturn(Optional.of(internProfile));
+
+        InternProfile otherIntern = InternProfile.builder()
+                .userId(999L)
+                .fullName("Hacker Intern")
+                .internCode("TTS-2026-999")
+                .build();
+        otherIntern.setId(99L);
+
+        QuizSubmission victimSubmission = QuizSubmission.builder()
+                .assignment(mockAssignment)
+                .quiz(mockQuiz)
+                .intern(otherIntern)
+                .attemptNumber(1)
+                .status(SubmissionStatus.IN_PROGRESS)
+                .startedAt(LocalDateTime.now().minusMinutes(5))
+                .build();
+        victimSubmission.setId(888L);
+
+        when(submissionRepository.findById(888L)).thenReturn(Optional.of(victimSubmission));
+
+        SubmitQuizRequest request = SubmitQuizRequest.builder()
+                .answers(List.of())
+                .build();
+
+        org.example.internservice.exception.ForbiddenException ex = assertThrows(
+                org.example.internservice.exception.ForbiddenException.class,
+                () -> quizInternService.submitQuizAttempt(888L, request, internUserDetails)
+        );
+
+        assertTrue(ex.getMessage().contains("Bạn không phải là chủ sở hữu của lượt làm bài này"));
+    }
+
+    @Test
+    @DisplayName("N+1 Prevention - Lấy danh sách bài Quiz được giao sử dụng Batch query thành công")
+    void testGetMyAssignedQuizzes_Success_BatchFetchSubmissions() {
+        when(internProfileRepository.findByUserId(200L)).thenReturn(Optional.of(internProfile));
+        when(assignmentRepository.findByInternIdWithQuizAndProgramOrderByCreatedAtDesc(10L))
+                .thenReturn(List.of(mockAssignment));
+
+        QuizSubmission sub1 = QuizSubmission.builder()
+                .assignment(mockAssignment)
+                .quiz(mockQuiz)
+                .intern(internProfile)
+                .attemptNumber(1)
+                .score(9)
+                .passed(true)
+                .status(SubmissionStatus.SUBMITTED)
+                .build();
+        sub1.setId(777L);
+
+        when(submissionRepository.findByInternIdAndAssignmentIdInOrderByScoreDesc(10L, List.of(100L)))
+                .thenReturn(List.of(sub1));
+
+        var responseList = quizInternService.getMyAssignedQuizzes(internUserDetails);
+
+        assertNotNull(responseList);
+        assertEquals(1, responseList.size());
+        assertEquals(100L, responseList.get(0).getAssignmentId());
+        assertEquals(9, responseList.get(0).getHighestScore());
+        assertTrue(responseList.get(0).getPassed());
+        assertEquals(1, responseList.get(0).getAttemptsTaken());
+    }
 }

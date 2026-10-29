@@ -4,13 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.aiservice.modules.interview.dto.request.CandidateEvidenceRequest;
 import org.example.aiservice.modules.interview.dto.response.CandidateEvidenceResponse;
-import org.example.aiservice.modules.interview.dto.response.ProctoringAlertEvent;
 import org.example.aiservice.modules.interview.dto.response.SubmitInterviewSessionResponse;
 import org.example.aiservice.modules.interview.entity.InterviewAuditLog;
 import org.example.aiservice.modules.interview.entity.InterviewSchedule;
 import org.example.aiservice.modules.interview.entity.InterviewSession;
 import org.example.aiservice.modules.interview.enums.AuditEventType;
-import org.example.aiservice.modules.interview.enums.ProctoringSeverity;
 import org.example.aiservice.modules.interview.enums.SessionStatus;
 import org.example.aiservice.modules.interview.enums.SubmissionReason;
 import org.example.aiservice.modules.interview.repository.InterviewAuditLogRepository;
@@ -22,10 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -40,7 +36,6 @@ public class InterviewAuditAndSubmissionService {
     private final InterviewAuditLogRepository auditLogRepository;
     private final CandidateSessionExecutionService candidateSessionExecutionService;
     private final AsyncInterviewEvaluationCoordinator evaluationCoordinator;
-    private final ProctoringEventPublisher proctoringEventPublisher;
 
     // Lưu timestamp của lần blur gần nhất theo sessionId để debounce
     private final Map<Long, Long> lastBlurTimestampMap = new ConcurrentHashMap<>();
@@ -98,11 +93,9 @@ public class InterviewAuditAndSubmissionService {
         int maxStrikes = schedule.getMaxBlurStrikes() != null ? schedule.getMaxBlurStrikes() : 3;
         boolean isTerminated = false;
         String warningMsg = null;
-        ProctoringSeverity severity = ProctoringSeverity.INFO;
 
         // Kiểm tra ngưỡng vi phạm (Level 2 + Threshold Strike)
         if (session.getBlurCount() >= maxStrikes) {
-            severity = ProctoringSeverity.DISQUALIFIED;
             if (Boolean.TRUE.equals(schedule.getAutoSubmitOnExceed())) {
                 log.warn("Session {} exceeded max blur strikes ({}). Auto-submitting session.", sessionId, maxStrikes);
                 session.setStatus(SessionStatus.SUBMITTED);
@@ -114,25 +107,7 @@ public class InterviewAuditAndSubmissionService {
                 warningMsg = "CẢNH BÁO: Bạn đã đạt ngưỡng vi phạm (" + session.getBlurCount() + "/" + maxStrikes + "). Hành vi này được lưu vào biên bản.";
             }
         } else if (countIncremented && request.getEventType() == AuditEventType.TAB_BLUR) {
-            severity = (session.getBlurCount() >= 2) ? ProctoringSeverity.CRITICAL : ProctoringSeverity.WARNING;
             warningMsg = "Cảnh báo: Bạn vừa rời khỏi màn hình làm bài! Lần vi phạm: " + session.getBlurCount() + "/" + maxStrikes + ".";
-        }
-
-        if (countIncremented) {
-            proctoringEventPublisher.publishProctoringAlert(ProctoringAlertEvent.builder()
-                    .eventId(UUID.randomUUID().toString())
-                    .sessionId(sessionId)
-                    .scheduleId(session.getScheduleId())
-                    .candidateId(session.getCandidateId())
-                    .candidateName(session.getCandidateName())
-                    .candidateEmail(session.getCandidateEmail())
-                    .eventType(request.getEventType())
-                    .severity(severity)
-                    .strikeCount(session.getBlurCount())
-                    .maxStrikes(maxStrikes)
-                    .details(request.getMetadata() != null ? request.getMetadata() : warningMsg)
-                    .timestamp(Instant.now())
-                    .build());
         }
 
         session.setLastActiveAt(now);
@@ -207,57 +182,5 @@ public class InterviewAuditAndSubmissionService {
                 .submissionReason(finalReason)
                 .message("Nộp bài phỏng vấn thành công. Cảm ơn bạn đã tham gia!")
                 .build();
-    }
-
-    /**
-     * Giám thị (HR) thực hiện đình chỉ thi thủ công hoặc thu bài trực tiếp
-     */
-    @Transactional
-    public void disqualifySession(Long sessionId, String reason, String actorUserId) {
-        InterviewSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-
-        if (session.getStatus() == SessionStatus.SUBMITTED) {
-            log.warn("Session {} is already submitted, skip manual disqualification", sessionId);
-            return;
-        }
-
-        InterviewSchedule schedule = scheduleRepository.findById(session.getScheduleId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
-
-        int maxStrikes = schedule.getMaxBlurStrikes() != null ? schedule.getMaxBlurStrikes() : 3;
-        LocalDateTime now = LocalDateTime.now();
-
-        session.setStatus(SessionStatus.SUBMITTED);
-        session.setSubmittedAt(now);
-        session.setSubmissionReason(SubmissionReason.STRIKE_LIMIT_EXCEEDED);
-        session.setLastActiveAt(now);
-        sessionRepository.save(session);
-
-        // Lưu Audit Log
-        auditLogRepository.save(InterviewAuditLog.builder()
-                .sessionId(sessionId)
-                .eventType(AuditEventType.TAB_BLUR)
-                .eventMetadata("DISQUALIFIED_BY_HR: " + reason + " (Actor: " + actorUserId + ")")
-                .clientTimestamp(now)
-                .build());
-
-        // Publish event lên Redis
-        proctoringEventPublisher.publishProctoringAlert(ProctoringAlertEvent.builder()
-                .eventId(UUID.randomUUID().toString())
-                .sessionId(sessionId)
-                .scheduleId(session.getScheduleId())
-                .candidateId(session.getCandidateId())
-                .candidateName(session.getCandidateName())
-                .candidateEmail(session.getCandidateEmail())
-                .eventType(AuditEventType.TAB_BLUR)
-                .severity(ProctoringSeverity.DISQUALIFIED)
-                .strikeCount(session.getBlurCount())
-                .maxStrikes(maxStrikes)
-                .details(reason != null ? reason : "Đình chỉ bởi giám thị phòng thi")
-                .timestamp(Instant.now())
-                .build());
-
-        log.info("Session {} successfully disqualified by HR {}", sessionId, actorUserId);
     }
 }

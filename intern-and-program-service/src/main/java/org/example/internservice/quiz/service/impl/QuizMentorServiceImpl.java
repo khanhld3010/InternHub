@@ -59,7 +59,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -258,8 +260,21 @@ public class QuizMentorServiceImpl implements QuizMentorService {
     public List<QuizSummaryResponse> getQuizzesByProgram(Long programId, CustomUserDetails userDetails) {
         verifyMentorAccess(programId, userDetails);
         List<Quiz> quizzes = quizRepository.findByProgramIdOrderByCreatedAtDesc(programId);
+        if (quizzes.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> quizIds = quizzes.stream().map(Quiz::getId).toList();
+        Map<Long, Integer> assignmentCountMap = quizAssignmentRepository.countAssignmentsByQuizIdsGrouped(quizIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> ((Number) row[1]).intValue(),
+                        (existing, replacement) -> existing
+                ));
+
         return quizzes.stream().map(q -> {
-            int assignCount = quizAssignmentRepository.findByQuizId(q.getId()).size();
+            int assignCount = assignmentCountMap.getOrDefault(q.getId(), 0);
             return QuizSummaryResponse.builder()
                     .id(q.getId())
                     .programId(q.getProgram().getId())
@@ -343,8 +358,18 @@ public class QuizMentorServiceImpl implements QuizMentorService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài Quiz với ID: " + quizId));
         verifyMentorAccess(quiz.getProgram().getId(), userDetails);
 
-        List<QuizAssignment> assignments = quizAssignmentRepository.findByQuizId(quizId);
+        List<QuizAssignment> assignments = quizAssignmentRepository.findByQuizIdWithIntern(quizId);
         List<QuizInternReportDto> internReports = new ArrayList<>();
+
+        List<Long> assignmentIds = assignments.stream()
+                .map(QuizAssignment::getId)
+                .toList();
+
+        Map<Long, List<QuizSubmission>> submissionsByAssignmentId = assignmentIds.isEmpty()
+                ? Collections.emptyMap()
+                : quizSubmissionRepository.findByAssignmentIdInOrderByScoreDesc(assignmentIds)
+                .stream()
+                .collect(Collectors.groupingBy(s -> s.getAssignment().getId()));
 
         int completedCount = 0;
         int passedCount = 0;
@@ -355,7 +380,7 @@ public class QuizMentorServiceImpl implements QuizMentorService {
             if (assign.getIntern() == null) continue;
             InternProfile intern = assign.getIntern();
 
-            List<QuizSubmission> submissions = quizSubmissionRepository.findSubmissionsOrderByScoreDesc(assign.getId(), intern.getId());
+            List<QuizSubmission> submissions = submissionsByAssignmentId.getOrDefault(assign.getId(), Collections.emptyList());
             int attempts = submissions.size();
             Integer highestScore = null;
             boolean passed = false;

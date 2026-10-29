@@ -17,13 +17,11 @@ import org.example.internservice.mission.dto.request.UpdateKanbanStatusRequest;
 import org.example.internservice.mission.dto.response.AssigneeResponse;
 import org.example.internservice.mission.dto.response.InternKanbanBoardResponse;
 import org.example.internservice.mission.dto.response.MissionItemResponse;
-import org.example.internservice.mission.dto.response.MissionItemSyncEvent;
 import org.example.internservice.mission.entity.MissionItem;
 import org.example.internservice.mission.entity.enums.MissionItemStatus;
 import org.example.internservice.mission.entity.enums.MissionPriority;
 import org.example.internservice.mission.repository.MissionItemRepository;
 import org.example.internservice.mission.service.InternMissionService;
-import org.example.internservice.mission.service.MissionSyncEventPublisher;
 import org.example.internservice.security.CustomUserDetails;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,13 +30,11 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -49,7 +45,6 @@ public class InternMissionServiceImpl implements InternMissionService {
     private final MissionItemRepository missionItemRepository;
     private final InternProfileRepository internProfileRepository;
     private final NotificationEventDispatcher notificationEventDispatcher;
-    private final MissionSyncEventPublisher missionSyncEventPublisher;
 
     @Override
     public PageResponse<MissionItemResponse> getMyMissions(
@@ -175,37 +170,6 @@ public class InternMissionServiceImpl implements InternMissionService {
                 currentIntern.getId(), itemId, oldStatus, newStatus);
 
         dispatchMentorNotification(updated, currentIntern, oldStatus, newStatus, userDetails);
-
-        try {
-            List<Long> assigneeIds = updated.getAssignees() == null ? List.of() :
-                    updated.getAssignees().stream().map(InternProfile::getId).toList();
-
-            MissionItemSyncEvent syncEvent = MissionItemSyncEvent.builder()
-                    .eventId(UUID.randomUUID().toString())
-                    .action("STATUS_CHANGED")
-                    .itemId(updated.getId())
-                    .boardId(updated.getBoard() != null ? updated.getBoard().getId() : null)
-                    .programId(updated.getBoard() != null && updated.getBoard().getProgram() != null ? updated.getBoard().getProgram().getId() : null)
-                    .title(updated.getTitle())
-                    .description(updated.getDescription())
-                    .previousStatus(oldStatus)
-                    .newStatus(updated.getStatus())
-                    .priority(updated.getPriority())
-                    .dueDate(updated.getDueDate())
-                    .assigneeIds(assigneeIds)
-                    .submissionUrl(updated.getSubmissionUrl())
-                    .completionNote(updated.getCompletionNote())
-                    .actorId(userDetails != null ? userDetails.getUserId() : currentIntern.getUserId())
-                    .actorName(currentIntern.getFullName())
-                    .actorRole("INTERN")
-                    .version(updated.getVersion())
-                    .timestamp(Instant.now())
-                    .build();
-
-            missionSyncEventPublisher.publishSyncEvent(syncEvent);
-        } catch (Exception e) {
-            log.warn("Lỗi không chặn khi publish sync event cho intern item id={}: {}", itemId, e.getMessage());
-        }
 
         return mapToItemResponse(updated);
     }

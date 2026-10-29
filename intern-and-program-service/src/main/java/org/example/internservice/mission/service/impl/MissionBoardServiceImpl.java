@@ -39,6 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,10 +90,26 @@ public class MissionBoardServiceImpl implements MissionBoardService {
         verifyMentorAccessToProgram(programId, resolveMentorIdNullable(userDetails), userDetails);
 
         List<MissionBoard> boards = missionBoardRepository.findByProgramIdWithDetails(programId);
+        if (boards.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> boardIds = boards.stream().map(MissionBoard::getId).toList();
+        List<Object[]> statusCounts = missionItemRepository.countItemsByBoardIdsGroupedByStatus(boardIds);
+
+        Map<Long, Map<MissionItemStatus, Integer>> boardStatusMap = new HashMap<>();
+        for (Object[] row : statusCounts) {
+            Long bId = (Long) row[0];
+            MissionItemStatus st = (MissionItemStatus) row[1];
+            int cnt = ((Number) row[2]).intValue();
+            boardStatusMap.computeIfAbsent(bId, k -> new EnumMap<>(MissionItemStatus.class)).put(st, cnt);
+        }
+
         return boards.stream().map(b -> {
-            int todo = (int) missionItemRepository.countByBoardIdAndStatus(b.getId(), MissionItemStatus.TODO);
-            int inProgress = (int) missionItemRepository.countByBoardIdAndStatus(b.getId(), MissionItemStatus.IN_PROGRESS);
-            int completed = (int) missionItemRepository.countByBoardIdAndStatus(b.getId(), MissionItemStatus.COMPLETED);
+            Map<MissionItemStatus, Integer> counts = boardStatusMap.getOrDefault(b.getId(), Collections.emptyMap());
+            int todo = counts.getOrDefault(MissionItemStatus.TODO, 0);
+            int inProgress = counts.getOrDefault(MissionItemStatus.IN_PROGRESS, 0);
+            int completed = counts.getOrDefault(MissionItemStatus.COMPLETED, 0);
             return mapToBoardResponse(b, todo + inProgress + completed, todo, inProgress, completed);
         }).toList();
     }
@@ -387,7 +405,7 @@ public class MissionBoardServiceImpl implements MissionBoardService {
     @Override
     public List<MentorOptionResponse> getMentorsByProgram(Long programId) {
         findProgramOrThrow(programId);
-        List<ProgramMentor> pms = programMentorRepository.findByProgramId(programId);
+        List<ProgramMentor> pms = programMentorRepository.findByProgramIdWithMentorAndDepartment(programId);
         return pms.stream().map(pm -> {
             MentorProfile m = pm.getMentor();
             return MentorOptionResponse.builder()
