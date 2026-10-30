@@ -98,6 +98,40 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+    public UserResponse lockUserAccount(Integer id, String reason) {
+        log.warn("Thực hiện khóa cưỡng chế tài khoản người dùng ID={}, lý do: {}", id, reason);
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng có ID: " + id));
+
+        Account account = user.getAccount();
+        if (account == null) {
+            account = accountRepository.findByUserId(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản gắn với người dùng ID: " + id));
+        }
+
+        account.setStatus("INACTIVE");
+        Account updatedAccount = accountRepository.save(account);
+        user.setAccount(updatedAccount);
+
+        log.warn("Tài khoản userId={} đã được khóa cưỡng chế (INACTIVE), phát lệnh ACCOUNT_LOCKED qua WebSocket & Redis", id);
+        if (notificationServiceClient != null) {
+            try {
+                notificationServiceClient.dispatchSecurityCommand(
+                        "ACCOUNT_LOCKED",
+                        id.longValue(),
+                        reason != null ? reason : "Tài khoản của bạn đã bị khóa bởi hệ thống",
+                        "Phiên làm việc đã bị chấm dứt (Offboarding / Thu hồi quyền truy cập)."
+                );
+            } catch (Exception e) {
+                log.error("Không thể gửi lệnh ngắt socket bảo mật cho userId={}: {}", id, e.getMessage());
+            }
+        }
+
+        return mapToResponse(user);
+    }
+
+    @Override
+    @Transactional
     public UserResponse updateCurrentUserProfile(String username, UpdateUserProfileRequest request) {
         log.info("Cập nhật thông tin cá nhân cho người dùng username={}", username);
         Account account = accountRepository.findByUsername(username)

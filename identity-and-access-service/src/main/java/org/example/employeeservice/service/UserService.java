@@ -19,6 +19,8 @@ public interface UserService {
 
     UserResponse toggleUserStatus(Integer id);
 
+    UserResponse lockUserAccount(Integer id, String reason);
+
     UserResponse updateCurrentUserProfile(String username, UpdateUserProfileRequest request);
     UserResponse getUserByUsername(String username);
     UserResponse getCurrentUserProfile(String username);

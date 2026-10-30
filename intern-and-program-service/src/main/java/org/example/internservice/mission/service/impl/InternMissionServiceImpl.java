@@ -147,6 +147,11 @@ public class InternMissionServiceImpl implements InternMissionService {
         MissionItemStatus oldStatus = item.getStatus();
         MissionItemStatus newStatus = request.getStatus();
 
+        if (request.getVersion() != null && item.getVersion() != null && !request.getVersion().equals(item.getVersion())) {
+            throw new org.springframework.dao.OptimisticLockingFailureException(
+                    "Phiên bản mục công việc đã thay đổi. Phiên bản hiện tại: " + item.getVersion() + ", phiên bản yêu cầu: " + request.getVersion());
+        }
+
         item.setStatus(newStatus);
         if (newStatus == MissionItemStatus.COMPLETED) {
             if (request.getSubmissionUrl() != null && !request.getSubmissionUrl().isBlank()) {

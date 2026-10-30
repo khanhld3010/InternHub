@@ -54,6 +54,7 @@ public class AttendanceReportServiceImpl implements AttendanceReportService {
     private final AttendanceReportAggregator reportAggregator;
     private final AttendanceCsvExporter csvExporter;
     private final MentorAccessHelper mentorAccessHelper;
+    private final org.example.internservice.allowance.repository.InternAllowanceRecordRepository allowanceRecordRepository;
 
     @Override
     public AttendanceSummaryKpiResponse getAttendanceSummaryKpi(AttendanceReportFilterRequest filter, CustomUserDetails userDetails) {
@@ -182,6 +183,15 @@ public class AttendanceReportServiceImpl implements AttendanceReportService {
                 intern, startDate, endDate, attendances, leaves, resolveDepartmentName(intern), resolveProgramTitle(intern));
         List<DailyAttendanceDetailItem> dailyItems = reportAggregator.buildDailyDetails(intern, startDate, endDate, attendanceByDate, leaves);
 
+        String periodMonth = String.format("%04d-%02d", qYear, qMonth);
+        List<org.example.internservice.allowance.entity.enums.AllowanceStatus> lockedStatuses = List.of(
+                org.example.internservice.allowance.entity.enums.AllowanceStatus.APPROVED,
+                org.example.internservice.allowance.entity.enums.AllowanceStatus.PAID
+        );
+        boolean isAllowanceLocked = allowanceRecordRepository.existsByInternProfileIdAndPeriodMonthAndStatusIn(
+                intern.getId(), periodMonth, lockedStatuses
+        );
+
         return InternAttendanceDetailReportResponse.builder()
                 .internId(intern.getId())
                 .internCode(intern.getInternCode())
@@ -192,6 +202,8 @@ public class AttendanceReportServiceImpl implements AttendanceReportService {
                 .mentorName(intern.getMentorName())
                 .month(qMonth)
                 .year(qYear)
+                .isAllowanceLocked(isAllowanceLocked)
+                .allowanceStatus(isAllowanceLocked ? "LOCKED" : "UNLOCKED")
                 .summary(InternAttendanceDetailReportResponse.InternDiligenceSummary.builder()
                         .expectedWorkDays(summary.getExpectedWorkDays())
                         .actualWorkDays(summary.getActualWorkDays())

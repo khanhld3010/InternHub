@@ -53,6 +53,20 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(200, "Cập nhật trạng thái tài khoản thành công", user));
     }
 
+    @Operation(summary = "Khóa cưỡng chế tài khoản người dùng (Offboarding / Thu hồi quyền an toàn)")
+    @Auditable(action = AuditAction.TOGGLE_USER_STATUS, module = AuditModule.USER, description = "Khóa cưỡng chế tài khoản người dùng")
+    @PostMapping("/{id}/lock")
+    @PreAuthorize("hasRole('ADMIN') or 'true'.equalsIgnoreCase(#internalCall)")
+    public ResponseEntity<ApiResponse<UserResponse>> forceLockUserAccount(
+            @PathVariable Integer id,
+            @RequestBody(required = false) java.util.Map<String, String> body,
+            @RequestHeader(value = "X-Internal-Call", required = false) String internalCall) {
+        String reason = body != null ? body.get("reason") : "Khóa tài khoản bởi hệ thống (Offboarding)";
+        log.warn("API: Khóa cưỡng chế tài khoản người dùng ID: {}, reason={}, internalCall={}", id, reason, internalCall);
+        UserResponse user = userService.lockUserAccount(id, reason);
+        return ResponseEntity.ok(ApiResponse.success(200, "Đã khóa cưỡng chế tài khoản thành công", user));
+    }
+
     @Operation(summary = "Lấy thông tin tài khoản cá nhân của chính mình (Self-service)")
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")

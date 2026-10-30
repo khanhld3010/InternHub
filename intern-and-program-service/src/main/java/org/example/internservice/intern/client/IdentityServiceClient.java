@@ -147,4 +147,31 @@ public class IdentityServiceClient {
             return false;
         }
     }
+
+    public boolean forceLockUserAccount(Long userId, String reason) {
+        if (userId == null) {
+            return false;
+        }
+        String url = identityServiceUrl + "/api/users/" + userId + "/lock";
+        log.warn("Gọi sang identity-service để khóa cưỡng chế tài khoản: userId={}, reason={}, url={}", userId, reason, url);
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Internal-Call", "true");
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, String> body = Map.of("reason", reason != null ? reason : "Hoàn thành thực tập (Offboarding)");
+            HttpEntity<Map<String, String>> requestEntity = new HttpEntity<>(body, headers);
+            restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    requestEntity,
+                    new ParameterizedTypeReference<ApiResponse<Map<String, Object>>>() {}
+            );
+            log.warn("Đã gửi yêu cầu khóa cưỡng chế tài khoản userId={} sang identity-service thành công", userId);
+            return true;
+        } catch (Exception e) {
+            log.error("Lỗi khi gọi sang identity-service để khóa cưỡng chế tài khoản userId={}: {}", userId, e.getMessage());
+            return false;
+        }
+    }
 }

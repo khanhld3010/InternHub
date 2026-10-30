@@ -115,6 +115,11 @@ public class MissionItemServiceImpl implements MissionItemService {
             throw new BadRequestException("Trạng thái công việc không hợp lệ");
         }
 
+        if (request.getVersion() != null && item.getVersion() != null && !request.getVersion().equals(item.getVersion())) {
+            throw new org.springframework.dao.OptimisticLockingFailureException(
+                    "Phiên bản mục công việc đã thay đổi. Phiên bản hiện tại: " + item.getVersion() + ", phiên bản yêu cầu: " + request.getVersion());
+        }
+
         item.setStatus(request.getStatus());
         MissionItem updated = missionItemRepository.save(item);
         log.info("Cập nhật trạng thái MissionItem id={} sang {}", itemId, request.getStatus());

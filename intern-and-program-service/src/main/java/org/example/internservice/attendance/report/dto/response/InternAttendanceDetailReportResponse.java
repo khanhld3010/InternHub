@@ -28,6 +28,8 @@ public class InternAttendanceDetailReportResponse {
     private String mentorName;
     private Integer month;
     private Integer year;
+    private Boolean isAllowanceLocked;
+    private String allowanceStatus;
 
     private InternDiligenceSummary summary;
     private List<DailyAttendanceDetailItem> dailyDetails;
