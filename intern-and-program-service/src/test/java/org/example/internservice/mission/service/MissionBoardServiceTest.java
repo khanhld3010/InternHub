@@ -18,6 +18,7 @@ import org.example.internservice.mission.repository.MissionItemRepository;
 import org.example.internservice.mission.service.impl.MissionBoardServiceImpl;
 import org.example.internservice.program.entity.Department;
 import org.example.internservice.program.entity.InternshipProgram;
+import org.example.internservice.program.entity.ProgramMentor;
 import org.example.internservice.program.entity.enums.ProgramStatus;
 import org.example.internservice.program.repository.InternshipProgramRepository;
 import org.example.internservice.program.repository.ProgramMentorRepository;
@@ -175,9 +176,12 @@ class MissionBoardServiceTest {
         when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mockMentor));
         when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 20L)).thenReturn(true);
         when(missionBoardRepository.findByProgramIdWithDetails(10L)).thenReturn(List.of(mockBoard));
-        when(missionItemRepository.countByBoardIdAndStatus(1L, MissionItemStatus.TODO)).thenReturn(2L);
-        when(missionItemRepository.countByBoardIdAndStatus(1L, MissionItemStatus.IN_PROGRESS)).thenReturn(1L);
-        when(missionItemRepository.countByBoardIdAndStatus(1L, MissionItemStatus.COMPLETED)).thenReturn(3L);
+        List<Object[]> mockCounts = List.of(
+                new Object[]{1L, MissionItemStatus.TODO, 2L},
+                new Object[]{1L, MissionItemStatus.IN_PROGRESS, 1L},
+                new Object[]{1L, MissionItemStatus.COMPLETED, 3L}
+        );
+        when(missionItemRepository.countItemsByBoardIdsGroupedByStatus(List.of(1L))).thenReturn(mockCounts);
 
         List<MissionBoardResponse> list = missionBoardService.getBoardsByProgram(10L, mentorUserDetails);
 
@@ -266,4 +270,25 @@ class MissionBoardServiceTest {
         assertNotNull(list);
         verify(programMentorRepository, times(1)).findByMentorIdentifierWithProgram(20L);
     }
+
+    @Test
+    @DisplayName("UT-BE-08: Lấy danh sách Mentor theo Program thành công với JOIN FETCH")
+    void getMentorsByProgram_Success() {
+        when(programRepository.findById(10L)).thenReturn(Optional.of(mockProgram));
+
+        ProgramMentor pm = ProgramMentor.builder()
+                .program(mockProgram)
+                .mentor(mockMentor)
+                .build();
+        when(programMentorRepository.findByProgramIdWithMentorAndDepartment(10L))
+                .thenReturn(List.of(pm));
+
+        var mentors = missionBoardService.getMentorsByProgram(10L);
+
+        assertNotNull(mentors);
+        assertEquals(1, mentors.size());
+        assertEquals("Vũ Thị Thu Hà", mentors.get(0).getFullName());
+        verify(programMentorRepository, times(1)).findByProgramIdWithMentorAndDepartment(10L);
+    }
 }
+

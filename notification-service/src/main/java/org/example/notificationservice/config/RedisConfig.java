@@ -14,6 +14,9 @@ public class RedisConfig {
 
     public static final String TOPIC_NOTIFICATIONS = "pubsub:notifications";
     public static final String TOPIC_SECURITY_COMMANDS = "pubsub:security-commands";
+    public static final String TOPIC_AI_JOBS = "topic:ai:jobs";
+    public static final String TOPIC_PROCTORING_EVENTS = "topic:proctoring:events";
+    public static final String TOPIC_MISSION_EVENTS = "topic:mission:events";
 
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
@@ -35,6 +38,21 @@ public class RedisConfig {
     @Bean
     public ChannelTopic securityCommandTopic() {
         return new ChannelTopic(TOPIC_SECURITY_COMMANDS);
+    }
+
+    @Bean
+    public ChannelTopic aiJobTopic() {
+        return new ChannelTopic(TOPIC_AI_JOBS);
+    }
+
+    @Bean
+    public ChannelTopic proctoringEventTopic() {
+        return new ChannelTopic(TOPIC_PROCTORING_EVENTS);
+    }
+
+    @Bean
+    public ChannelTopic missionEventTopic() {
+        return new ChannelTopic(TOPIC_MISSION_EVENTS);
     }
 
     @Bean

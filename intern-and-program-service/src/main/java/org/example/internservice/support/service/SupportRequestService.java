@@ -27,4 +27,6 @@ public interface SupportRequestService {
     Resource loadAttachmentFile(Long id, Long requestingUserId, String requestingRole, boolean isResponseAttachment);
 
     String getAttachmentFilename(Long id, boolean isResponseAttachment);
+
+    String getAttachmentFilename(Long id, boolean isResponseAttachment, Long requestingUserId, String requestingRole);
 }

@@ -13,4 +13,9 @@ public interface AccountRepository extends JpaRepository<Account, Integer> {
     boolean existsByUsername(String username);
     boolean existsByUserId(Integer userId);
     long countByRoleId(Integer roleId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT a.role.id, COUNT(a) FROM Account a " +
+           "WHERE a.role.id IN :roleIds GROUP BY a.role.id")
+    java.util.List<Object[]> countAccountsByRoleIdsGrouped(@org.springframework.data.repository.query.Param("roleIds") java.util.Collection<Integer> roleIds);
 }
+

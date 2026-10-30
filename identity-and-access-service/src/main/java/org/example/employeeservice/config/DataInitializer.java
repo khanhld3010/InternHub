@@ -228,7 +228,13 @@ public class DataInitializer implements CommandLineRunner {
                 // EVALUATION
                 Permission.builder().code("EVALUATION_WEEKLY_MANAGE").name("Đánh giá tuần thực tập sinh").module("EVALUATION").description("Mentor viết nhận xét, chấm điểm tuần cho TTS").build(),
                 Permission.builder().code("EVALUATION_FINAL_MANAGE").name("Đánh giá tổng kết & ký duyệt").module("EVALUATION").description("Đánh giá mốc kỳ, phê duyệt kết quả hoàn thành kỳ").build(),
-                Permission.builder().code("EVALUATION_VIEW_OWN").name("Xem đánh giá cá nhân").module("EVALUATION").description("TTS xem kết quả đánh giá tuần và tổng kết của mình").build()
+                Permission.builder().code("EVALUATION_VIEW_OWN").name("Xem đánh giá cá nhân").module("EVALUATION").description("TTS xem kết quả đánh giá tuần và tổng kết của mình").build(),
+
+                // AI SERVICE
+                Permission.builder().code("AI_CHAT_USE").name("Sử dụng Trợ lý ảo AI Chatbot").module("AI").description("Quyền sử dụng Trợ lý ảo AI Chatbot dành cho Thực tập sinh").build(),
+                Permission.builder().code("AI_CONFIG_MANAGE").name("Quản lý cấu hình AI Service").module("AI").description("Quyền quản trị và thiết lập cấu hình AI Service").build(),
+                Permission.builder().code("AI_INTERVIEW_MANAGE").name("Quản lý bộ câu hỏi phỏng vấn AI").module("AI").description("Quyền sinh và quản lý bộ câu hỏi phỏng vấn AI cho HR và Mentor").build(),
+                Permission.builder().code("AI_REPORT_ASSISTANT_USE").name("Trợ lý AI đánh giá báo cáo tuần").module("AI").description("Quyền sử dụng Trợ lý AI phân tích, tóm tắt và đối soát báo cáo tuần với Kanban dành cho Mentor & HR").build()
         );
 
         for (Permission perm : standardPermissions) {
@@ -256,13 +262,14 @@ public class DataInitializer implements CommandLineRunner {
             log.info("-> Đã gán toàn bộ {} quyền cho vai trò Admin", allPermissions.size());
         }
 
-        // 2. HR: Quyền về intern_all, mentor, program, contract, document, user view, profile, mission_board_manage, attendance_view_all, evaluation_final_manage
+        // 2. HR: Quyền về intern_all, mentor, program, contract, document, user view, profile, mission_board_manage, attendance_view_all, evaluation_final_manage, ai_interview_manage, ai_report_assistant_use
         Set<Permission> hrPerms = allPermissions.stream()
                 .filter(p -> List.of("INTERN_VIEW_ALL", "INTERN_CREATE", "INTERN_EDIT", "INTERN_APPROVE", "INTERN_ASSIGN_MENTOR",
                                      "MENTOR_VIEW", "MENTOR_CREATE", "PROGRAM_VIEW", "PROGRAM_MANAGE",
                                      "CONTRACT_VIEW", "CONTRACT_MANAGE", "DOCUMENT_VIEW", "DOCUMENT_REVIEW",
                                      "USER_VIEW", "PROFILE_VIEW_OWN",
-                                     "MISSION_BOARD_MANAGE", "ATTENDANCE_VIEW_ALL", "EVALUATION_FINAL_MANAGE").contains(p.getCode()))
+                                     "MISSION_BOARD_MANAGE", "ATTENDANCE_VIEW_ALL", "EVALUATION_FINAL_MANAGE",
+                                     "AI_INTERVIEW_MANAGE", "AI_REPORT_ASSISTANT_USE").contains(p.getCode()))
                 .collect(Collectors.toSet());
         if (hrRole.getPermissions() == null || hrRole.getPermissions().size() < hrPerms.size()) {
             hrRole.setPermissions(hrPerms);
@@ -270,11 +277,12 @@ public class DataInitializer implements CommandLineRunner {
             log.info("-> Đã cập nhật {} quyền cho vai trò HR", hrPerms.size());
         }
 
-        // 3. Mentor: Quyền xem intern_own, mentor_docs, program_view, profile, mission, evaluation, attendance
+        // 3. Mentor: Quyền xem intern_own, mentor_docs, program_view, profile, mission, evaluation, attendance, ai_interview_manage, ai_report_assistant_use
         Set<Permission> mentorPerms = allPermissions.stream()
                 .filter(p -> List.of("INTERN_VIEW_OWN", "MENTOR_VIEW_OWN_DOCS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN",
                                      "MISSION_BOARD_MANAGE", "MISSION_ITEM_MANAGE", "MISSION_VIEW_OWN",
-                                     "ATTENDANCE_VIEW_OWN", "EVALUATION_WEEKLY_MANAGE", "EVALUATION_FINAL_MANAGE").contains(p.getCode()))
+                                     "ATTENDANCE_VIEW_OWN", "EVALUATION_WEEKLY_MANAGE", "EVALUATION_FINAL_MANAGE",
+                                     "AI_INTERVIEW_MANAGE", "AI_REPORT_ASSISTANT_USE").contains(p.getCode()))
                 .collect(Collectors.toSet());
         if (mentorRole.getPermissions() == null || mentorRole.getPermissions().size() < mentorPerms.size()) {
             mentorRole.setPermissions(mentorPerms);
@@ -282,10 +290,11 @@ public class DataInitializer implements CommandLineRunner {
             log.info("-> Đã cập nhật {} quyền cho vai trò Mentor", mentorPerms.size());
         }
 
-        // 4. Intern: Quyền xem intern_own_profile, intern_own_docs, program_view, profile, mission_view_own, attendance_check, attendance_view_own, evaluation_view_own
+        // 4. Intern: Quyền xem intern_own_profile, intern_own_docs, program_view, profile, mission_view_own, attendance_check, attendance_view_own, evaluation_view_own, ai_chat_use
         Set<Permission> internPerms = allPermissions.stream()
                 .filter(p -> List.of("INTERN_VIEW_OWN_PROFILE", "INTERN_VIEW_OWN_DOCUMENTS", "PROGRAM_VIEW", "PROFILE_VIEW_OWN",
-                                     "MISSION_VIEW_OWN", "ATTENDANCE_CHECK", "ATTENDANCE_VIEW_OWN", "EVALUATION_VIEW_OWN").contains(p.getCode()))
+                                     "MISSION_VIEW_OWN", "ATTENDANCE_CHECK", "ATTENDANCE_VIEW_OWN", "EVALUATION_VIEW_OWN",
+                                     "AI_CHAT_USE").contains(p.getCode()))
                 .collect(Collectors.toSet());
         if (internRole.getPermissions() == null || internRole.getPermissions().size() < internPerms.size()) {
             internRole.setPermissions(internPerms);

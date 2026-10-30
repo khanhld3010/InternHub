@@ -116,9 +116,20 @@ public class OnboardingController {
                 throw new IllegalStateException("Không nhận được userId hợp lệ từ Identity Service");
             }
 
-            mentorProfile.setUserId(createdUserId);
-            mentorProfile.setStatus("ACTIVE");
-            mentorProfileRepository.save(mentorProfile);
+            try {
+                mentorProfile.setUserId(createdUserId);
+                mentorProfile.setStatus("ACTIVE");
+                mentorProfileRepository.save(mentorProfile);
+            } catch (Exception dbEx) {
+                log.error("SAGA ROLLBACK: Lỗi khi lưu trạng thái MentorProfile CSDL: {}. Tiến hành hoàn tác vô hiệu hóa tài khoản trên Identity Service.", dbEx.getMessage(), dbEx);
+                try {
+                    identityServiceClient.forceLockUserAccount(createdUserId, "Saga Compensation: Onboarding lưu CSDL hồ sơ Mentor thất bại");
+                    log.info("SAGA ROLLBACK: Đã vô hiệu hóa tài khoản Mentor userId={} thành công", createdUserId);
+                } catch (Exception compEx) {
+                    log.error("SAGA ROLLBACK FAILED: Không thể vô hiệu hóa tài khoản bù trừ Mentor userId={}: {}", createdUserId, compEx.getMessage(), compEx);
+                }
+                throw new RuntimeException("Kích hoạt hồ sơ Mentor thất bại sau khi tạo tài khoản. Giao dịch đã được hoàn tác an toàn. Vui lòng thử lại hoặc liên hệ quản trị viên.", dbEx);
+            }
 
             log.info("Kich hoat tai khoan Mentor thanh cong: mentorId={}, createdUserId={}, email={}", targetId, createdUserId, email);
 
@@ -177,8 +188,14 @@ public class OnboardingController {
             profile.setUserId(createdUserId);
             internProfileRepository.save(profile);
         } catch (Exception dbEx) {
-            log.error("Lỗi khi lưu liên kết userId vào InternProfile CSDL: {}", dbEx.getMessage(), dbEx);
-            throw new RuntimeException("Lưu trạng thái hồ sơ thất bại sau khi tạo tài khoản. Vui lòng thử lại hoặc liên hệ quản trị viên.", dbEx);
+            log.error("SAGA ROLLBACK: Lỗi khi lưu liên kết userId={} vào InternProfile CSDL: {}. Tiến hành hoàn tác vô hiệu hóa tài khoản trên Identity Service.", createdUserId, dbEx.getMessage(), dbEx);
+            try {
+                identityServiceClient.forceLockUserAccount(createdUserId, "Saga Compensation: Onboarding lưu CSDL hồ sơ thất bại");
+                log.info("SAGA ROLLBACK: Đã vô hiệu hóa tài khoản userId={} thành công", createdUserId);
+            } catch (Exception compEx) {
+                log.error("SAGA ROLLBACK FAILED: Không thể vô hiệu hóa tài khoản bù trừ userId={}: {}", createdUserId, compEx.getMessage(), compEx);
+            }
+            throw new RuntimeException("Lưu trạng thái hồ sơ thất bại sau khi tạo tài khoản. Giao dịch đã được hoàn tác an toàn. Vui lòng thử lại hoặc liên hệ quản trị viên.", dbEx);
         }
 
         log.info("Liên kết tài khoản thành công: internId={}, createdUserId={}, email={}", internId, createdUserId, email);

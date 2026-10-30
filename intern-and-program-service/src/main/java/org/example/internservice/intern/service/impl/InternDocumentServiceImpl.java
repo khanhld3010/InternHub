@@ -5,16 +5,25 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.common.storage.FileStorageService;
 import org.example.internservice.exception.BadRequestException;
 import org.example.internservice.exception.ResourceNotFoundException;
+import org.example.internservice.intern.client.NotificationEventDispatcher;
+import org.example.internservice.intern.client.dto.CreateNotificationInternalRequest;
 import org.example.internservice.intern.dto.request.ReviewDocumentRequest;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.ConfirmUploadRequest;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlRequest;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse;
+import org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse;
 import org.example.internservice.intern.dto.response.DocumentDownloadDto;
 import org.example.internservice.intern.dto.response.DocumentResponse;
 import org.example.internservice.intern.entity.InternDocument;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.entity.enums.DocumentStatus;
 import org.example.internservice.intern.entity.enums.DocumentType;
+import org.example.internservice.intern.entity.enums.InternStatus;
 import org.example.internservice.intern.repository.InternDocumentRepository;
 import org.example.internservice.intern.repository.InternProfileRepository;
 import org.example.internservice.intern.service.InternDocumentService;
+import org.example.internservice.intern.service.InternDocumentStorageHelper;
+import org.example.internservice.security.CustomUserDetails;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +34,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Service quản lý tài liệu hồ sơ của thực tập sinh (CV, đơn đăng ký).
+ * Tuân thủ CONSTRAINTS.md: Kích thước < 300 dòng, không FQCN, không method > 40 dòng.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -42,9 +55,8 @@ public class InternDocumentServiceImpl implements InternDocumentService {
     private final InternProfileRepository internProfileRepository;
     private final InternDocumentRepository internDocumentRepository;
     private final FileStorageService fileStorageService;
-    private final org.example.internservice.intern.client.FileServiceClient fileServiceClient;
-    private final org.example.internservice.intern.client.NotificationEventDispatcher notificationEventDispatcher;
-
+    private final NotificationEventDispatcher notificationEventDispatcher;
+    private final InternDocumentStorageHelper storageHelper;
 
     @Override
     @Transactional
@@ -71,13 +83,18 @@ public class InternDocumentServiceImpl implements InternDocumentService {
                 .build();
 
         InternDocument savedDocument = saveDocumentMetadataWithRollback(document, relativeFilePath);
-
         return mapToDocumentResponse(savedDocument, internProfile.getInternCode());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<DocumentResponse> getDocumentsByInternCode(String internCode) {
+        return getDocumentsByInternCode(internCode, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> getDocumentsByInternCode(String internCode, CustomUserDetails userDetails) {
         log.info("Lấy danh sách tài liệu cho thực tập sinh: {}", internCode);
         if (!StringUtils.hasText(internCode)) {
             throw new BadRequestException("Mã thực tập sinh không được để trống");
@@ -86,8 +103,9 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         InternProfile profile = internProfileRepository.findByInternCode(internCode.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
 
-        List<InternDocument> documents = internDocumentRepository.findByInternProfileInternCodeOrderByCreatedAtDesc(profile.getInternCode());
+        storageHelper.validateDocumentAccess(profile, userDetails);
 
+        List<InternDocument> documents = internDocumentRepository.findByInternProfileInternCodeOrderByCreatedAtDesc(profile.getInternCode());
         return documents.stream()
                 .map(doc -> mapToDocumentResponse(doc, profile.getInternCode()))
                 .toList();
@@ -96,6 +114,12 @@ public class InternDocumentServiceImpl implements InternDocumentService {
     @Override
     @Transactional(readOnly = true)
     public DocumentDownloadDto loadDocumentForDownload(Long documentId) {
+        return loadDocumentForDownload(documentId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DocumentDownloadDto loadDocumentForDownload(Long documentId, CustomUserDetails userDetails) {
         log.info("Tải tài liệu với documentId: {}", documentId);
         if (documentId == null || documentId <= 0) {
             throw new BadRequestException("ID tài liệu không hợp lệ");
@@ -104,8 +128,9 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         InternDocument document = internDocumentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
 
-        Resource resource = fileStorageService.loadFileAsResource(document.getFilePath());
+        storageHelper.validateDocumentAccess(document.getInternProfile(), userDetails);
 
+        Resource resource = fileStorageService.loadFileAsResource(document.getFilePath());
         return DocumentDownloadDto.builder()
                 .resource(resource)
                 .originalFileName(document.getOriginalFileName())
@@ -121,7 +146,6 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         if (documentId == null || documentId <= 0) {
             throw new BadRequestException("ID tài liệu không hợp lệ");
         }
-
         if (request == null || request.getStatus() == null) {
             throw new BadRequestException("Trạng thái xét duyệt không được để trống");
         }
@@ -129,6 +153,39 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         InternDocument document = internDocumentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
 
+        applyReviewStatus(document, request);
+        InternDocument updated = internDocumentRepository.save(document);
+        log.info("Cập nhật thành công trạng thái tài liệu ID: {} thành {}", updated.getId(), updated.getStatus());
+
+        notifyDocumentReviewResult(updated);
+        return mapToDocumentResponse(updated, updated.getInternProfile().getInternCode());
+    }
+
+    @Override
+    public RequestUploadUrlResponse createPresignedUploadUrl(String internCode, RequestUploadUrlRequest request) {
+        getAndValidateInternProfile(internCode);
+        return storageHelper.createPresignedUploadUrl(internCode, request);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse confirmUpload(String internCode, ConfirmUploadRequest request) {
+        InternProfile internProfile = getAndValidateInternProfile(internCode);
+        DocumentType documentType = parseDocumentType(request.getDocumentType());
+        return storageHelper.confirmUpload(internProfile, documentType, request);
+    }
+
+    @Override
+    public ViewDocumentUrlResponse getDocumentViewUrl(Long documentId) {
+        return getDocumentViewUrl(documentId, null);
+    }
+
+    @Override
+    public ViewDocumentUrlResponse getDocumentViewUrl(Long documentId, CustomUserDetails userDetails) {
+        return storageHelper.getDocumentViewUrl(documentId, userDetails);
+    }
+
+    private void applyReviewStatus(InternDocument document, ReviewDocumentRequest request) {
         if (request.getStatus() == DocumentStatus.REJECTED) {
             String reason = request.getRejectionReason();
             if (!StringUtils.hasText(reason) || reason.trim().length() < 5) {
@@ -143,14 +200,6 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         } else {
             throw new BadRequestException("Trạng thái xét duyệt không hợp lệ. Chỉ chấp nhận: APPROVED, REJECTED");
         }
-
-        InternDocument updated = internDocumentRepository.save(document);
-        log.info("Cập nhật thành công trạng thái tài liệu ID: {} thành {}", updated.getId(), updated.getStatus());
-
-        // Bắn thông báo real-time tới thực tập sinh
-        notifyDocumentReviewResult(updated);
-
-        return mapToDocumentResponse(updated, updated.getInternProfile().getInternCode());
     }
 
     private void notifyDocumentReviewResult(InternDocument doc) {
@@ -167,7 +216,7 @@ public class InternDocumentServiceImpl implements InternDocumentService {
                 : String.format("Tài liệu %s (%s) của bạn đã bị từ chối. Lý do: %s",
                         docTypeName, doc.getOriginalFileName(), doc.getRejectionReason());
 
-        notificationEventDispatcher.dispatch(org.example.internservice.intern.client.dto.CreateNotificationInternalRequest.builder()
+        notificationEventDispatcher.dispatch(CreateNotificationInternalRequest.builder()
                 .recipientId(internUserId)
                 .title(title)
                 .content(content)
@@ -182,7 +231,6 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Tệp tin tải lên không được để trống");
         }
-
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new BadRequestException("Dung lượng tệp tin vượt quá giới hạn cho phép (tối đa 10MB)");
         }
@@ -222,8 +270,7 @@ public class InternDocumentServiceImpl implements InternDocumentService {
         InternProfile internProfile = internProfileRepository.findByInternCode(internCode.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ thực tập sinh với mã: " + internCode));
 
-        if (internProfile.getStatus() == org.example.internservice.intern.entity.enums.InternStatus.COMPLETED
-                || internProfile.getStatus() == org.example.internservice.intern.entity.enums.InternStatus.REJECTED) {
+        if (internProfile.getStatus() == InternStatus.COMPLETED || internProfile.getStatus() == InternStatus.REJECTED) {
             log.warn("Từ chối upload tài liệu vì hồ sơ {} đang ở trạng thái đóng: {}", internCode, internProfile.getStatus());
             throw new BadRequestException("Hồ sơ thực tập sinh đã đóng (" + internProfile.getStatus() + "), không thể nộp thêm tài liệu");
         }
@@ -257,105 +304,4 @@ public class InternDocumentServiceImpl implements InternDocumentService {
                 .updatedAt(savedDocument.getUpdatedAt())
                 .build();
     }
-
-    @Override
-    public org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse createPresignedUploadUrl(
-            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlRequest request) {
-        log.info("Cấp link upload trực tiếp S3 cho intern: {}, fileName: {}", internCode, request.getFileName());
-        getAndValidateInternProfile(internCode);
-
-        org.example.internservice.intern.client.FileServiceClient.PresignedUploadRequest internalReq =
-                org.example.internservice.intern.client.FileServiceClient.PresignedUploadRequest.builder()
-                        .prefix("temp")
-                        .fileName(request.getFileName())
-                        .contentType(request.getContentType())
-                        .sizeLimitBytes(request.getFileSize())
-                        .build();
-
-        org.example.internservice.intern.client.FileServiceClient.PresignedUploadResponse internalRes =
-                fileServiceClient.createPresignedUpload(internalReq);
-
-        return org.example.internservice.intern.dto.request.StorageBusinessDtos.RequestUploadUrlResponse.builder()
-                .tempKey(internalRes.getTempKey())
-                .presignedUrl(internalRes.getPresignedUrl())
-                .expiresInSeconds(internalRes.getExpiresInSeconds())
-                .build();
-    }
-
-    @Override
-    @Transactional
-    public DocumentResponse confirmUpload(
-            String internCode, org.example.internservice.intern.dto.request.StorageBusinessDtos.ConfirmUploadRequest request) {
-        log.info("Xác nhận upload thành công từ client cho intern: {}, tempKey: {}", internCode, request.getTempKey());
-        InternProfile internProfile = getAndValidateInternProfile(internCode);
-        DocumentType documentType = parseDocumentType(request.getDocumentType());
-
-        // Định dạng đường dẫn chính thức: documents/{internCode}/{documentType}_{timestamp}_{uuid}.pdf
-        String extension = "";
-        if (request.getOriginalFileName().contains(".")) {
-            extension = request.getOriginalFileName().substring(request.getOriginalFileName().lastIndexOf("."));
-        }
-        String destKey = String.format("documents/%s/%s_%d_%s%s",
-                internCode, documentType.name(), System.currentTimeMillis(), java.util.UUID.randomUUID().toString().substring(0, 8), extension);
-
-        // Gọi file-service promote từ temp sang permanent
-        org.example.internservice.intern.client.FileServiceClient.PromoteFileRequest promoteReq =
-                org.example.internservice.intern.client.FileServiceClient.PromoteFileRequest.builder()
-                        .tempKey(request.getTempKey())
-                        .destinationKey(destKey)
-                        .build();
-
-        org.example.internservice.intern.client.FileServiceClient.PromoteFileResponse promoteRes = fileServiceClient.promoteFile(promoteReq);
-
-        // Ghi vào database sau khi promote thành công 100%
-        InternDocument document = InternDocument.builder()
-                .internProfile(internProfile)
-                .documentType(documentType)
-                .originalFileName(request.getOriginalFileName())
-                .fileName(destKey)
-                .filePath(promoteRes.getFinalKey())
-                .fileSize(promoteRes.getFileSize() != null ? promoteRes.getFileSize() : 0L)
-                .contentType(promoteRes.getContentType() != null ? promoteRes.getContentType() : "application/octet-stream")
-                .status(DocumentStatus.PENDING_REVIEW)
-                .build();
-
-        InternDocument saved = internDocumentRepository.save(document);
-        log.info("Ghi nhận tài liệu thành công vào DB với ID: {}", saved.getId());
-        return mapToDocumentResponse(saved, internCode);
-    }
-
-    @Override
-    public org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse getDocumentViewUrl(Long documentId) {
-        InternDocument document = internDocumentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu với ID: " + documentId));
-
-        // Kiểm tra nếu là file lưu trữ trên S3 (có prefix documents/ hoặc temp/)
-        String filePath = document.getFilePath();
-        if (filePath != null && (filePath.startsWith("documents/") || filePath.startsWith("temp/"))) {
-            org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest viewReq =
-                    org.example.internservice.intern.client.FileServiceClient.PresignedViewRequest.builder()
-                            .fileKey(filePath)
-                            .expiresInMinutes(30)
-                            .build();
-
-            org.example.internservice.intern.client.FileServiceClient.PresignedViewResponse viewRes = fileServiceClient.createPresignedView(viewReq);
-
-            return org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse.builder()
-                    .documentId(document.getId())
-                    .fileName(document.getOriginalFileName())
-                    .presignedUrl(viewRes.getPresignedUrl())
-                    .expiresInSeconds(viewRes.getExpiresInSeconds())
-                    .build();
-        }
-
-        // Với file cũ lưu local, trả về null presignedUrl để client fallback tải an toàn qua controller
-        return org.example.internservice.intern.dto.request.StorageBusinessDtos.ViewDocumentUrlResponse.builder()
-                .documentId(document.getId())
-                .fileName(document.getOriginalFileName())
-                .presignedUrl(null)
-                .expiresInSeconds(0)
-                .build();
-    }
 }
-
-

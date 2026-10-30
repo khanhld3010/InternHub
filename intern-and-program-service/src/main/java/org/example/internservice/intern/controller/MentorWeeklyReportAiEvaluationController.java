@@ -26,7 +26,7 @@ public class MentorWeeklyReportAiEvaluationController {
 
     @Operation(summary = "Lấy kết quả phân tích AI hiện hành của báo cáo tuần")
     @GetMapping("/{reportId}/ai-evaluation")
-    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN') or hasAuthority('AI_REPORT_ASSISTANT_USE')")
     public ResponseEntity<ApiResponse<WeeklyReportAiEvaluationResponse>> getActiveEvaluation(
             @PathVariable Long reportId,
             Authentication authentication
@@ -38,7 +38,7 @@ public class MentorWeeklyReportAiEvaluationController {
 
     @Operation(summary = "Kích hoạt phân tích hoặc tái phân tích báo cáo tuần bằng AI")
     @PostMapping("/{reportId}/ai-evaluate")
-    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MENTOR', 'HR', 'ADMIN') or hasAuthority('AI_REPORT_ASSISTANT_USE')")
     public ResponseEntity<ApiResponse<WeeklyReportAiEvaluationResponse>> triggerEvaluation(
             @PathVariable Long reportId,
             Authentication authentication

@@ -349,4 +349,32 @@ class MissionItemServiceTest {
         assertTrue(ex.getMessage().contains("quá khứ"));
         verify(missionItemRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("UT-BE-15: Ném OptimisticLockingFailureException khi version cập nhật trạng thái bị xung đột đồng thời")
+    void updateItemStatus_Fail_OptimisticLockingConflict() {
+        MissionItem item = MissionItem.builder()
+                .board(mockBoard)
+                .title("Viết API Microservices")
+                .status(MissionItemStatus.TODO)
+                .assignees(new HashSet<>(Set.of(mockIntern1)))
+                .version(2L)
+                .build();
+        item.setId(101L);
+
+        UpdateItemStatusRequest request = UpdateItemStatusRequest.builder()
+                .status(MissionItemStatus.IN_PROGRESS)
+                .version(1L) // Phiên bản cũ hơn phiên bản hiện tại trong CSDL
+                .build();
+
+        when(missionItemRepository.findByIdWithAssignees(101L)).thenReturn(Optional.of(item));
+        when(mentorProfileRepository.findByUserId(100L)).thenReturn(Optional.of(mockMentor));
+        when(programMentorRepository.existsByProgramIdAndMentorIdentifier(10L, 20L)).thenReturn(true);
+
+        OptimisticLockingFailureException ex = assertThrows(OptimisticLockingFailureException.class, () ->
+                missionItemService.updateItemStatus(101L, request, mentorUserDetails));
+
+        assertTrue(ex.getMessage().contains("Phiên bản mục công việc đã thay đổi"));
+        verify(missionItemRepository, never()).save(any());
+    }
 }

@@ -14,6 +14,9 @@ import org.example.employeeservice.exception.ResourceNotFoundException;
 import org.example.employeeservice.repository.AccountRepository;
 import org.example.employeeservice.repository.UserRepository;
 import org.example.employeeservice.service.UserService;
+import org.example.employeeservice.entity.Role;
+import org.example.employeeservice.repository.RoleRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +30,8 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
     private final NotificationServiceClient notificationServiceClient;
 
     @Override
@@ -86,6 +91,40 @@ public class UserServiceImpl implements UserService {
                     "Tài khoản của bạn đã bị khóa bởi Quản trị viên hệ thống",
                     "Phiên làm việc đã bị chấm dứt. Vui lòng liên hệ ban quản trị để biết thêm chi tiết."
             );
+        }
+
+        return mapToResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse lockUserAccount(Integer id, String reason) {
+        log.warn("Thực hiện khóa cưỡng chế tài khoản người dùng ID={}, lý do: {}", id, reason);
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng có ID: " + id));
+
+        Account account = user.getAccount();
+        if (account == null) {
+            account = accountRepository.findByUserId(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản gắn với người dùng ID: " + id));
+        }
+
+        account.setStatus("INACTIVE");
+        Account updatedAccount = accountRepository.save(account);
+        user.setAccount(updatedAccount);
+
+        log.warn("Tài khoản userId={} đã được khóa cưỡng chế (INACTIVE), phát lệnh ACCOUNT_LOCKED qua WebSocket & Redis", id);
+        if (notificationServiceClient != null) {
+            try {
+                notificationServiceClient.dispatchSecurityCommand(
+                        "ACCOUNT_LOCKED",
+                        id.longValue(),
+                        reason != null ? reason : "Tài khoản của bạn đã bị khóa bởi hệ thống",
+                        "Phiên làm việc đã bị chấm dứt (Offboarding / Thu hồi quyền truy cập)."
+                );
+            } catch (Exception e) {
+                log.error("Không thể gửi lệnh ngắt socket bảo mật cho userId={}: {}", id, e.getMessage());
+            }
         }
 
         return mapToResponse(user);
@@ -248,6 +287,45 @@ public class UserServiceImpl implements UserService {
         log.info("Cập nhật thông tin cá nhân thành công cho user: {}", username);
 
         return mapToResponse(updatedUser);
+    }
+
+    @Override
+    @Transactional
+    public void resetUserPassword(Integer userId, String newPassword) {
+        log.info("Quản trị viên đặt lại mật khẩu cho userId={}", userId);
+        Account account = accountRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản gắn với người dùng ID: " + userId));
+
+        String rawPassword = (newPassword != null && !newPassword.trim().isEmpty()) ? newPassword.trim() : "123456";
+        account.setPasswordHash(passwordEncoder.encode(rawPassword));
+        accountRepository.save(account);
+        log.info("Đặt lại mật khẩu thành công cho userId={}", userId);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateUserRole(Integer userId, String newRoleName) {
+        log.info("Quản trị viên thay đổi vai trò cho userId={} thành {}", userId, newRoleName);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng với ID: " + userId));
+
+        Account account = user.getAccount();
+        if (account == null) {
+            account = accountRepository.findByUserId(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản gắn với người dùng ID: " + userId));
+        }
+
+        String searchRole = newRoleName.startsWith("ROLE_") ? newRoleName : "ROLE_" + newRoleName;
+        Role targetRole = roleRepository.findByNameIgnoreCase(searchRole)
+                .or(() -> roleRepository.findByNameIgnoreCase(newRoleName))
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy vai trò: " + newRoleName));
+
+        account.setRole(targetRole);
+        Account savedAccount = accountRepository.save(account);
+        user.setAccount(savedAccount);
+        log.info("Cập nhật vai trò thành công cho userId={} -> {}", userId, targetRole.getName());
+
+        return mapToResponse(user);
     }
 
     private UserResponse mapToResponse(User user) {

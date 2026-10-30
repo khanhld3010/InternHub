@@ -115,7 +115,7 @@ public class AiChatService {
     /**
      * AI-17: Stream câu trả lời của Chatbot qua Server-Sent Events (SSE).
      */
-    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter streamChat(
+    public SseEmitter streamChat(
             ChatRequest request,
             String userId,
             String rawJwtToken

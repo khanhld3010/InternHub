@@ -15,7 +15,25 @@ public interface QuizAssignmentRepository extends JpaRepository<QuizAssignment, 
 
     List<QuizAssignment> findByInternIdOrderByCreatedAtDesc(Long internId);
 
+    @Query("SELECT qa FROM QuizAssignment qa " +
+           "JOIN FETCH qa.quiz q " +
+           "LEFT JOIN FETCH q.program " +
+           "WHERE qa.intern.id = :internId " +
+           "ORDER BY qa.createdAt DESC")
+    List<QuizAssignment> findByInternIdWithQuizAndProgramOrderByCreatedAtDesc(@Param("internId") Long internId);
+
     List<QuizAssignment> findByQuizId(Long quizId);
+
+    @Query("SELECT qa FROM QuizAssignment qa " +
+           "JOIN FETCH qa.intern i " +
+           "LEFT JOIN FETCH i.group " +
+           "WHERE qa.quiz.id = :quizId")
+    List<QuizAssignment> findByQuizIdWithIntern(@Param("quizId") Long quizId);
+
+    @Query("SELECT qa.quiz.id, COUNT(qa) FROM QuizAssignment qa " +
+           "WHERE qa.quiz.id IN :quizIds " +
+           "GROUP BY qa.quiz.id")
+    List<Object[]> countAssignmentsByQuizIdsGrouped(@Param("quizIds") java.util.Collection<Long> quizIds);
 
     List<QuizAssignment> findByInternIdAndStatus(Long internId, AssignmentStatus status);
 

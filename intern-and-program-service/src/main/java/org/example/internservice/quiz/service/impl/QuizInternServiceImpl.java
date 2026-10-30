@@ -3,6 +3,7 @@ package org.example.internservice.quiz.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.internservice.exception.BadRequestException;
+import org.example.internservice.exception.ForbiddenException;
 import org.example.internservice.exception.ResourceNotFoundException;
 import org.example.internservice.intern.entity.InternProfile;
 import org.example.internservice.intern.repository.InternProfileRepository;
@@ -61,11 +62,21 @@ public class QuizInternServiceImpl implements QuizInternService {
     @Override
     public List<QuizAssignmentResponse> getMyAssignedQuizzes(CustomUserDetails userDetails) {
         InternProfile intern = getInternProfileOrThrow(userDetails);
-        List<QuizAssignment> assignments = quizAssignmentRepository.findByInternIdOrderByCreatedAtDesc(intern.getId());
+        List<QuizAssignment> assignments = quizAssignmentRepository.findByInternIdWithQuizAndProgramOrderByCreatedAtDesc(intern.getId());
+        if (assignments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> assignmentIds = assignments.stream().map(QuizAssignment::getId).toList();
+        List<QuizSubmission> allSubmissions = quizSubmissionRepository.findByInternIdAndAssignmentIdInOrderByScoreDesc(
+                intern.getId(), assignmentIds);
+
+        Map<Long, List<QuizSubmission>> submissionsByAssignmentId = allSubmissions.stream()
+                .collect(Collectors.groupingBy(s -> s.getAssignment().getId()));
 
         return assignments.stream().map(assign -> {
             Quiz quiz = assign.getQuiz();
-            List<QuizSubmission> submissions = quizSubmissionRepository.findSubmissionsOrderByScoreDesc(assign.getId(), intern.getId());
+            List<QuizSubmission> submissions = submissionsByAssignmentId.getOrDefault(assign.getId(), Collections.emptyList());
             int attemptsTaken = submissions.size();
             Integer highestScore = null;
             boolean passed = false;
@@ -107,7 +118,9 @@ public class QuizInternServiceImpl implements QuizInternService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài Quiz được giao với ID: " + assignmentId));
 
         if (!assignment.getIntern().getId().equals(intern.getId())) {
-            throw new BadRequestException("Bạn không được phân công thực hiện bài Quiz này");
+            log.warn("Cảnh báo IDOR: Intern ID {} cố tình truy cập assignment ID {} của Intern ID {}",
+                    intern.getId(), assignmentId, assignment.getIntern().getId());
+            throw new ForbiddenException("Bạn không được phân công thực hiện bài Quiz này");
         }
 
         if (assignment.getStatus() != AssignmentStatus.ACTIVE) {
@@ -200,7 +213,9 @@ public class QuizInternServiceImpl implements QuizInternService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lượt làm bài với ID: " + submissionId));
 
         if (!submission.getIntern().getId().equals(intern.getId())) {
-            throw new BadRequestException("Bạn không phải là chủ sở hữu của lượt làm bài này");
+            log.warn("Cảnh báo IDOR: Intern ID {} cố tình nộp bài thi cho submission ID {} thuộc về Intern ID {}",
+                    intern.getId(), submissionId, submission.getIntern().getId());
+            throw new ForbiddenException("Bạn không phải là chủ sở hữu của lượt làm bài này");
         }
 
         if (submission.getStatus() != SubmissionStatus.IN_PROGRESS) {
@@ -323,7 +338,9 @@ public class QuizInternServiceImpl implements QuizInternService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lượt làm bài với ID: " + submissionId));
 
         if (!submission.getIntern().getId().equals(intern.getId())) {
-            throw new BadRequestException("Bạn không phải là chủ sở hữu của lượt làm bài này");
+            log.warn("Cảnh báo IDOR: Intern ID {} cố tình xem kết quả bài thi submission ID {} thuộc về Intern ID {}",
+                    intern.getId(), submissionId, submission.getIntern().getId());
+            throw new ForbiddenException("Bạn không phải là chủ sở hữu của lượt làm bài này");
         }
 
         // QUY TẮC BR-8 CỐT LÕI: YÊU CẦU HOÀN THÀNH BÀI THI TRƯỚC MỚI ĐƯỢC PHÉP XEM ĐÁP ÁN

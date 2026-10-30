@@ -64,6 +64,9 @@ class AttendanceReportServiceImplTest {
     @Mock
     private org.example.internservice.intern.service.MentorAccessHelper mentorAccessHelper;
 
+    @Mock
+    private org.example.internservice.allowance.repository.InternAllowanceRecordRepository allowanceRecordRepository;
+
     private AttendanceReportAggregator reportAggregator;
     private AttendanceReportServiceImpl attendanceReportService;
 
@@ -80,7 +83,8 @@ class AttendanceReportServiceImplTest {
                 internProfileRepository,
                 reportAggregator,
                 csvExporter,
-                mentorAccessHelper
+                mentorAccessHelper,
+                allowanceRecordRepository
         );
         intern = InternProfile.builder()
                 .userId(101L)

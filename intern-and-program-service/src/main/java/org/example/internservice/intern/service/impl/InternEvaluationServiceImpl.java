@@ -110,12 +110,15 @@ public class InternEvaluationServiceImpl implements InternEvaluationService {
                 log.warn("Cảnh báo: Không thể tự động chuyển hợp đồng sang EXPIRED cho TTS {}: {}", internCode, e.getMessage());
             }
 
-            // Tự động khóa tài khoản đăng nhập (Offboarding Access Control) qua IdentityServiceClient
+            // Tự động khóa cưỡng chế tài khoản đăng nhập (Offboarding Access Control) qua IdentityServiceClient
             if (profile.getUserId() != null) {
                 try {
-                    boolean locked = identityServiceClient.toggleUserAccountStatus(profile.getUserId());
+                    boolean locked = identityServiceClient.forceLockUserAccount(
+                            profile.getUserId(),
+                            "Hoàn thành kỳ thực tập (Offboarding) - Mã hồ sơ: " + internCode
+                    );
                     if (locked) {
-                        log.info("Đã tự động khóa tài khoản userId={} cho cựu TTS {} thành công", profile.getUserId(), internCode);
+                        log.warn("Đã tự động khóa cưỡng chế tài khoản userId={} cho cựu TTS {} thành công", profile.getUserId(), internCode);
                     } else {
                         log.warn("Không thể tự động khóa tài khoản userId={} cho cựu TTS {}", profile.getUserId(), internCode);
                     }

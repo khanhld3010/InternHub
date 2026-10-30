@@ -97,4 +97,25 @@ class UserServiceTest {
         assertEquals("admin@internhub.com", response.getEmail());
         verify(userRepository, times(1)).findByEmail("admin@internhub.com");
     }
+
+    @Test
+    @DisplayName("[RED] lockUserAccount: Khóa cưỡng chế tài khoản (INACTIVE) bất kể trạng thái trước đó")
+    void testLockUserAccount_ShouldSetInactiveAndDispatchSecurityCommand() {
+        org.example.employeeservice.entity.Account activeAccount = org.example.employeeservice.entity.Account.builder()
+                .id(10)
+                .username("intern_test")
+                .status("ACTIVE")
+                .build();
+        sampleUser.setAccount(activeAccount);
+
+        when(userRepository.findById(1)).thenReturn(Optional.of(sampleUser));
+        when(accountRepository.save(any(org.example.employeeservice.entity.Account.class))).thenAnswer(i -> i.getArgument(0));
+
+        UserResponse response = userService.lockUserAccount(1, "Hoàn thành kỳ thực tập (Offboarding)");
+
+        assertNotNull(response);
+        assertEquals("INACTIVE", response.getStatus());
+        assertEquals("INACTIVE", activeAccount.getStatus());
+        verify(accountRepository).save(activeAccount);
+    }
 }

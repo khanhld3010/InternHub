@@ -23,6 +23,12 @@ public interface ProgramMentorRepository extends JpaRepository<ProgramMentor, Lo
 
     List<ProgramMentor> findByProgramId(Long programId);
 
+    @Query("SELECT pm FROM ProgramMentor pm " +
+           "JOIN FETCH pm.mentor m " +
+           "LEFT JOIN FETCH m.department " +
+           "WHERE pm.program.id = :programId")
+    List<ProgramMentor> findByProgramIdWithMentorAndDepartment(@Param("programId") Long programId);
+
     Optional<ProgramMentor> findByProgramIdAndMentorId(Long programId, Long mentorId);
 
     @Query("SELECT pm.program.id, COUNT(pm) FROM ProgramMentor pm WHERE pm.program.id IN :programIds GROUP BY pm.program.id")

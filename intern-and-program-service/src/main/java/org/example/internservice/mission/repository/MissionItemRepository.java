@@ -40,6 +40,11 @@ public interface MissionItemRepository extends JpaRepository<MissionItem, Long>,
 
     long countByBoardId(Long boardId);
 
+    @Query("SELECT mi.board.id, mi.status, COUNT(mi) " +
+           "FROM MissionItem mi WHERE mi.board.id IN :boardIds " +
+           "GROUP BY mi.board.id, mi.status")
+    List<Object[]> countItemsByBoardIdsGroupedByStatus(@Param("boardIds") Collection<Long> boardIds);
+
     @Query("SELECT mi.board.program.id, COUNT(mi), " +
            "SUM(CASE WHEN mi.status = org.example.internservice.mission.entity.enums.MissionItemStatus.COMPLETED THEN 1L ELSE 0L END) " +
            "FROM MissionItem mi WHERE mi.board.program.id IN :programIds GROUP BY mi.board.program.id")

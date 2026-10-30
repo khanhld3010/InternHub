@@ -273,8 +273,22 @@ public class SupportRequestServiceImpl implements SupportRequestService {
 
     @Override
     public String getAttachmentFilename(Long id, boolean isResponseAttachment) {
+        return getAttachmentFilename(id, isResponseAttachment, null, null);
+    }
+
+    @Override
+    public String getAttachmentFilename(Long id, boolean isResponseAttachment, Long requestingUserId, String requestingRole) {
         SupportRequest request = supportRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy yêu cầu ID: " + id));
+
+        if (requestingUserId != null && requestingRole != null) {
+            boolean isOwner = request.getInternUserId().equals(requestingUserId);
+            boolean isHrOrAdmin = "HR".equalsIgnoreCase(requestingRole) || "HR_MANAGER".equalsIgnoreCase(requestingRole) || "ADMIN".equalsIgnoreCase(requestingRole);
+            if (!isOwner && !isHrOrAdmin) {
+                throw new ForbiddenException("Bạn không có quyền truy cập file tài liệu này");
+            }
+        }
+
         return isResponseAttachment ? request.getResponseFilename() : request.getAttachmentFilename();
     }
 
